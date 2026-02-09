@@ -1,7 +1,7 @@
 # CCaaS Entitlement PAPI - Source Bundle
-# Generated: 2026-02-09 00:24:53
-# Total files: 258
-# Categories: 1 pom.xml, 1 CLAUDE.md, 4 docs, 3 resources, 116 YAML specs, 80 main Java, 51 test Java, 2 other
+# Generated: 2026-02-09 09:52:18
+# Total files: 263
+# Categories: 1 pom.xml, 1 CLAUDE.md, 4 docs, 3 resources, 119 YAML specs, 81 main Java, 52 test Java, 2 other
 # Note: target/generated-sources NOT included - run 'mvn generate-sources' after extraction
 ===FILE: ./AGENTS.md
 # AGENTS.md - ccaas-entitlement-papi
@@ -2394,13 +2394,13 @@ mvn test                           # Run tests
 ```
 # Session Layouts
 GET  /papi/v1/sessions                      # Get session layout for current user
-POST /papi/v1/notices                              # Acknowledge admin notice
-POST /papi/v1/add-entitlements                     # Add entitlement to role templates
+POST /papi/v1/notice-acknowledgments                 # Acknowledge admin notice
+POST /papi/v1/entitlements                           # Add entitlement to role templates
 
 # AD Groups
 GET  /papi/v1/ad-groups                            # List AD groups (paginated, filterable)
 POST /papi/v1/ad-groups/lookup                     # Look up AD group config by DN (body)
-POST /papi/v1/copy-ad-group-configurations         # Copy AD group configuration
+POST /papi/v1/ad-group-configuration-copies         # Copy AD group configuration
 
 # Approval Workflow (Maker/Checker/Super Admin)
 POST   /papi/v1/pending-changes                    # Maker submits change for approval
@@ -2411,12 +2411,10 @@ POST   /papi/v1/change-approvals                   # Approve (changeIdentifier i
 POST   /papi/v1/change-rejections                  # Reject (changeIdentifier + reason in body)
 
 # Admin Notices
-POST   /papi/v1/create-notices                     # Create notice
-GET    /papi/v1/list-notices                       # List notices
-GET    /papi/v1/update-notices/{noticeIdentifier}  # Get notice
-PUT    /papi/v1/update-notices/{noticeIdentifier}  # Update notice
-DELETE /papi/v1/update-notices/{noticeIdentifier}  # Delete notice
-PATCH  /papi/v1/update-status/{noticeIdentifier}   # Update notice status
+POST   /papi/v1/notices                                # Create notice
+GET    /papi/v1/notices                                # List notices
+PUT    /papi/v1/notices/{noticeIdentifier}             # Update notice
+PATCH  /papi/v1/notices/{noticeIdentifier}/status      # Update notice status
 
 # Embedded Apps
 GET  /papi/v1/embedded-apps                        # List embedded apps
@@ -2436,7 +2434,7 @@ GET  /papi/v1/regions-markets/{regionCode}         # Markets by region
 
 # User Roles (Supervisor)
 POST /papi/v1/users/{userIdentifier}/primaries/{roleName}  # Set primary role
-POST /papi/v1/bulk-primaries                        # Bulk set primary roles
+POST /papi/v1/primary-assignments                    # Bulk set primary roles
 ```
 
 ## Required Skills (use EVERY time you write or modify code)
@@ -2462,7 +2460,7 @@ OpenAPI Generator **only generates Java classes for schemas reachable from path 
 - **Auth header**: `X-HSBC-E2E-Trust-Token` (case-sensitive). Centralize via identity context filter.
 - **Caffeine cache**: Session layouts cached. Check cache config for TTL.
 - **RestClient**: Uses Spring RestClient (blocking) to call SAPI. Connection pool tuning in application.yml.
-- **Error format**: HSBC Hydrogen `{ "errorInfo": [{ "code": "...", "causes": ["..."] }] }`. Auth errors use `{ "message": "..." }`.
+- **Error format**: HSBC Hydrogen (`application/problem+json`) `{ "errorInfo": [{ "code": "...", "causes": ["..."] }] }`. Auth errors use `{ "message": "..." }`.
 - **Mock users**: Provided by `ccaas-identity-mock` library (no local `mock-users.json`). Must match frontend `demo-users.json`.
 - **Never use `Map<String, Object>` for response/request objects.** Always define typed DTOs/records. Maps hide structure and break contract clarity.
 - **Test with curl**: Always test positive + negative scenarios. Update `postman/` collection.
@@ -2607,8 +2605,8 @@ This document maps every PAPI endpoint (port 8094) to its corresponding SAPI end
 | `statusCode` query param | `statusCode` in body | Approval workflow |
 | `status` query param | `?status=` query param | Admin notices |
 | `page`, `size` query params | `offsetNumber`, `limitNumber` in body | Pagination |
-| User AD groups (from token) | `userAdGroups` in body | Scoping list queries |
-| Admin AD groups (from token) | `adminAdGroups` in body | Scoping admin queries |
+| User AD groups (from token) | `userAdGroupValues` in body | Scoping list queries |
+| Admin AD groups (from token) | `adminAdGroupValues` in body | Scoping admin queries |
 
 ---
 
@@ -3745,6 +3743,73 @@ properties:
     description: Approve change request payload
     $ref: './ApproveChangeRequest.yaml'
 ===ENDFILE
+===FILE: ./src/main/api/components/schemas/approval/DirectSaveRequest.yaml
+type: object
+description: Request data for Super Admin direct configuration save.
+properties:
+  currentState:
+    type: object
+    description: Current configuration state before changes.
+    additionalProperties: true
+  proposedState:
+    type: object
+    description: Proposed configuration state to apply.
+    additionalProperties: true
+  changedApps:
+    type: array
+    description: List of changed application codes.
+    items:
+      type: string
+  changedFunctions:
+    type: array
+    description: List of changed function codes.
+    items:
+      type: string
+  changedFields:
+    type: array
+    description: List of changed field names.
+    items:
+      type: string
+  configVersionNumber:
+    type: integer
+    format: int64
+    description: Optimistic locking version.
+    nullable: true
+required:
+  - proposedState
+additionalProperties: false
+===ENDFILE
+===FILE: ./src/main/api/components/schemas/approval/DirectSaveRequestEnvelope.yaml
+type: object
+description: Envelope wrapper for direct save request.
+properties:
+  data:
+    $ref: './DirectSaveRequest.yaml'
+required:
+  - data
+additionalProperties: false
+===ENDFILE
+===FILE: ./src/main/api/components/schemas/approval/DirectSaveResponse.yaml
+type: object
+description: Response for direct save operation.
+properties:
+  data:
+    type: object
+    properties:
+      successIndicator:
+        type: boolean
+        description: Whether the direct save was successful.
+      messageText:
+        type: string
+        description: Human-readable result message.
+        maxLength: 500
+    required:
+      - successIndicator
+    additionalProperties: false
+required:
+  - data
+additionalProperties: false
+===ENDFILE
 ===FILE: ./src/main/api/components/schemas/approval/PendingChangeResponse.yaml
 title: PendingChangeResponse
 description: Detailed response for a pending configuration change including audit trail.
@@ -4364,6 +4429,12 @@ properties:
     minLength: 1
     maxLength: 200
     example: "admin.user@example.com"
+  marketCode:
+    type: string
+    description: Market code from the AD group configuration (e.g. HK, UK, SG).
+    minLength: 1
+    maxLength: 100
+    example: "HK"
 ===ENDFILE
 ===FILE: ./src/main/api/components/schemas/embedded-app/AppAdGroupConfigResponse.yaml
 title: AppAdGroupConfigResponse
@@ -5927,12 +5998,18 @@ required:
   - data
 properties:
   data:
-    description: Array of individual assignment requests
-    type: array
-    minItems: 1
-    maxItems: 1000
-    items:
-      $ref: './BulkPrimaryAssignmentRequest.yaml'
+    description: Container for bulk primary assignment requests
+    type: object
+    required:
+      - assignmentValues
+    properties:
+      assignmentValues:
+        description: List of individual assignment requests
+        type: array
+        minItems: 1
+        maxItems: 1000
+        items:
+          $ref: './BulkPrimaryAssignmentRequest.yaml'
 ===ENDFILE
 ===FILE: ./src/main/api/components/schemas/user-role/BulkPrimaryAssignmentResponse.yaml
 title: BulkPrimaryAssignmentResponse
@@ -6102,12 +6179,12 @@ security:
 tags:
   - name: sessions
     description: Session layout computation and retrieval
-  - name: add-entitlements
-    description: Add entitlements to role templates
+  - name: entitlements
+    description: Entitlement management for role templates
   - name: ad-groups
     description: AD group layout configuration management
-  - name: copy-ad-group-configurations
-    description: Copy AD group configurations
+  - name: ad-group-configuration-copies
+    description: AD group configuration copy operations
   - name: pending-changes
     description: Maker/Checker approval workflow - submission and query
   - name: change-approvals
@@ -6132,22 +6209,18 @@ tags:
     description: Markets filtered by region
   - name: users
     description: User role management and primary assignment
-  - name: create-notices
-    description: Create administrative notices
-  - name: list-notices
-    description: List administrative notices
-  - name: update-notices
-    description: Update administrative notices
-  - name: update-status
-    description: Update notice status
+  - name: notices
+    description: Administrative notice management
+  - name: ad-group-configs
+    description: Super Admin direct configuration save (bypasses approval)
 
 paths:
   # Sessions
   /sessions:
     $ref: 'paths/sessions/get.yaml'
-  /notices:
+  /notice-acknowledgments:
     $ref: 'paths/sessions/acknowledge-notice.yaml'
-  /add-entitlements:
+  /entitlements:
     $ref: 'paths/sessions/add-entitlements.yaml'
 
   # AD Groups
@@ -6155,7 +6228,7 @@ paths:
     $ref: 'paths/ad-groups/list-ad-groups.yaml'
   /ad-groups/lookup:
     $ref: 'paths/ad-groups/get-ad-group.yaml'
-  /copy-ad-group-configurations:
+  /ad-group-configuration-copies:
     $ref: 'paths/ad-groups/copy-ad-group-configurations.yaml'
 
   # Approval Workflow
@@ -6167,6 +6240,8 @@ paths:
     $ref: 'paths/approval-workflow/change-approvals.yaml'
   /change-rejections:
     $ref: 'paths/approval-workflow/change-rejections.yaml'
+  /ad-group-configs/{groupIdentifier}:
+    $ref: 'paths/approval-workflow/direct-save.yaml'
 
   # Embedded Apps
   /embedded-apps:
@@ -6197,17 +6272,15 @@ paths:
   # User Roles
   /users/{userIdentifier}/primaries/{roleName}:
     $ref: 'paths/user-roles/set-primary-assignment.yaml'
-  /bulk-primaries:
+  /primary-assignments:
     $ref: 'paths/user-roles/bulk-primary-assignments.yaml'
 
   # Admin Notices
-  /create-notices:
-    $ref: 'paths/notices/create-notice.yaml'
-  /list-notices:
-    $ref: 'paths/notices/list-notices.yaml'
-  /update-notices/{noticeIdentifier}:
+  /notices:
+    $ref: 'paths/notices/admin-notices.yaml'
+  /notices/{noticeIdentifier}:
     $ref: 'paths/notices/update-notice.yaml'
-  /update-status/{noticeIdentifier}:
+  /notices/{noticeIdentifier}/status:
     $ref: 'paths/notices/update-status.yaml'
 
 
@@ -6330,6 +6403,12 @@ components:
       $ref: 'components/schemas/approval/PendingChangeResponse.yaml'
     ApprovalResultResponse:
       $ref: 'components/schemas/approval/ApprovalResultResponse.yaml'
+    DirectSaveRequest:
+      $ref: 'components/schemas/approval/DirectSaveRequest.yaml'
+    DirectSaveRequestEnvelope:
+      $ref: 'components/schemas/approval/DirectSaveRequestEnvelope.yaml'
+    DirectSaveResponse:
+      $ref: 'components/schemas/approval/DirectSaveResponse.yaml'
 
     # Embedded App
     EmbeddedAppResponse:
@@ -6435,7 +6514,7 @@ description: |
   API endpoint to copy configuration from one AD group to another.
 post:
   tags:
-    - copy-ad-group-configurations
+    - ad-group-configuration-copies
   summary: Copy AD group configuration
   description: |
     Copy configuration from a source AD group to a target AD group
@@ -6602,6 +6681,44 @@ post:
             $ref: '../../components/schemas/common/DataResponseRejectionData.yaml'
     default:
       $ref: '../../components/responses/common-responses.yaml#/default'
+===ENDFILE
+===FILE: ./src/main/api/paths/approval-workflow/direct-save.yaml
+put:
+  tags:
+    - ad-group-configs
+  operationId: direct-save-config
+  summary: Direct save AD group configuration (Super Admin).
+  description: Bypasses approval workflow. Applies configuration change immediately. Requires Super Admin role.
+  parameters:
+    - name: groupIdentifier
+      in: path
+      required: true
+      description: URL-encoded AD group distinguished name (DN).
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 500
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '../../components/schemas/approval/DirectSaveRequestEnvelope.yaml'
+  responses:
+    '200':
+      description: Configuration saved successfully.
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/approval/DirectSaveResponse.yaml'
+    '400':
+      description: Invalid request.
+    '401':
+      description: Unauthorized.
+    '404':
+      description: AD group not found.
+    '409':
+      description: Optimistic locking conflict.
 ===ENDFILE
 ===FILE: ./src/main/api/paths/approval-workflow/pending-change.yaml
 description: |
@@ -6886,12 +7003,12 @@ get:
     default:
       $ref: '../../components/responses/common-responses.yaml#/default'
 ===ENDFILE
-===FILE: ./src/main/api/paths/notices/create-notice.yaml
+===FILE: ./src/main/api/paths/notices/admin-notices.yaml
 description: |
-  API endpoint to create a new administrative notice.
+  Administrative notice management endpoints.
 post:
   tags:
-    - create-notices
+    - notices
   summary: Create administrative notice
   description: |
     Creates a new admin notice that appears in user session layouts
@@ -6912,13 +7029,9 @@ post:
             $ref: '../../components/schemas/common/DataResponseNoticeData.yaml'
     default:
       $ref: '../../components/responses/common-responses.yaml#/default'
-===ENDFILE
-===FILE: ./src/main/api/paths/notices/list-notices.yaml
-description: |
-  API endpoint to list administrative notices with optional status filtering.
 get:
   tags:
-    - list-notices
+    - notices
   summary: List administrative notices
   description: Lists notices with optional status filter.
   operationId: list-admin-notices
@@ -6948,7 +7061,7 @@ description: |
   API endpoint to update an existing administrative notice.
 put:
   tags:
-    - update-notices
+    - notices
   summary: Update administrative notice
   description: Updates an existing notice payload (admin only).
   operationId: update-admin-notice
@@ -6984,7 +7097,7 @@ description: |
   API endpoint to update the status of an administrative notice.
 patch:
   tags:
-    - update-status
+    - notices
   summary: Update notice status
   description: Changes notice status (DRAFT / ACTIVE / ARCHIVED).
   operationId: update-admin-notice-status
@@ -7176,7 +7289,7 @@ description: |
   API endpoint to dynamically add entitlements to role templates.
 post:
   tags:
-    - add-entitlements
+    - entitlements
   summary: Add entitlement to role templates
   description: |
     Dynamically registers a new entitlement key into role templates
@@ -7237,18 +7350,7 @@ post:
     content:
       application/json:
         schema:
-          type: object
-          description: Wrapper containing bulk assignment requests
-          required:
-            - data
-          properties:
-            data:
-              type: array
-              description: List of bulk primary assignment request envelopes
-              minItems: 1
-              maxItems: 1000
-              items:
-                $ref: '../../components/schemas/user-role/BulkPrimaryAssignmentRequest.yaml'
+          $ref: '../../components/schemas/user-role/BulkPrimaryAssignmentRequestEnvelope.yaml'
   responses:
     '200':
       description: Bulk operation completed (check response for per-user success/failure)
@@ -7891,14 +7993,15 @@ public class SapiAdGroupClient {
                     "data", Map.of("adGroupValues", adGroups)
                 );
 
-                SapiDataResponse<List<String>> response = sapiRestClient.post()
+                SapiDataResponse<SapiPayloads.RolesPayload> response = sapiRestClient.post()
                     .uri(SapiApiPaths.RESOLVE_ROLES)
                     .body(body)
                     .retrieve()
-                    .body(new ParameterizedTypeReference<SapiDataResponse<List<String>>>() {});
+                    .body(new ParameterizedTypeReference<SapiDataResponse<SapiPayloads.RolesPayload>>() {});
 
                 List<String> result = response != null && response.getData() != null
-                    ? response.getData() : Collections.emptyList();
+                        && response.getData().roleValues() != null
+                    ? response.getData().roleValues() : Collections.emptyList();
                 logger.debug("Successfully resolved roles: {}", result);
                 return result;
             },
@@ -7908,7 +8011,7 @@ public class SapiAdGroupClient {
 
     private Map<String, Object> buildAdGroupRequestData(List<String> adminAdGroups, AdGroupFilterCriteria criteria) {
         java.util.HashMap<String, Object> data = new java.util.HashMap<>();
-        data.put("adminAdGroups", adminAdGroups);
+        data.put("adminAdGroupValues", adminAdGroups);
         data.put("offsetNumber", criteria.getOffset());
         data.put("limitNumber", criteria.getLimit());
 
@@ -8018,7 +8121,7 @@ public class SapiAdminNoticeClient {
         return SapiExceptionHandler.executeWithExceptionHandling(
             () -> {
                 SapiDataResponse<AdminNoticeResponse> response = sapiRestClient.post()
-                    .uri("/sapi/v1/create-notices")
+                    .uri("/sapi/v1/notices")
                     .body(Map.of("data", request))
                     .retrieve()
                     .body(new ParameterizedTypeReference<SapiDataResponse<AdminNoticeResponse>>(){});
@@ -8036,7 +8139,7 @@ public class SapiAdminNoticeClient {
 
         return SapiExceptionHandler.executeWithExceptionHandling(
             () -> {
-                String uri = "/sapi/v1/list-notices";
+                String uri = "/sapi/v1/notices";
                 if (status != null && !status.isBlank()) {
                     uri += "?status=" + status;
                 }
@@ -8086,7 +8189,7 @@ public class SapiAdminNoticeClient {
         return SapiExceptionHandler.executeWithExceptionHandling(
             () -> {
                 SapiDataResponse<AdminNoticeResponse> response = sapiRestClient.put()
-                    .uri("/sapi/v1/update-notices/{id}", noticeId)
+                    .uri("/sapi/v1/notices/{id}", noticeId)
                     .body(Map.of("data", request))
                     .retrieve()
                     .body(new ParameterizedTypeReference<SapiDataResponse<AdminNoticeResponse>>(){});
@@ -8115,7 +8218,7 @@ public class SapiAdminNoticeClient {
         return SapiExceptionHandler.executeWithExceptionHandling(
             () -> {
                 SapiDataResponse<AdminNoticeResponse> response = sapiRestClient.patch()
-                    .uri("/sapi/v1/update-status/{id}", noticeId)
+                    .uri("/sapi/v1/notices/{id}/status", noticeId)
                     .body(Map.of("data", Map.of("statusCode", status)))
                     .retrieve()
                     .body(new ParameterizedTypeReference<SapiDataResponse<AdminNoticeResponse>>(){});
@@ -8140,7 +8243,7 @@ public class SapiAdminNoticeClient {
     }
 
     /**
-     * Payload for deserializing SAPI list-notices response.
+     * Payload for deserializing SAPI notices response.
      */
     public record NoticesPayload(List<AdminNoticeResponse> adminValues) {}
 }
@@ -8277,22 +8380,27 @@ public class SapiApprovalClient {
      * SAPI expects: POST /sapi/v1/pending-changes/list with {"data": {...}} envelope.
      */
     public PaginatedResult<SapiPendingChange> listPendingChanges(
-            String filter, String userId, List<String> adGroups, int offset, int limit) {
+            String filter, String userId, List<String> adGroups,
+            String targetGroupIdentifier, int offset, int limit) {
 
-        logger.debug("Listing pending changes: filter={}, userId={}, adGroups={}", filter, userId, adGroups);
+        logger.debug("Listing pending changes: filter={}, userId={}, targetGroup={}, adGroups={}",
+                filter, userId, targetGroupIdentifier, adGroups);
 
         java.util.HashMap<String, Object> requestData = new java.util.HashMap<>();
         requestData.put(PARAM_OFFSET, offset);
         requestData.put(PARAM_LIMIT, limit);
 
         if (adGroups != null) {
-            requestData.put("userAdGroups", adGroups);
+            requestData.put("userAdGroupValues", adGroups);
         }
         if (userId != null && !userId.isBlank()) {
-            requestData.put("userId", userId);
+            requestData.put("userIdentifier", userId);
         }
         if (filter != null && !filter.isBlank()) {
             requestData.put("statusCode", filter);
+        }
+        if (targetGroupIdentifier != null && !targetGroupIdentifier.isBlank()) {
+            requestData.put("targetGroupIdentifier", targetGroupIdentifier);
         }
 
         Map<String, Object> body = Map.of("data", requestData);
@@ -8418,6 +8526,49 @@ public class SapiApprovalClient {
         );
     }
 
+    /**
+     * Direct save configuration (Super Admin bypass).
+     * SAPI expects: POST /sapi/v1/direct-saves with {"data": {...}} envelope.
+     */
+    public void directSave(String targetGroupIdentifier, Map<String, Object> currentState,
+            Map<String, Object> proposedState, String superAdminId, String superAdminName,
+            Long configVersion) {
+        if (targetGroupIdentifier == null || targetGroupIdentifier.isBlank()) {
+            throw new IllegalArgumentException("Target group identifier cannot be null or blank");
+        }
+        if (proposedState == null || proposedState.isEmpty()) {
+            throw new IllegalArgumentException("Proposed state cannot be null or empty");
+        }
+        if (superAdminId == null || superAdminId.isBlank()) {
+            throw new IllegalArgumentException("Super admin ID cannot be null or blank");
+        }
+
+        logger.debug("Direct save: target={}, superAdmin={}", targetGroupIdentifier, superAdminId);
+
+        Map<String, Object> sapiData = new java.util.HashMap<>();
+        sapiData.put("targetGroupIdentifier", targetGroupIdentifier);
+        sapiData.put("proposedState", proposedState);
+        sapiData.put("superAdminIdText", superAdminId);
+        if (currentState != null) {
+            sapiData.put("currentState", currentState);
+        }
+        if (superAdminName != null) {
+            sapiData.put("superAdminNameText", superAdminName);
+        }
+        if (configVersion != null) {
+            sapiData.put("configVersionNumber", configVersion);
+        }
+
+        SapiExceptionHandler.executeWithExceptionHandling(
+            () -> sapiRestClient.post()
+                    .uri(SapiApiPaths.DIRECT_SAVES)
+                    .body(Map.of("data", sapiData))
+                    .retrieve()
+                    .body(new ParameterizedTypeReference<SapiDataResponse<Map<String, Object>>>(){}),
+            "Direct save for group: " + targetGroupIdentifier
+        );
+    }
+
     private void validateIdAndApprover(String id, String approverId) {
         if (id == null || id.isBlank()) {
             throw new IllegalArgumentException(PENDING_CHANGE_ID_REQUIRED);
@@ -8510,17 +8661,16 @@ public class SapiEmbeddedAppClient {
     public AppAdGroupConfigResponse fetchAppAdGroupConfiguration(String appKey, String groupIdentifier) {
         return SapiExceptionHandler.executeWithExceptionHandling(
             () -> {
-                AppAdGroupConfigResponse config = sapiRestClient.post()
+                SapiDataResponse<AppAdGroupConfigResponse> wrapper = sapiRestClient.post()
                     .uri("/sapi/v1/embedded-apps-ad-groups/{appKey}", appKey)
-                    .body(java.util.Map.of("data", java.util.Map.of(
-                        "groupIdentifier", groupIdentifier)))
+                    .body(Map.of("data", Map.of("groupIdentifier", groupIdentifier)))
                     .retrieve()
-                    .body(AppAdGroupConfigResponse.class);
+                    .body(new ParameterizedTypeReference<SapiDataResponse<AppAdGroupConfigResponse>>() {});
 
+                AppAdGroupConfigResponse config = wrapper != null ? wrapper.getData() : null;
                 if (config == null) {
                     LOG.warn("AD group config not found for {}/{}", appKey, groupIdentifier);
                 }
-
                 return config;
             },
             "Fetch app AD group config for " + appKey + "/" + groupIdentifier
@@ -8531,34 +8681,35 @@ public class SapiEmbeddedAppClient {
             String appKey, SapiEmbeddedAppAdGroupRequest sapiRequest) {
         return SapiExceptionHandler.executeWithExceptionHandling(
             () -> {
-                AppAdGroupConfigResponse sapiResponse = sapiRestClient.put()
+                SapiDataResponse<AppAdGroupConfigResponse> wrapper = sapiRestClient.put()
                     .uri("/sapi/v1/embedded-apps-ad-groups/{appKey}", appKey)
-                    .body(sapiRequest)
+                    .body(Map.of("data", sapiRequest))
                     .retrieve()
-                    .body(AppAdGroupConfigResponse.class);
+                    .body(new ParameterizedTypeReference<SapiDataResponse<AppAdGroupConfigResponse>>() {});
 
+                AppAdGroupConfigResponse sapiResponse = wrapper != null ? wrapper.getData() : null;
                 if (sapiResponse == null) {
                     LOG.warn("Failed to update AD group config for {} - null response", appKey);
                 }
-
                 return sapiResponse;
             },
             "Update app AD group config for " + appKey
         );
     }
 
-    public List<EmbeddedAppResponse> fetchAppsForAdGroup() {
+    public List<EmbeddedAppResponse> fetchAppsForAdGroup(String groupIdentifier) {
         return SapiExceptionHandler.executeWithExceptionHandling(
             () -> {
-                SapiDataResponse<SapiPayloads.EmbeddedAppsConfigPayload> wrapper = sapiRestClient.get()
+                SapiDataResponse<SapiPayloads.EmbeddedAppsConfigPayload> wrapper = sapiRestClient.post()
                     .uri("/sapi/v1/embedded-apps-ad-groups")
+                    .body(Map.of("data", Map.of("groupIdentifier", groupIdentifier)))
                     .retrieve()
                     .body(new ParameterizedTypeReference<SapiDataResponse<SapiPayloads.EmbeddedAppsConfigPayload>>() {});
                 return wrapper != null && wrapper.getData() != null
                         && wrapper.getData().configValues() != null
                     ? new ArrayList<>(wrapper.getData().configValues()) : new ArrayList<>();
             },
-            "Fetch apps for AD group"
+            "Fetch apps for AD group: " + groupIdentifier
         );
     }
 }
@@ -8664,26 +8815,10 @@ public class SapiLayoutClient {
         ));
 
         sapiRestClient.post()
-            .uri("/sapi/v1/notices")
+            .uri("/sapi/v1/notice-acknowledgments")
             .body(requestBody)
             .retrieve()
             .toBodilessEntity();
-    }
-
-    /**
-     * Invalidate layout cache for an AD group
-     */
-    public Void invalidateCacheForAdGroup(String groupIdentifier) {
-        if (groupIdentifier == null || groupIdentifier.isBlank()) {
-            logger.warn("Group identifier is null or blank for cache invalidation");
-            throw new IllegalArgumentException(CommonConstants.ValidationMessages.GROUP_IDENTIFIER_NULL_OR_BLANK);
-        }
-
-        logger.debug("Invalidating cache for AD group");
-        return sapiRestClient.delete()
-            .uri("/sapi/v1/sessions/default/groups/{groupIdentifier}", groupIdentifier)
-            .retrieve()
-            .body(Void.class);
     }
 
     /**
@@ -8728,7 +8863,7 @@ public class SapiLayoutClient {
 
         logger.debug("Adding entitlement to templates");
         SapiDataResponse<AddEntitlementResponse> response = sapiRestClient.post()
-            .uri("/sapi/v1/add-entitlements")
+            .uri("/sapi/v1/entitlements")
             .body(requestBody)
             .retrieve()
             .body(new ParameterizedTypeReference<SapiDataResponse<AddEntitlementResponse>>(){});
@@ -9387,7 +9522,7 @@ public class OpenApiConfig {
             .group("sessions")
             .displayName("Sessions")
             .pathsToMatch("/papi/v1/sessions", "/papi/v1/sessions/**",
-                "/papi/v1/notices", "/papi/v1/add-entitlements")
+                "/papi/v1/notice-acknowledgments", "/papi/v1/entitlements")
             .addOpenApiCustomizer(openApi -> openApi.addTagsItem(new Tag()
                 .name("Sessions")
                 .description(LAYOUT_TAG_DESCRIPTION)))
@@ -9401,14 +9536,13 @@ public class OpenApiConfig {
             .displayName("Admin APIs")
             .pathsToMatch(
                 "/papi/v1/ad-groups", "/papi/v1/ad-groups/**",
-                "/papi/v1/copy-ad-group-configurations",
-                "/papi/v1/create-notices", "/papi/v1/list-notices",
-                "/papi/v1/update-notices/**", "/papi/v1/update-status/**",
+                "/papi/v1/ad-group-configuration-copies",
+                "/papi/v1/notices", "/papi/v1/notices/**",
                 "/papi/v1/embedded-apps", "/papi/v1/embedded-apps/**",
                 "/papi/v1/embedded-apps-ad-groups", "/papi/v1/embedded-apps-ad-groups/**",
                 "/papi/v1/pending-changes", "/papi/v1/pending-changes/**",
                 "/papi/v1/change-approvals", "/papi/v1/change-rejections",
-                "/papi/v1/users/*/primaries/**", "/papi/v1/bulk-primaries"
+                "/papi/v1/users/*/primaries/**", "/papi/v1/primary-assignments"
             )
             .addOpenApiCustomizer(openApi -> openApi.addTagsItem(new Tag()
                 .name("Admin Operations")
@@ -9848,22 +9982,21 @@ public class SecurityConfig {
                 .requestMatchers("/papi/v1/user-apps").authenticated()
                 // Admin endpoints (was /papi/v1/admin/**)
                 .requestMatchers("/papi/v1/ad-groups", "/papi/v1/ad-groups/**").hasRole(ROLE_ADMIN)
-                .requestMatchers("/papi/v1/copy-ad-group-configurations").hasRole(ROLE_ADMIN)
-                .requestMatchers("/papi/v1/create-notices", "/papi/v1/list-notices").hasRole(ROLE_ADMIN)
-                .requestMatchers("/papi/v1/update-notices/**", "/papi/v1/update-status/**").hasRole(ROLE_ADMIN)
+                .requestMatchers("/papi/v1/ad-group-configuration-copies").hasRole(ROLE_ADMIN)
+                .requestMatchers("/papi/v1/notices", "/papi/v1/notices/**").hasRole(ROLE_ADMIN)
                 .requestMatchers("/papi/v1/embedded-apps", "/papi/v1/embedded-apps/**").hasRole(ROLE_ADMIN)
                 .requestMatchers("/papi/v1/embedded-apps-ad-groups", "/papi/v1/embedded-apps-ad-groups/**").hasRole(ROLE_ADMIN)
                 .requestMatchers("/papi/v1/pending-changes", "/papi/v1/pending-changes/**").hasRole(ROLE_ADMIN)
                 .requestMatchers("/papi/v1/change-approvals", "/papi/v1/change-rejections").hasRole(ROLE_ADMIN)
                 // Supervisor endpoints (was /papi/v1/supervisor/**)
                 .requestMatchers("/papi/v1/users/*/primaries/**").hasRole(ROLE_SUPERVISOR)
-                .requestMatchers("/papi/v1/bulk-primaries").hasRole(ROLE_SUPERVISOR)
+                .requestMatchers("/papi/v1/primary-assignments").hasRole(ROLE_SUPERVISOR)
                 // Authenticated endpoints
                 .requestMatchers("/papi/v1/regions", "/papi/v1/countries").authenticated()
                 .requestMatchers("/papi/v1/business-units", "/papi/v1/regions-countries/**").authenticated()
                 .requestMatchers("/papi/v1/markets", "/papi/v1/regions-markets/**").authenticated()
                 .requestMatchers("/papi/v1/sessions", "/papi/v1/sessions/**",
-                    "/papi/v1/notices", "/papi/v1/add-entitlements").authenticated()
+                    "/papi/v1/notice-acknowledgments", "/papi/v1/entitlements").authenticated()
                 .anyRequest().authenticated()
             )
             .addFilterBefore(papiIdentityContextFilter, UsernamePasswordAuthenticationFilter.class);
@@ -10135,7 +10268,7 @@ public final class SapiApiPaths {
     // ==================== AD Group Endpoints ====================
     public static final String AD_GROUPS_LIST = "/sapi/v1/ad-groups";
     public static final String AD_GROUPS_BY_IDENTIFIER = "/sapi/v1/ad-groups/lookup";
-    public static final String AD_GROUPS_COPY = "/sapi/v1/copy-ad-group-configurations";
+    public static final String AD_GROUPS_COPY = "/sapi/v1/ad-group-configuration-copies";
 
     // ==================== Role Resolution ====================
     public static final String RESOLVE_ROLES = "/sapi/v1/resolve-roles";
@@ -10145,7 +10278,7 @@ public final class SapiApiPaths {
     public static final String CHECK_REQUIRES_PRIMARY = "/sapi/v1/users/{userIdentifier}/requires-primaries/{roleName}";
 
     // ==================== Layout Endpoints ====================
-    public static final String LAYOUTS_ADD_ENTITLEMENT = "/sapi/v1/add-entitlements";
+    public static final String LAYOUTS_ADD_ENTITLEMENT = "/sapi/v1/entitlements";
     public static final String SESSION_LAYOUTS = "/sapi/v1/sessions";
 
     // ==================== Cache Endpoints ====================
@@ -10153,11 +10286,11 @@ public final class SapiApiPaths {
     public static final String CACHE_INVALIDATE_USER = "/sapi/v1/sessions/{layoutIdentifier}/users/{userIdentifier}";
 
     // ==================== Admin Notice Endpoints ====================
-    public static final String CREATE_NOTICES = "/sapi/v1/create-notices";
-    public static final String LIST_NOTICES = "/sapi/v1/list-notices";
-    public static final String UPDATE_NOTICE = "/sapi/v1/update-notices/{noticeIdentifier}";
-    public static final String UPDATE_STATUS = "/sapi/v1/update-status/{noticeIdentifier}";
-    public static final String NOTICE_ACKNOWLEDGE = "/sapi/v1/notices";
+    public static final String CREATE_NOTICES = "/sapi/v1/notices";
+    public static final String LIST_NOTICES = "/sapi/v1/notices";
+    public static final String UPDATE_NOTICE = "/sapi/v1/notices/{noticeIdentifier}";
+    public static final String UPDATE_STATUS = "/sapi/v1/notices/{noticeIdentifier}/status";
+    public static final String NOTICE_ACKNOWLEDGE = "/sapi/v1/notice-acknowledgments";
 
     // ==================== Embedded App Endpoints ====================
     public static final String EMBEDDED_APPS = "/sapi/v1/embedded-apps";
@@ -10177,6 +10310,7 @@ public final class SapiApiPaths {
     public static final String PENDING_CHANGE_BY_ID = "/sapi/v1/pending-changes/{changeIdentifier}";
     public static final String CHANGE_APPROVALS = "/sapi/v1/change-approvals";
     public static final String CHANGE_REJECTIONS = "/sapi/v1/change-rejections";
+    public static final String DIRECT_SAVES = "/sapi/v1/direct-saves";
 
     // ==================== Markets ====================
     public static final String REFERENCE_MARKETS = "/sapi/v1/markets";
@@ -10231,7 +10365,7 @@ package com.hsbc.ccaas.papi.controller;
 
 import com.hsbc.ccaas.papi.constants.CommonConstants;
 import com.hsbc.ccaas.papi.controller.api.AdGroupsApi;
-import com.hsbc.ccaas.papi.controller.api.CopyAdGroupConfigurationsApi;
+import com.hsbc.ccaas.papi.controller.api.AdGroupConfigurationCopiesApi;
 import com.hsbc.ccaas.papi.controller.model.*;
 import com.hsbc.ccaas.papi.controller.helper.AdGroupResponseAssembler;
 import com.hsbc.ccaas.papi.application.AdGroupManagementFacade;
@@ -10245,7 +10379,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 @RestController
-public class AdGroupLayoutAssignmentController implements AdGroupsApi, CopyAdGroupConfigurationsApi {
+public class AdGroupLayoutAssignmentController implements AdGroupsApi, AdGroupConfigurationCopiesApi {
 
     private final AdGroupManagementFacade adGroupManagementFacade;
     private final IdentityContextAccessor identity;
@@ -10329,10 +10463,7 @@ public class AdGroupLayoutAssignmentController implements AdGroupsApi, CopyAdGro
 package com.hsbc.ccaas.papi.controller;
 
 import com.hsbc.ccaas.papi.constants.CommonConstants;
-import com.hsbc.ccaas.papi.controller.api.CreateNoticesApi;
-import com.hsbc.ccaas.papi.controller.api.ListNoticesApi;
-import com.hsbc.ccaas.papi.controller.api.UpdateNoticesApi;
-import com.hsbc.ccaas.papi.controller.api.UpdateStatusApi;
+import com.hsbc.ccaas.papi.controller.api.NoticesApi;
 import com.hsbc.ccaas.papi.controller.model.*;
 import com.hsbc.ccaas.papi.application.AdminNoticeFacade;
 import com.hsbc.wpb.ef.ports.RequestContext;
@@ -10341,7 +10472,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-public class AdminNoticeController implements CreateNoticesApi, ListNoticesApi, UpdateNoticesApi, UpdateStatusApi {
+public class AdminNoticeController implements NoticesApi {
 
     private static final String NOTICE_IDENTIFIER = "noticeIdentifier";
     private final AdminNoticeFacade adminNoticeFacade;
@@ -10497,7 +10628,7 @@ public class ApprovalWorkflowController implements PendingChangesApi, ChangeAppr
         List<String> userAdGroups = isMySubmissions ? Collections.emptyList() : identity.adGroups();
 
         PaginatedResult<SapiPendingChange> sapiResponse =
-                sapiApprovalClient.listPendingChanges(sapiStatusCode, userId, userAdGroups, offset, limit);
+                sapiApprovalClient.listPendingChanges(sapiStatusCode, userId, userAdGroups, targetGroupIdentifier, offset, limit);
 
         return responseAssembler.buildListResponse(sapiResponse);
     }
@@ -10653,6 +10784,78 @@ public class DebugController {
         response.setUserId(userId);
         response.setRoleName(roleName);
         return ResponseEntity.ok(response);
+    }
+}
+===ENDFILE
+===FILE: ./src/main/java/com/hsbc/ccaas/papi/controller/DirectSaveController.java
+package com.hsbc.ccaas.papi.controller;
+
+import com.hsbc.ccaas.papi.constants.CommonConstants;
+import com.hsbc.ccaas.papi.controller.api.AdGroupConfigsApi;
+import com.hsbc.ccaas.papi.controller.model.*;
+import com.hsbc.ccaas.papi.client.SapiApprovalClient;
+import com.hsbc.ccaas.identity.service.helper.IdentityContextAccessor;
+import com.hsbc.wpb.ef.ports.RequestContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
+
+@RestController
+public class DirectSaveController implements AdGroupConfigsApi {
+
+    private static final Logger log = LoggerFactory.getLogger(DirectSaveController.class);
+
+    private final IdentityContextAccessor identity;
+    private final SapiApprovalClient sapiApprovalClient;
+
+    public DirectSaveController(IdentityContextAccessor identity, SapiApprovalClient sapiApprovalClient) {
+        this.identity = identity;
+        this.sapiApprovalClient = sapiApprovalClient;
+    }
+
+    @Override
+    public ResponseEntity<DirectSaveResponse> directSaveConfig(
+            RequestContext<DirectSaveRequestEnvelope> requestContext) throws Exception {
+
+        var envelope = requestContext.getBody().orElseThrow(
+            () -> new IllegalArgumentException(CommonConstants.REQUEST_BODY_REQUIRED));
+        if (envelope.getData() == null) {
+            throw new IllegalArgumentException(CommonConstants.REQUEST_BODY_DATA_REQUIRED);
+        }
+
+        String groupIdentifier = requestContext.getPathVariable("groupIdentifier").orElseThrow(
+            () -> new IllegalArgumentException("Group identifier path variable is required"));
+
+        var request = envelope.getData();
+        log.info("Direct save: groupIdentifier={}", groupIdentifier);
+
+        String superAdminId = requireEmployeeId();
+        String superAdminName = identity.displayName();
+
+        sapiApprovalClient.directSave(
+                groupIdentifier,
+                request.getCurrentState(),
+                request.getProposedState(),
+                superAdminId,
+                superAdminName,
+                request.getConfigVersionNumber());
+
+        DirectSaveResponseData data = new DirectSaveResponseData(true);
+        data.setMessageText("Configuration saved successfully");
+        DirectSaveResponse response = new DirectSaveResponse(data);
+
+        return ResponseEntity.ok(response);
+    }
+
+    private String requireEmployeeId() {
+        String employeeId = identity.employeeId();
+        if (employeeId == null || employeeId.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, CommonConstants.ErrorMessages.UNABLE_TO_RESOLVE_USER_ID);
+        }
+        return employeeId;
     }
 }
 ===ENDFILE
@@ -10847,7 +11050,7 @@ public class ReferenceDataController implements RegionsApi, BusinessUnitsApi, Co
 ===FILE: ./src/main/java/com/hsbc/ccaas/papi/controller/SessionLayoutController.java
 package com.hsbc.ccaas.papi.controller;
 
-import com.hsbc.ccaas.papi.controller.api.AddEntitlementsApi;
+import com.hsbc.ccaas.papi.controller.api.EntitlementsApi;
 import com.hsbc.ccaas.papi.controller.api.SessionsApi;
 import com.hsbc.ccaas.papi.controller.model.*;
 import com.hsbc.ccaas.papi.application.SessionLayoutFacade;
@@ -10861,7 +11064,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 @RestController
-public class SessionLayoutController implements SessionsApi, AddEntitlementsApi {
+public class SessionLayoutController implements SessionsApi, EntitlementsApi {
 
     private final SessionLayoutFacade sessionLayoutFacade;
     private final IdentityContextAccessor identity;
@@ -10980,11 +11183,15 @@ public class UserRoleManagementController implements UsersApi {
 
     @Override
     public ResponseEntity<DataResponseBulkPrimaryData> setBulkPrimaryAssignments(
-            RequestContext<SetBulkPrimaryAssignmentsRequest> requestContext) throws Exception {
-        SetBulkPrimaryAssignmentsRequest body = requestContext.getBody().orElseThrow(
+            RequestContext<BulkPrimaryAssignmentRequestEnvelope> requestContext) throws Exception {
+        BulkPrimaryAssignmentRequestEnvelope body = requestContext.getBody().orElseThrow(
             () -> new ResponseStatusException(HttpStatus.BAD_REQUEST, CommonConstants.REQUEST_BODY_REQUIRED));
 
-        List<BulkPrimaryAssignmentRequest> requests = body.getData();
+        if (body.getData() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Request must contain a data object");
+        }
+
+        List<BulkPrimaryAssignmentRequest> requests = body.getData().getAssignmentValues();
         if (requests == null || requests.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Request must contain at least one assignment item");
         }
@@ -11200,7 +11407,7 @@ public class ApprovalResponseMapper {
                 .currentConfig(sapi.currentConfig())
                 .proposedConfig(sapi.proposedConfig())
                 .statusCode(sapi.statusCode())
-                .isCriticalIndicator(Boolean.TRUE.equals(sapi.isCritical()))
+                .isCriticalIndicator(Boolean.TRUE.equals(sapi.isCriticalIndicator()))
                 .createdByText(sapi.createdByText())
                 .createdAtDatetime(toOffsetDateTime(sapi.createdAtDatetime()))
                 .updatedByText(sapi.updatedByText())
@@ -11225,7 +11432,7 @@ public class ApprovalResponseMapper {
             response.setMessageText("Level 1 approved. Awaiting Super Admin (Level 2) approval.");
         } else {
             response.setStatusCode(APPROVED_STATUS);
-            response.setMessageText(Boolean.TRUE.equals(sapiResult.isCritical())
+            response.setMessageText(Boolean.TRUE.equals(sapiResult.isCriticalIndicator())
                     ? "Critical change approved and applied successfully"
                     : "Change approved and applied successfully");
         }
@@ -11914,7 +12121,7 @@ import java.util.Map;
 public interface SapiPayloads {
 
     // Roles payload (used by SapiAdGroupClient.resolveRoleFromAdGroups)
-    public record RolesPayload(List<String> roles) {}
+    public record RolesPayload(List<String> roleValues) {}
 
     // AdGroup payloads (using generated OpenAPI models directly)
     public record AdGroupPayload(com.hsbc.ccaas.papi.controller.model.AdGroupLayoutResponse adGroup) {}
@@ -11933,7 +12140,7 @@ public interface SapiPayloads {
             String changeType,
             Map<String, Object> currentConfig,
             Map<String, Object> proposedConfig,
-            Boolean isCritical,
+            Boolean isCriticalIndicator,
             List<Map<String, Object>> matchedRules,
             String statusCode,
             String approvedByText,
@@ -12290,7 +12497,7 @@ public class EmbeddedAppAdminService {
         LOG.debug("Fetching apps for AD group: {}", groupIdentifier);
 
         List<String> userAdGroups = identity.adGroups();
-        List<EmbeddedAppResponse> apps = sapiEmbeddedAppClient.fetchAppsForAdGroup();
+        List<EmbeddedAppResponse> apps = sapiEmbeddedAppClient.fetchAppsForAdGroup(groupIdentifier);
         userAccessEnricher.enrichAllApps(apps, userAdGroups);
 
         LOG.debug("Successfully fetched {} apps for AD group: {}", apps.size(), groupIdentifier);
@@ -12429,19 +12636,26 @@ public class RoleResolutionService {
         return roleCache.stats().toString();
     }
 
+    @SuppressWarnings("unchecked")
     private List<String> callResolveRolesEndpoint(List<String> adGroups) {
         java.util.Map<String, Object> body = java.util.Map.of(
             "data", java.util.Map.of("adGroupValues", adGroups)
         );
 
-        SapiDataResponse<List<String>> response = sapiRestClient.post()
+        // SAPI returns {"data":{"roleValues":["admin",...]}} — data is an object, not a list
+        SapiDataResponse<java.util.Map<String, Object>> response = sapiRestClient.post()
             .uri(SapiApiPaths.RESOLVE_ROLES)
             .body(body)
             .retrieve()
-            .body(new ParameterizedTypeReference<SapiDataResponse<List<String>>>() {});
+            .body(new ParameterizedTypeReference<SapiDataResponse<java.util.Map<String, Object>>>() {});
 
-        return response != null && response.getData() != null
-            ? response.getData() : Collections.emptyList();
+        if (response != null && response.getData() != null) {
+            Object roleValues = response.getData().get("roleValues");
+            if (roleValues instanceof List<?>) {
+                return (List<String>) roleValues;
+            }
+        }
+        return Collections.emptyList();
     }
 
     private boolean isValidAdGroups(List<String> adGroups) {
@@ -12905,16 +13119,22 @@ package com.hsbc.ccaas.papi.service.helper;
 import com.hsbc.ccaas.papi.controller.model.AdGroupAccess;
 import com.hsbc.ccaas.papi.controller.model.AdGroupLayoutResponse;
 import com.hsbc.ccaas.papi.controller.model.EmbeddedAppResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
 
 /**
  * Enriches embedded app responses with user access information.
- * Computes which AD groups and functions are accessible for the current user.
+ * Computes which AD groups and functions are accessible for the current user,
+ * filtered by market availability (Level 2 of three-level access control).
  */
 @Component
 public class UserAccessEnricher {
+
+    private static final Logger logger = LoggerFactory.getLogger(UserAccessEnricher.class);
+    private static final String DEFAULT_MARKET = "DEFAULT";
 
     /**
      * Checks if the user has access to a specific embedded app based on AD group membership.
@@ -12925,19 +13145,15 @@ public class UserAccessEnricher {
         }
 
         return userAdGroups.stream()
-            .anyMatch(adGroup -> {
-                if (!app.getAdGroupAccess().containsKey(adGroup)) {
-                    return false;
-                }
-
-                AdGroupAccess access = app.getAdGroupAccess().get(adGroup);
-                app.setUserAvailableFunctionValues(access.getFunctionValues());
-                return true;
-            });
+            .anyMatch(adGroup -> app.getAdGroupAccess().containsKey(adGroup));
     }
 
     /**
      * Enriches a single embedded app with user access data.
+     * Applies three-level filter:
+     *   Level 1: App is active (pre-filtered by SAPI)
+     *   Level 2: Function available in market (filtered here using regionalUrls)
+     *   Level 3: User entitled via AD group (filtered here using adGroupAccess)
      */
     public void enrichWithUserAccess(EmbeddedAppResponse app, List<String> userAdGroups) {
         if (app.getAdGroupAccess() == null) {
@@ -12959,7 +13175,9 @@ public class UserAccessEnricher {
             AdGroupAccess access = app.getAdGroupAccess().get(adGroup);
 
             if (access.getFunctionValues() != null) {
-                allUserFunctions.addAll(access.getFunctionValues());
+                List<String> marketFiltered = filterByMarketAvailability(
+                    access.getFunctionValues(), access.getMarketCode(), app.getRegionalUrls());
+                allUserFunctions.addAll(marketFiltered);
             }
         }
 
@@ -12976,6 +13194,67 @@ public class UserAccessEnricher {
             return;
         }
         apps.forEach(app -> enrichWithUserAccess(app, userAdGroups));
+    }
+
+    /**
+     * Filter entitled functions by market availability (Level 2).
+     * If the app has regionalUrls with availableFunctions for the AD group's market,
+     * only return functions that are in that market's availability list.
+     * If no market config or no availableFunctions defined, all entitled functions pass through.
+     */
+    @SuppressWarnings("unchecked")
+    private List<String> filterByMarketAvailability(
+            List<String> entitledFunctions, String marketCode, Map<String, Object> regionalUrls) {
+        if (regionalUrls == null || regionalUrls.isEmpty()) {
+            return entitledFunctions;
+        }
+
+        String market = (marketCode != null && !marketCode.isBlank()) ? marketCode : DEFAULT_MARKET;
+
+        List<String> availableFunctions = extractAvailableFunctions(regionalUrls, market);
+        if (availableFunctions == null) {
+            availableFunctions = extractAvailableFunctions(regionalUrls, DEFAULT_MARKET);
+        }
+        if (availableFunctions == null) {
+            return entitledFunctions;
+        }
+
+        List<String> marketAvailable = availableFunctions;
+        List<String> filtered = entitledFunctions.stream()
+            .filter(marketAvailable::contains)
+            .toList();
+
+        if (filtered.size() < entitledFunctions.size()) {
+            logger.debug("Market filter ({}) reduced functions from {} to {}",
+                market, entitledFunctions.size(), filtered.size());
+        }
+
+        return filtered;
+    }
+
+    /**
+     * Extract availableFunctions from a regional config map entry.
+     * The regionalUrls map values may be typed RegionalConfig objects or raw Maps
+     * depending on deserialization. Handle both cases.
+     */
+    @SuppressWarnings("unchecked")
+    private List<String> extractAvailableFunctions(Map<String, Object> regionalUrls, String market) {
+        Object config = regionalUrls.get(market);
+        if (config == null) {
+            return null;
+        }
+
+        if (config instanceof Map<?, ?> configMap) {
+            Object available = configMap.get("availableFunctionValues");
+            if (available == null) {
+                available = configMap.get("availableFunctions");
+            }
+            if (available instanceof List<?> list) {
+                return (List<String>) list;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -15036,8 +15315,8 @@ class SapiAdGroupClientTest {
     void resolveRoleFromAdGroupsSuccess() {
         List<String> adGroups = List.of("CN=Admin,OU=Groups,DC=hsbc,DC=com");
 
-        SapiDataResponse<List<String>> sapiResponse = new SapiDataResponse<>();
-        sapiResponse.setData(List.of("admin"));
+        SapiDataResponse<SapiPayloads.RolesPayload> sapiResponse = new SapiDataResponse<>();
+        sapiResponse.setData(new SapiPayloads.RolesPayload(List.of("admin")));
 
         when(sapiRestClient.post()).thenReturn(requestBodyUriSpec);
         when(requestBodyUriSpec.uri(anyString())).thenReturn(requestBodySpec);
@@ -15126,7 +15405,7 @@ class SapiAdminNoticeClientTest {
             assertThat(result.getTitleText()).isEqualTo("Test Title");
 
             RecordedRequest recordedRequest = takeRequest();
-            assertThat(recordedRequest.getPath()).isEqualTo("/sapi/v1/create-notices");
+            assertThat(recordedRequest.getPath()).isEqualTo("/sapi/v1/notices");
             assertThat(recordedRequest.getMethod()).isEqualTo("POST");
         }
 
@@ -15181,7 +15460,7 @@ class SapiAdminNoticeClientTest {
             assertThat(result.get(1).getTitleText()).isEqualTo("Notice 2");
 
             RecordedRequest request = takeRequest();
-            assertThat(request.getPath()).isEqualTo("/sapi/v1/list-notices");
+            assertThat(request.getPath()).isEqualTo("/sapi/v1/notices");
             assertThat(request.getMethod()).isEqualTo("GET");
         }
 
@@ -15197,7 +15476,7 @@ class SapiAdminNoticeClientTest {
             assertThat(result).hasSize(2);
 
             RecordedRequest request = takeRequest();
-            assertThat(request.getPath()).contains("/sapi/v1/list-notices");
+            assertThat(request.getPath()).contains("/sapi/v1/notices");
             assertThat(request.getPath()).contains("status=ACTIVE");
         }
 
@@ -15236,7 +15515,7 @@ class SapiAdminNoticeClientTest {
             assertThat(result.getTitleText()).isEqualTo("Updated Title");
 
             RecordedRequest recordedRequest = takeRequest();
-            assertThat(recordedRequest.getPath()).isEqualTo("/sapi/v1/update-notices/" + noticeId);
+            assertThat(recordedRequest.getPath()).isEqualTo("/sapi/v1/notices/" + noticeId);
             assertThat(recordedRequest.getMethod()).isEqualTo("PUT");
         }
 
@@ -15279,7 +15558,7 @@ class SapiAdminNoticeClientTest {
             assertThat(result).isNotNull();
 
             RecordedRequest request = takeRequest();
-            assertThat(request.getPath()).isEqualTo("/sapi/v1/update-status/" + noticeId);
+            assertThat(request.getPath()).isEqualTo("/sapi/v1/notices/" + noticeId + "/status");
             assertThat(request.getMethod()).isEqualTo("PATCH");
             String body = request.getBody().readUtf8();
             assertThat(body).contains("statusCode").contains("ACTIVE");
@@ -15681,7 +15960,7 @@ class SapiApprovalClientTest {
                     """));
 
             PaginatedResult<SapiPendingChange> response =
-                client.listPendingChanges("l1_pending", "user1", List.of("CN=Admin"), 0, 10);
+                client.listPendingChanges("l1_pending", "user1", List.of("CN=Admin"), null, 0, 10);
 
             assertThat(response).isNotNull();
             assertThat(response.items()).hasSize(2);
@@ -15694,7 +15973,7 @@ class SapiApprovalClientTest {
             assertThat(recordedRequest.getMethod()).isEqualTo("POST");
             assertThat(recordedRequest.getPath()).isEqualTo("/sapi/v1/pending-changes/list");
             String body = recordedRequest.getBody().readUtf8();
-            assertThat(body).contains("\"data\"").contains("\"userAdGroups\"").contains("\"userId\"").contains("\"statusCode\"");
+            assertThat(body).contains("\"data\"").contains("\"userAdGroupValues\"").contains("\"userIdentifier\"").contains("\"statusCode\"");
         }
 
         @Test
@@ -15714,7 +15993,7 @@ class SapiApprovalClientTest {
                     """));
 
             PaginatedResult<SapiPendingChange> response =
-                client.listPendingChanges("all", null, null, 0, 10);
+                client.listPendingChanges("all", null, null, null, 0, 10);
 
             assertThat(response).isNotNull();
             assertThat(response.items()).isEmpty();
@@ -15723,7 +16002,7 @@ class SapiApprovalClientTest {
             assertThat(recordedRequest.getMethod()).isEqualTo("POST");
             assertThat(recordedRequest.getPath()).isEqualTo("/sapi/v1/pending-changes/list");
             String body = recordedRequest.getBody().readUtf8();
-            assertThat(body).doesNotContain("\"userId\"");
+            assertThat(body).doesNotContain("\"userIdentifier\"");
         }
 
         @Test
@@ -15738,7 +16017,7 @@ class SapiApprovalClientTest {
                     """));
 
             PaginatedResult<SapiPendingChange> response =
-                client.listPendingChanges("all", "user1", List.of(), 0, 10);
+                client.listPendingChanges("all", "user1", List.of(), null, 0, 10);
 
             assertThat(response).isNotNull();
         }
@@ -15751,7 +16030,7 @@ class SapiApprovalClientTest {
                 .setBody("null"));
 
             PaginatedResult<SapiPendingChange> response =
-                client.listPendingChanges("all", null, null, 0, 10);
+                client.listPendingChanges("all", null, null, null, 0, 10);
 
             assertThat(response).isNotNull();
             assertThat(response.items()).isEmpty();
@@ -16297,7 +16576,7 @@ class SapiLayoutClientTest {
             client.updateNoticeState("600001", "MAINTENANCE_2025", "ACKNOWLEDGED");
 
             RecordedRequest recordedRequest = mockWebServer.takeRequest();
-            assertThat(recordedRequest.getPath()).isEqualTo("/sapi/v1/notices");
+            assertThat(recordedRequest.getPath()).isEqualTo("/sapi/v1/notice-acknowledgments");
             assertThat(recordedRequest.getMethod()).isEqualTo("POST");
             String body = recordedRequest.getBody().readUtf8();
             assertThat(body).contains("\"userIdentifier\"").contains("600001")
@@ -16327,32 +16606,6 @@ class SapiLayoutClientTest {
             assertThatThrownBy(() -> client.updateNoticeState("600001", "", "ACKNOWLEDGED"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Notice code cannot be null or blank");
-        }
-    }
-
-    @Nested
-    @DisplayName("invalidateCacheForAdGroup tests")
-    class InvalidateCacheForAdGroupTests {
-
-        @Test
-        @DisplayName("should invalidate cache for AD group successfully")
-        void shouldInvalidateCacheSuccessfully() throws InterruptedException {
-            mockWebServer.enqueue(new MockResponse()
-                .setResponseCode(204));
-
-            client.invalidateCacheForAdGroup("CN=Voice_Agent,OU=Groups,DC=hsbc,DC=com");
-
-            RecordedRequest recordedRequest = mockWebServer.takeRequest();
-            assertThat(recordedRequest.getPath()).contains("/sapi/v1/sessions/default/groups/");
-            assertThat(recordedRequest.getMethod()).isEqualTo("DELETE");
-        }
-
-        @Test
-        @DisplayName("should throw IllegalArgumentException when groupIdentifier is blank")
-        void shouldThrowWhenGroupIdentifierBlank() {
-            assertThatThrownBy(() -> client.invalidateCacheForAdGroup(""))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Group identifier cannot be null or blank");
         }
     }
 
@@ -16389,7 +16642,7 @@ class SapiLayoutClientTest {
             assertThat(response.getUpdatedRoleValues()).containsExactly("voice_agent", "chat_agent");
 
             RecordedRequest recordedRequest = mockWebServer.takeRequest();
-            assertThat(recordedRequest.getPath()).isEqualTo("/sapi/v1/add-entitlements");
+            assertThat(recordedRequest.getPath()).isEqualTo("/sapi/v1/entitlements");
             assertThat(recordedRequest.getMethod()).isEqualTo("POST");
             String body = recordedRequest.getBody().readUtf8();
             assertThat(body).contains("\"entitlementTypeCode\"").contains("features")
@@ -18754,7 +19007,7 @@ class ConstantsTest {
     @DisplayName("SapiApiPaths should have correct paths")
     void sapiApiPathsShouldHaveCorrectPaths() {
         assertThat(SapiApiPaths.AD_GROUPS_LIST).contains("/sapi/v1/ad-groups");
-        assertThat(SapiApiPaths.LIST_NOTICES).contains("/sapi/v1/list-notices");
+        assertThat(SapiApiPaths.LIST_NOTICES).contains("/sapi/v1/notices");
         assertThat(SapiApiPaths.SET_PRIMARY_ROLE).contains("/sapi/v1/users/");
         assertThat(SapiApiPaths.DEBUG_RESET_PRIMARY).contains("/sapi/v1/debug");
     }
@@ -18988,7 +19241,7 @@ class AdGroupLayoutAssignmentControllerTest {
     }
 
     @Test
-    @DisplayName("POST /papi/v1/copy-ad-group-configurations returns success payload")
+    @DisplayName("POST /papi/v1/ad-group-configuration-copies returns success payload")
     void copyAdGroupSuccess() throws Exception {
         AdGroupCopyResponse response = new AdGroupCopyResponse();
         response.setSuccessFlag(true);
@@ -19012,7 +19265,7 @@ class AdGroupLayoutAssignmentControllerTest {
     }
 
     @Test
-    @DisplayName("POST /papi/v1/copy-ad-group-configurations maps SOURCE_NOT_FOUND to 404")
+    @DisplayName("POST /papi/v1/ad-group-configuration-copies maps SOURCE_NOT_FOUND to 404")
     void copyAdGroupSourceNotFound() throws Exception {
         AdGroupCopyResponse response = new AdGroupCopyResponse();
         response.setSuccessFlag(false);
@@ -19038,7 +19291,7 @@ class AdGroupLayoutAssignmentControllerTest {
     }
 
     @Test
-    @DisplayName("POST /papi/v1/copy-ad-group-configurations maps TARGET_ALREADY_CONFIGURED to 409")
+    @DisplayName("POST /papi/v1/ad-group-configuration-copies maps TARGET_ALREADY_CONFIGURED to 409")
     void copyAdGroupTargetConflict() throws Exception {
         AdGroupCopyResponse response = new AdGroupCopyResponse();
         response.setSuccessFlag(false);
@@ -19064,7 +19317,7 @@ class AdGroupLayoutAssignmentControllerTest {
     }
 
     @Test
-    @DisplayName("POST /papi/v1/copy-ad-group-configurations maps other failures to 400")
+    @DisplayName("POST /papi/v1/ad-group-configuration-copies maps other failures to 400")
     void copyAdGroupBadRequest() throws Exception {
         AdGroupCopyResponse response = new AdGroupCopyResponse();
         response.setSuccessFlag(false);
@@ -19089,7 +19342,7 @@ class AdGroupLayoutAssignmentControllerTest {
     }
 
     @Test
-    @DisplayName("POST /papi/v1/copy-ad-group-configurations handles validation exceptions")
+    @DisplayName("POST /papi/v1/ad-group-configuration-copies handles validation exceptions")
     void copyAdGroupUnexpectedError() {
         doThrow(new IllegalArgumentException("validation failure")).when(adGroupManagementFacade)
             .copyAdGroupConfiguration(any(AdGroupCopyRequest.class));
@@ -19141,7 +19394,7 @@ class AdGroupLayoutAssignmentControllerTest {
     }
 
     @Test
-    @DisplayName("POST /papi/v1/copy-ad-group-configurations throws when body is null")
+    @DisplayName("POST /papi/v1/ad-group-configuration-copies throws when body is null")
     void copyAdGroupNullBodyThrows() {
         RequestContext<AdGroupCopyRequestEnvelope> requestContext =
             RequestContext.<AdGroupCopyRequestEnvelope>builder()
@@ -19153,7 +19406,7 @@ class AdGroupLayoutAssignmentControllerTest {
     }
 
     @Test
-    @DisplayName("POST /papi/v1/copy-ad-group-configurations throws when data is null")
+    @DisplayName("POST /papi/v1/ad-group-configuration-copies throws when data is null")
     void copyAdGroupNullDataThrows() {
         AdGroupCopyRequestEnvelope envelope = new AdGroupCopyRequestEnvelope(null);
 
@@ -19171,7 +19424,7 @@ class AdGroupLayoutAssignmentControllerTest {
     }
 
     @Test
-    @DisplayName("POST /papi/v1/copy-ad-group-configurations throws when source identifier is blank")
+    @DisplayName("POST /papi/v1/ad-group-configuration-copies throws when source identifier is blank")
     void copyAdGroupBlankSourceThrows() {
         AdGroupCopyRequest request = new AdGroupCopyRequest("  ", "TGT");
         AdGroupCopyRequestEnvelope envelope = new AdGroupCopyRequestEnvelope(request);
@@ -19190,7 +19443,7 @@ class AdGroupLayoutAssignmentControllerTest {
     }
 
     @Test
-    @DisplayName("POST /papi/v1/copy-ad-group-configurations throws when target identifier is blank")
+    @DisplayName("POST /papi/v1/ad-group-configuration-copies throws when target identifier is blank")
     void copyAdGroupBlankTargetThrows() {
         AdGroupCopyRequest request = new AdGroupCopyRequest("SRC", "  ");
         AdGroupCopyRequestEnvelope envelope = new AdGroupCopyRequestEnvelope(request);
@@ -19251,7 +19504,7 @@ class AdminNoticeControllerTest {
     }
 
     @Test
-    @DisplayName("POST /papi/v1/create-notices creates notice and returns 200")
+    @DisplayName("POST /papi/v1/notices creates notice and returns 200")
     void createNoticeReturnsOk() throws Exception {
         var genRequest = new AdminNoticeRequest(
             "Maintenance", "Scheduled maintenance window",
@@ -19282,7 +19535,7 @@ class AdminNoticeControllerTest {
     }
 
     @Test
-    @DisplayName("GET /papi/v1/list-notices returns list from service")
+    @DisplayName("GET /papi/v1/notices returns list from service")
     void listNoticesReturnsResponses() throws Exception {
         UUID noticeId = UUID.fromString("00000000-0000-0000-0000-000000000001");
         AdminNoticeResponse response = new AdminNoticeResponse()
@@ -19302,7 +19555,7 @@ class AdminNoticeControllerTest {
     }
 
     @Test
-    @DisplayName("PUT /papi/v1/update-notices/{noticeIdentifier} delegates to service")
+    @DisplayName("PUT /papi/v1/notices/{noticeIdentifier} delegates to service")
     void updateNoticeReturnsResponse() throws Exception {
         UUID noticeId = UUID.fromString("00000000-0000-0000-0000-000000000009");
         var genRequest = new AdminNoticeRequest(
@@ -19332,7 +19585,7 @@ class AdminNoticeControllerTest {
     }
 
     @Test
-    @DisplayName("PATCH /papi/v1/update-status/{noticeIdentifier} updates notice status")
+    @DisplayName("PATCH /papi/v1/notices/{noticeIdentifier}/status updates notice status")
     void updateStatusReturnsResponse() throws Exception {
         UUID noticeId = UUID.fromString("00000000-0000-0000-0000-000000000007");
         AdminNoticeResponse response = new AdminNoticeResponse()
@@ -19356,7 +19609,7 @@ class AdminNoticeControllerTest {
     }
 
     @Test
-    @DisplayName("POST /papi/v1/create-notices with empty body throws IllegalArgumentException")
+    @DisplayName("POST /papi/v1/notices with empty body throws IllegalArgumentException")
     void createNoticeWithEmptyBodyReturnsBadRequest() {
         var envelope = new AdminNoticeRequestEnvelope();
 
@@ -19369,7 +19622,7 @@ class AdminNoticeControllerTest {
     }
 
     @Test
-    @DisplayName("PUT /papi/v1/update-notices/{noticeIdentifier} with empty body throws IllegalArgumentException")
+    @DisplayName("PUT /papi/v1/notices/{noticeIdentifier} with empty body throws IllegalArgumentException")
     void updateNoticeWithEmptyBodyReturnsBadRequest() {
         UUID noticeId = UUID.fromString("00000000-0000-0000-0000-000000000009");
         var envelope = new AdminNoticeRequestEnvelope();
@@ -19384,7 +19637,7 @@ class AdminNoticeControllerTest {
     }
 
     @Test
-    @DisplayName("POST /papi/v1/create-notices sends request payload to service")
+    @DisplayName("POST /papi/v1/notices sends request payload to service")
     void createNoticeDelegatesCorrectRequest() throws Exception {
         var genRequest = new AdminNoticeRequest(
             "Notice", "Message",
@@ -19589,7 +19842,7 @@ class ApprovalWorkflowControllerTest {
 
             PaginatedResult<SapiPendingChange> sapiResponse = buildPaginatedResult(2);
             when(sapiApprovalClient.listPendingChanges(
-                eq("PENDING_LEVEL_ONE"), eq(USER_ID), anyList(), eq(0), eq(25)))
+                eq("PENDING_LEVEL_ONE"), eq(USER_ID), anyList(), any(), eq(0), eq(25)))
                 .thenReturn(sapiResponse);
 
             RequestContext<Void> requestContext =
@@ -19613,7 +19866,7 @@ class ApprovalWorkflowControllerTest {
             PaginatedResult<SapiPendingChange> sapiResponse =
                 new PaginatedResult<>(null, 0, 25, 0, false);
 
-            when(sapiApprovalClient.listPendingChanges(any(), any(), anyList(), anyInt(), anyInt()))
+            when(sapiApprovalClient.listPendingChanges(any(), any(), anyList(), any(), anyInt(), anyInt()))
                 .thenReturn(sapiResponse);
 
             RequestContext<Void> requestContext =
@@ -19636,7 +19889,7 @@ class ApprovalWorkflowControllerTest {
             PaginatedResult<SapiPendingChange> sapiResponse =
                 new PaginatedResult<>(buildPaginatedResult(1).items(), 0, 25, 50, true);
 
-            when(sapiApprovalClient.listPendingChanges(any(), any(), anyList(), anyInt(), anyInt()))
+            when(sapiApprovalClient.listPendingChanges(any(), any(), anyList(), any(), anyInt(), anyInt()))
                 .thenReturn(sapiResponse);
 
             RequestContext<Void> requestContext =
@@ -20363,6 +20616,255 @@ class DebugControllerTest {
     }
 }
 ===ENDFILE
+===FILE: ./src/test/java/com/hsbc/ccaas/papi/controller/DirectSaveControllerTest.java
+package com.hsbc.ccaas.papi.controller;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
+import com.hsbc.ccaas.papi.controller.model.*;
+import com.hsbc.ccaas.papi.client.SapiApprovalClient;
+import com.hsbc.ccaas.identity.service.helper.IdentityContextAccessor;
+import com.hsbc.wpb.ef.ports.RequestContext;
+
+import java.util.Map;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.server.ResponseStatusException;
+
+@ExtendWith(MockitoExtension.class)
+class DirectSaveControllerTest {
+
+    @Mock
+    private IdentityContextAccessor identity;
+
+    @Mock
+    private SapiApprovalClient sapiApprovalClient;
+
+    private DirectSaveController controller;
+
+    private static final String SUPER_ADMIN_ID = "600099";
+    private static final String SUPER_ADMIN_NAME = "Super Admin";
+    private static final String GROUP_ID = "CN=Voice_Agent_EMEA,OU=Groups,DC=hsbc,DC=com";
+
+    @BeforeEach
+    void setUp() {
+        controller = new DirectSaveController(identity, sapiApprovalClient);
+    }
+
+    @Nested
+    @DisplayName("directSaveConfig success")
+    class SuccessTests {
+
+        @Test
+        @DisplayName("should direct save and return 200")
+        void directSave_success_returns200() throws Exception {
+            when(identity.employeeId()).thenReturn(SUPER_ADMIN_ID);
+            when(identity.displayName()).thenReturn(SUPER_ADMIN_NAME);
+
+            DirectSaveRequest request = new DirectSaveRequest(Map.of("roleName", "chat_agent"));
+            request.setCurrentState(Map.of("roleName", "voice_agent"));
+            request.setConfigVersionNumber(5L);
+            DirectSaveRequestEnvelope envelope = new DirectSaveRequestEnvelope(request);
+
+            RequestContext<DirectSaveRequestEnvelope> requestContext =
+                RequestContext.<DirectSaveRequestEnvelope>builder()
+                    .body(envelope)
+                    .pathVariables(Map.of("groupIdentifier", GROUP_ID))
+                    .build();
+
+            ResponseEntity<DirectSaveResponse> result = controller.directSaveConfig(requestContext);
+
+            assertThat(result.getStatusCode().value()).isEqualTo(200);
+            assertThat(result.getBody()).isNotNull();
+            assertThat(result.getBody().getData().getSuccessIndicator()).isTrue();
+            assertThat(result.getBody().getData().getMessageText()).contains("saved successfully");
+
+            verify(sapiApprovalClient).directSave(
+                eq(GROUP_ID),
+                eq(Map.of("roleName", "voice_agent")),
+                eq(Map.of("roleName", "chat_agent")),
+                eq(SUPER_ADMIN_ID),
+                eq(SUPER_ADMIN_NAME),
+                eq(5L));
+        }
+
+        @Test
+        @DisplayName("should direct save without optional fields")
+        void directSave_minimalRequest_returns200() throws Exception {
+            when(identity.employeeId()).thenReturn(SUPER_ADMIN_ID);
+            when(identity.displayName()).thenReturn(SUPER_ADMIN_NAME);
+
+            DirectSaveRequest request = new DirectSaveRequest(Map.of("roleName", "chat_agent"));
+            DirectSaveRequestEnvelope envelope = new DirectSaveRequestEnvelope(request);
+
+            RequestContext<DirectSaveRequestEnvelope> requestContext =
+                RequestContext.<DirectSaveRequestEnvelope>builder()
+                    .body(envelope)
+                    .pathVariables(Map.of("groupIdentifier", GROUP_ID))
+                    .build();
+
+            ResponseEntity<DirectSaveResponse> result = controller.directSaveConfig(requestContext);
+
+            assertThat(result.getStatusCode().value()).isEqualTo(200);
+
+            verify(sapiApprovalClient).directSave(
+                eq(GROUP_ID),
+                any(),
+                eq(Map.of("roleName", "chat_agent")),
+                eq(SUPER_ADMIN_ID),
+                eq(SUPER_ADMIN_NAME),
+                isNull());
+        }
+    }
+
+    @Nested
+    @DisplayName("directSaveConfig validation")
+    class ValidationTests {
+
+        @Test
+        @DisplayName("should throw 401 when employeeId is null")
+        void directSave_nullEmployeeId_throws401() {
+            when(identity.employeeId()).thenReturn(null);
+
+            DirectSaveRequest request = new DirectSaveRequest(Map.of("roleName", "chat_agent"));
+            DirectSaveRequestEnvelope envelope = new DirectSaveRequestEnvelope(request);
+
+            RequestContext<DirectSaveRequestEnvelope> requestContext =
+                RequestContext.<DirectSaveRequestEnvelope>builder()
+                    .body(envelope)
+                    .pathVariables(Map.of("groupIdentifier", GROUP_ID))
+                    .build();
+
+            assertThatThrownBy(() -> controller.directSaveConfig(requestContext))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> {
+                    ResponseStatusException rse = (ResponseStatusException) ex;
+                    assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+                });
+        }
+
+        @Test
+        @DisplayName("should throw 401 when employeeId is blank")
+        void directSave_blankEmployeeId_throws401() {
+            when(identity.employeeId()).thenReturn("  ");
+
+            DirectSaveRequest request = new DirectSaveRequest(Map.of("roleName", "chat_agent"));
+            DirectSaveRequestEnvelope envelope = new DirectSaveRequestEnvelope(request);
+
+            RequestContext<DirectSaveRequestEnvelope> requestContext =
+                RequestContext.<DirectSaveRequestEnvelope>builder()
+                    .body(envelope)
+                    .pathVariables(Map.of("groupIdentifier", GROUP_ID))
+                    .build();
+
+            assertThatThrownBy(() -> controller.directSaveConfig(requestContext))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> {
+                    ResponseStatusException rse = (ResponseStatusException) ex;
+                    assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+                });
+        }
+
+        @Test
+        @DisplayName("should throw when request body is missing")
+        void directSave_noBody_throwsIllegalArgument() {
+            RequestContext<DirectSaveRequestEnvelope> requestContext =
+                RequestContext.<DirectSaveRequestEnvelope>builder()
+                    .pathVariables(Map.of("groupIdentifier", GROUP_ID))
+                    .build();
+
+            assertThatThrownBy(() -> controller.directSaveConfig(requestContext))
+                .isInstanceOf(IllegalArgumentException.class);
+        }
+
+        @Test
+        @DisplayName("should throw when request data is null")
+        void directSave_nullData_throwsIllegalArgument() {
+            DirectSaveRequestEnvelope envelope = new DirectSaveRequestEnvelope();
+
+            RequestContext<DirectSaveRequestEnvelope> requestContext =
+                RequestContext.<DirectSaveRequestEnvelope>builder()
+                    .body(envelope)
+                    .pathVariables(Map.of("groupIdentifier", GROUP_ID))
+                    .build();
+
+            assertThatThrownBy(() -> controller.directSaveConfig(requestContext))
+                .isInstanceOf(IllegalArgumentException.class);
+        }
+    }
+
+    @Nested
+    @DisplayName("SAPI error propagation")
+    class SapiErrorTests {
+
+        @Test
+        @DisplayName("should propagate 404 from SAPI")
+        void directSave_sapiReturns404_propagates() {
+            when(identity.employeeId()).thenReturn(SUPER_ADMIN_ID);
+            when(identity.displayName()).thenReturn(SUPER_ADMIN_NAME);
+
+            doThrow(new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Direct save - SAPI error: AD group not found"))
+                .when(sapiApprovalClient).directSave(anyString(), any(), any(), anyString(), anyString(), any());
+
+            DirectSaveRequest request = new DirectSaveRequest(Map.of("roleName", "chat_agent"));
+            DirectSaveRequestEnvelope envelope = new DirectSaveRequestEnvelope(request);
+
+            RequestContext<DirectSaveRequestEnvelope> requestContext =
+                RequestContext.<DirectSaveRequestEnvelope>builder()
+                    .body(envelope)
+                    .pathVariables(Map.of("groupIdentifier", GROUP_ID))
+                    .build();
+
+            assertThatThrownBy(() -> controller.directSaveConfig(requestContext))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> {
+                    ResponseStatusException rse = (ResponseStatusException) ex;
+                    assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+                });
+        }
+
+        @Test
+        @DisplayName("should propagate 409 from SAPI for optimistic lock conflict")
+        void directSave_sapiReturns409_propagates() {
+            when(identity.employeeId()).thenReturn(SUPER_ADMIN_ID);
+            when(identity.displayName()).thenReturn(SUPER_ADMIN_NAME);
+
+            doThrow(new ResponseStatusException(HttpStatus.CONFLICT,
+                "Direct save - SAPI error: Optimistic locking conflict"))
+                .when(sapiApprovalClient).directSave(anyString(), any(), any(), anyString(), anyString(), any());
+
+            DirectSaveRequest request = new DirectSaveRequest(Map.of("roleName", "chat_agent"));
+            request.setConfigVersionNumber(1L);
+            DirectSaveRequestEnvelope envelope = new DirectSaveRequestEnvelope(request);
+
+            RequestContext<DirectSaveRequestEnvelope> requestContext =
+                RequestContext.<DirectSaveRequestEnvelope>builder()
+                    .body(envelope)
+                    .pathVariables(Map.of("groupIdentifier", GROUP_ID))
+                    .build();
+
+            assertThatThrownBy(() -> controller.directSaveConfig(requestContext))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> {
+                    ResponseStatusException rse = (ResponseStatusException) ex;
+                    assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+                });
+        }
+    }
+}
+===ENDFILE
 ===FILE: ./src/test/java/com/hsbc/ccaas/papi/controller/EmbeddedAppAdminControllerTest.java
 package com.hsbc.ccaas.papi.controller;
 
@@ -21002,7 +21504,7 @@ class SessionLayoutControllerTest {
     }
 
     @Test
-    @DisplayName("POST /papi/v1/add-entitlements returns response from service")
+    @DisplayName("POST /papi/v1/entitlements returns response from service")
     void addEntitlementReturnsServiceResponse() throws Exception {
         EntitlementStateValue value = new EntitlementStateValue().stateText(EntitlementStateValue.StateTextEnum.ENABLED);
 
@@ -21033,7 +21535,7 @@ class SessionLayoutControllerTest {
     }
 
     @Test
-    @DisplayName("POST /papi/v1/add-entitlements returns 400 when envelope has null data")
+    @DisplayName("POST /papi/v1/entitlements returns 400 when envelope has null data")
     void addEntitlementValidationFailure() {
         var envelope = new AddEntitlementRequestEnvelope();
 
@@ -21226,11 +21728,11 @@ class UserRoleManagementControllerTest {
             new BulkPrimaryAssignmentRequest("600001", "voice_agent", "CN=Voice"),
             new BulkPrimaryAssignmentRequest("600002", "chat_agent", "CN=Chat")
         );
-        SetBulkPrimaryAssignmentsRequest body = new SetBulkPrimaryAssignmentsRequest();
-        body.setData(requests);
+        BulkPrimaryAssignmentRequestEnvelope body = new BulkPrimaryAssignmentRequestEnvelope();
+        body.setData(new BulkPrimaryAssignmentRequestEnvelopeData(requests));
 
-        RequestContext<SetBulkPrimaryAssignmentsRequest> requestContext =
-            RequestContext.<SetBulkPrimaryAssignmentsRequest>builder()
+        RequestContext<BulkPrimaryAssignmentRequestEnvelope> requestContext =
+            RequestContext.<BulkPrimaryAssignmentRequestEnvelope>builder()
                 .body(body)
                 .build();
 
@@ -21245,16 +21747,16 @@ class UserRoleManagementControllerTest {
     @DisplayName("POST /papi/v1/bulk-primaries validates request body")
     void setBulkPrimaryAssignmentsValidationFailure() throws Exception {
         List<BulkPrimaryAssignmentRequest> requests = List.of(new BulkPrimaryAssignmentRequest());
-        SetBulkPrimaryAssignmentsRequest body = new SetBulkPrimaryAssignmentsRequest();
-        body.setData(requests);
+        BulkPrimaryAssignmentRequestEnvelope body = new BulkPrimaryAssignmentRequestEnvelope();
+        body.setData(new BulkPrimaryAssignmentRequestEnvelopeData(requests));
 
         MethodParameter methodParam = new MethodParameter(
             UserRoleManagementController.class.getDeclaredMethods()[0], -1);
         doThrow(new MethodArgumentNotValidException(methodParam, new BeanPropertyBindingResult(new Object(), "request")))
             .when(bulkValidationHelper).validateBulkPrimaryRequests(any(), any(), any());
 
-        RequestContext<SetBulkPrimaryAssignmentsRequest> requestContext =
-            RequestContext.<SetBulkPrimaryAssignmentsRequest>builder()
+        RequestContext<BulkPrimaryAssignmentRequestEnvelope> requestContext =
+            RequestContext.<BulkPrimaryAssignmentRequestEnvelope>builder()
                 .body(body)
                 .build();
 
@@ -21275,11 +21777,11 @@ class UserRoleManagementControllerTest {
         List<BulkPrimaryAssignmentRequest> requests = List.of(
             new BulkPrimaryAssignmentRequest("600001", "voice_agent", "CN=Voice")
         );
-        SetBulkPrimaryAssignmentsRequest body = new SetBulkPrimaryAssignmentsRequest();
-        body.setData(requests);
+        BulkPrimaryAssignmentRequestEnvelope body = new BulkPrimaryAssignmentRequestEnvelope();
+        body.setData(new BulkPrimaryAssignmentRequestEnvelopeData(requests));
 
-        RequestContext<SetBulkPrimaryAssignmentsRequest> requestContext =
-            RequestContext.<SetBulkPrimaryAssignmentsRequest>builder()
+        RequestContext<BulkPrimaryAssignmentRequestEnvelope> requestContext =
+            RequestContext.<BulkPrimaryAssignmentRequestEnvelope>builder()
                 .body(body)
                 .build();
 
@@ -21299,11 +21801,11 @@ class UserRoleManagementControllerTest {
         List<BulkPrimaryAssignmentRequest> requests = List.of(
             new BulkPrimaryAssignmentRequest("600001", "voice_agent", "CN=Voice")
         );
-        SetBulkPrimaryAssignmentsRequest body = new SetBulkPrimaryAssignmentsRequest();
-        body.setData(requests);
+        BulkPrimaryAssignmentRequestEnvelope body = new BulkPrimaryAssignmentRequestEnvelope();
+        body.setData(new BulkPrimaryAssignmentRequestEnvelopeData(requests));
 
-        RequestContext<SetBulkPrimaryAssignmentsRequest> requestContext =
-            RequestContext.<SetBulkPrimaryAssignmentsRequest>builder()
+        RequestContext<BulkPrimaryAssignmentRequestEnvelope> requestContext =
+            RequestContext.<BulkPrimaryAssignmentRequestEnvelope>builder()
                 .body(body)
                 .build();
 
@@ -21322,11 +21824,11 @@ class UserRoleManagementControllerTest {
         List<BulkPrimaryAssignmentRequest> requests = List.of(
             new BulkPrimaryAssignmentRequest("600001", "voice_agent", "CN=Voice")
         );
-        SetBulkPrimaryAssignmentsRequest body = new SetBulkPrimaryAssignmentsRequest();
-        body.setData(requests);
+        BulkPrimaryAssignmentRequestEnvelope body = new BulkPrimaryAssignmentRequestEnvelope();
+        body.setData(new BulkPrimaryAssignmentRequestEnvelopeData(requests));
 
-        RequestContext<SetBulkPrimaryAssignmentsRequest> requestContext =
-            RequestContext.<SetBulkPrimaryAssignmentsRequest>builder()
+        RequestContext<BulkPrimaryAssignmentRequestEnvelope> requestContext =
+            RequestContext.<BulkPrimaryAssignmentRequestEnvelope>builder()
                 .body(body)
                 .build();
 
@@ -22911,7 +23413,7 @@ class EmbeddedAppAdminServiceTest {
         }
 
         @Test
-        @DisplayName("should fetch AD group configuration successfully via POST")
+        @DisplayName("should fetch AD group configuration successfully via POST with data wrapper")
         void shouldFetchAdGroupConfigurationSuccessfully() throws JsonProcessingException {
             EmbeddedAppResponse app = createEmbeddedApp("banking_app", "Banking App");
             AppAdGroupConfigResponse config = createAdGroupConfig("banking_app", "CN=Voice_Agent");
@@ -22921,10 +23423,10 @@ class EmbeddedAppAdminServiceTest {
                 .setHeader("Content-Type", "application/json")
                 .setBody(objectMapper.writeValueAsString(wrapSingleApp(app))));
 
-            // Second request: fetchAppAdGroupConfiguration (now POST with body)
+            // Second request: fetchAppAdGroupConfiguration (POST with data wrapper response)
             mockWebServer.enqueue(new MockResponse()
                 .setHeader("Content-Type", "application/json")
-                .setBody(objectMapper.writeValueAsString(config)));
+                .setBody(objectMapper.writeValueAsString(wrapAdGroupConfig(config))));
 
             AppAdGroupConfigResponse result = service.getAppAdGroupConfiguration("banking_app", "CN=Voice_Agent");
 
@@ -22953,10 +23455,10 @@ class EmbeddedAppAdminServiceTest {
                 .setHeader("Content-Type", "application/json")
                 .setBody(objectMapper.writeValueAsString(wrapSingleApp(app))));
 
-            // Second request: config not found
+            // Second request: config not found (data wrapper with null data)
             mockWebServer.enqueue(new MockResponse()
                 .setHeader("Content-Type", "application/json")
-                .setBody("null"));
+                .setBody("{\"data\":null}"));
 
             AppAdGroupConfigResponse result = service.getAppAdGroupConfiguration("banking_app", "CN=Unknown");
 
@@ -23006,7 +23508,7 @@ class EmbeddedAppAdminServiceTest {
 
             mockWebServer.enqueue(new MockResponse()
                 .setHeader("Content-Type", "application/json")
-                .setBody(objectMapper.writeValueAsString(sapiResponse)));
+                .setBody(objectMapper.writeValueAsString(wrapAdGroupConfig(sapiResponse))));
 
             AppAdGroupConfigResponse result = service.updateAppAdGroupConfiguration(
                 "banking_app", "CN=Voice_Agent", List.of("function1", "function2"), "function1");
@@ -23026,7 +23528,7 @@ class EmbeddedAppAdminServiceTest {
 
             mockWebServer.enqueue(new MockResponse()
                 .setHeader("Content-Type", "application/json")
-                .setBody(objectMapper.writeValueAsString(sapiResponse)));
+                .setBody(objectMapper.writeValueAsString(wrapAdGroupConfig(sapiResponse))));
 
             AppAdGroupConfigResponse result = service.updateAppAdGroupConfiguration(
                 "banking_app", "CN=Voice_Agent", null, "function1");
@@ -23039,7 +23541,7 @@ class EmbeddedAppAdminServiceTest {
         void shouldReturnNullOnNullResponse() {
             mockWebServer.enqueue(new MockResponse()
                 .setHeader("Content-Type", "application/json")
-                .setBody("null"));
+                .setBody("{\"data\":null}"));
 
             AppAdGroupConfigResponse result = service.updateAppAdGroupConfiguration(
                 "banking_app", "CN=Voice_Agent", List.of("function1"), "function1");
@@ -23091,7 +23593,7 @@ class EmbeddedAppAdminServiceTest {
         }
 
         @Test
-        @DisplayName("should fetch apps for AD group successfully")
+        @DisplayName("should fetch apps for AD group via POST with groupIdentifier body")
         void shouldFetchAppsForAdGroupSuccessfully() throws JsonProcessingException {
             List<EmbeddedAppResponse> apps = List.of(
                 createEmbeddedApp("banking_app", "Banking App")
@@ -23111,7 +23613,11 @@ class EmbeddedAppAdminServiceTest {
 
             RecordedRequest request = takeRequest();
             assertThat(request.getPath()).isEqualTo("/sapi/v1/embedded-apps-ad-groups");
-            assertThat(request.getMethod()).isEqualTo("GET");
+            assertThat(request.getMethod()).isEqualTo("POST");
+
+            String body = request.getBody().readUtf8();
+            assertThat(body).contains("groupIdentifier");
+            assertThat(body).contains("CN=Voice_Agent");
         }
 
         @Test
@@ -23309,6 +23815,12 @@ class EmbeddedAppAdminServiceTest {
     private SapiDataResponse<EmbeddedAppResponse> wrapSingleApp(EmbeddedAppResponse app) {
         SapiDataResponse<EmbeddedAppResponse> wrapper = new SapiDataResponse<>();
         wrapper.setData(app);
+        return wrapper;
+    }
+
+    private SapiDataResponse<AppAdGroupConfigResponse> wrapAdGroupConfig(AppAdGroupConfigResponse config) {
+        SapiDataResponse<AppAdGroupConfigResponse> wrapper = new SapiDataResponse<>();
+        wrapper.setData(config);
         return wrapper;
     }
 
@@ -24894,7 +25406,7 @@ class DefaultAdminNoticeServiceTest {
         assertThat(response.getSeverityValue()).isEqualTo(AdminNoticeResponse.SeverityValueEnum.WARNING);
 
         RecordedRequest recordedRequest = takeRequest();
-        assertThat(recordedRequest.getPath()).isEqualTo("/sapi/v1/create-notices");
+        assertThat(recordedRequest.getPath()).isEqualTo("/sapi/v1/notices");
         assertThat(recordedRequest.getMethod()).isEqualTo("POST");
     }
 
@@ -25067,7 +25579,7 @@ class DefaultAdminNoticeServiceTest {
             assertThat(response.getIdentifier()).isEqualTo(noticeId);
 
             RecordedRequest recordedRequest = takeRequest();
-            assertThat(recordedRequest.getPath()).isEqualTo("/sapi/v1/update-notices/" + noticeId);
+            assertThat(recordedRequest.getPath()).isEqualTo("/sapi/v1/notices/" + noticeId);
             assertThat(recordedRequest.getMethod()).isEqualTo("PUT");
         }
 
@@ -25169,7 +25681,7 @@ class DefaultAdminNoticeServiceTest {
             assertThat(response).isNotNull();
 
             RecordedRequest recordedRequest = takeRequest();
-            assertThat(recordedRequest.getPath()).isEqualTo("/sapi/v1/update-status/" + noticeId);
+            assertThat(recordedRequest.getPath()).isEqualTo("/sapi/v1/notices/" + noticeId + "/status");
             assertThat(recordedRequest.getMethod()).isEqualTo("PATCH");
             String body = recordedRequest.getBody().readUtf8();
             assertThat(body).contains("statusCode").contains("ACTIVE");
