@@ -1,5 +1,5 @@
 # CCaaS Entitlement SAPI - Source Bundle
-# Generated: 2026-02-09 15:43:30
+# Generated: 2026-02-09 16:58:25
 # Total files: 357
 # Categories: 1 pom.xml, 1 CLAUDE.md, 3 docs, 3 resources, 145 YAML specs, 137 main Java, 56 test Java, 11 other
 # Note: target/generated-sources NOT included - run 'mvn generate-sources' after extraction
@@ -7123,7 +7123,7 @@ required:
   - severity
 ===ENDFILE
 ===FILE: ./src/main/api/components/schemas/AdminNoticeController/request/admin-notice-severity-dto.yaml
-title: AdminNoticeSeverityDto
+title: AdminNoticeSeverity
 description: Visual severity for administrative notices.
 type: string
 enum:
@@ -7134,7 +7134,7 @@ enum:
   - CRITICAL
 ===ENDFILE
 ===FILE: ./src/main/api/components/schemas/AdminNoticeController/request/admin-notice-status-dto.yaml
-title: AdminNoticeStatusDto
+title: AdminNoticeStatus
 description: Lifecycle state for administrative notices.
 type: string
 enum:
@@ -12420,7 +12420,6 @@ import com.hsbc.ccaas.sapi.constants.SapiConstants;
 import com.hsbc.ccaas.sapi.controller.api.NoticesApi;
 import com.hsbc.ccaas.sapi.controller.model.AdminNoticeRequest;
 import com.hsbc.ccaas.sapi.controller.model.AdminNoticeResponse;
-import com.hsbc.ccaas.sapi.controller.model.AdminNoticeStatusDto;
 import com.hsbc.ccaas.sapi.controller.model.ListNotices200Response;
 import com.hsbc.ccaas.sapi.controller.model.ListNotices200ResponseData;
 import com.hsbc.ccaas.sapi.controller.model.CreateNotices200Response;
@@ -12455,8 +12454,8 @@ public class AdminNoticeController implements NoticesApi {
     @Override
     public ResponseEntity<ListNotices200Response> listNotices(
             RequestContext<Void> requestContext) throws Exception {
-        AdminNoticeStatusDto status = requestContext.getQueryParameter("status")
-            .map(AdminNoticeStatusDto::fromValue).orElse(null);
+        com.hsbc.ccaas.sapi.controller.model.AdminNoticeStatus status = requestContext.getQueryParameter("status")
+            .map(com.hsbc.ccaas.sapi.controller.model.AdminNoticeStatus::fromValue).orElse(null);
         Optional<AdminNoticeStatus> statusFilter = Optional.ofNullable(status)
             .map(s -> AdminNoticeStatus.valueOf(s.getValue()));
 
@@ -15514,8 +15513,8 @@ package com.hsbc.ccaas.sapi.mapper;
 
 import com.hsbc.ccaas.sapi.controller.model.AdminNoticeRequest;
 import com.hsbc.ccaas.sapi.controller.model.AdminNoticeResponse;
-import com.hsbc.ccaas.sapi.controller.model.AdminNoticeSeverityDto;
-import com.hsbc.ccaas.sapi.controller.model.AdminNoticeStatusDto;
+// Generated enums (controller.model.AdminNoticeSeverity / AdminNoticeStatus) share simple names
+// with hand-written enums (sapi.model.*), so generated types are referenced via FQN below.
 import com.hsbc.ccaas.sapi.entity.AdminNotice;
 import com.hsbc.ccaas.sapi.model.AdminNoticeSeverity;
 import com.hsbc.ccaas.sapi.model.AdminNoticeStatus;
@@ -15604,39 +15603,39 @@ public interface AdminNoticeMapper {
     @Mapping(target = "targetAdGroups", expression = "java(normalizeSet(request.getTargetAdGroupValues()))")
     void updateEntity(AdminNoticeRequest request, @MappingTarget AdminNotice notice);
 
-    default AdminNoticeSeverity resolveSeverity(AdminNoticeSeverityDto severityEnum) {
+    default AdminNoticeSeverity resolveSeverity(com.hsbc.ccaas.sapi.controller.model.AdminNoticeSeverity severityEnum) {
         if (severityEnum == null) {
             return null;
         }
         return AdminNoticeSeverity.fromValue(severityEnum.getValue());
     }
 
-    default AdminNoticeStatus resolveStatusFromDto(AdminNoticeStatusDto statusCode) {
+    default AdminNoticeStatus resolveStatusFromDto(com.hsbc.ccaas.sapi.controller.model.AdminNoticeStatus statusCode) {
         if (statusCode == null) {
             return AdminNoticeStatus.ACTIVE;
         }
         return AdminNoticeStatus.valueOf(statusCode.getValue());
     }
 
-    default AdminNoticeStatus updateStatusFromDto(AdminNoticeStatusDto statusCode, AdminNoticeStatus currentStatus) {
+    default AdminNoticeStatus updateStatusFromDto(com.hsbc.ccaas.sapi.controller.model.AdminNoticeStatus statusCode, AdminNoticeStatus currentStatus) {
         if (statusCode == null) {
             return currentStatus;
         }
         return AdminNoticeStatus.valueOf(statusCode.getValue());
     }
 
-    default AdminNoticeSeverityDto toSeverityDto(AdminNoticeSeverity severity) {
+    default com.hsbc.ccaas.sapi.controller.model.AdminNoticeSeverity toSeverityDto(AdminNoticeSeverity severity) {
         if (severity == null) {
             return null;
         }
-        return AdminNoticeSeverityDto.fromValue(severity.name());
+        return com.hsbc.ccaas.sapi.controller.model.AdminNoticeSeverity.fromValue(severity.name());
     }
 
-    default AdminNoticeStatusDto toStatusDto(AdminNoticeStatus status) {
+    default com.hsbc.ccaas.sapi.controller.model.AdminNoticeStatus toStatusDto(AdminNoticeStatus status) {
         if (status == null) {
             return null;
         }
-        return AdminNoticeStatusDto.fromValue(status.name());
+        return com.hsbc.ccaas.sapi.controller.model.AdminNoticeStatus.fromValue(status.name());
     }
 
     @Named("resolveCreator")
@@ -24584,7 +24583,7 @@ import static org.mockito.Mockito.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hsbc.ccaas.sapi.controller.model.AdminNoticeRequest;
 import com.hsbc.ccaas.sapi.controller.model.AdminNoticeResponse;
-import com.hsbc.ccaas.sapi.controller.model.AdminNoticeStatusDto;
+// AdminNoticeStatus (generated) referenced via FQN to avoid collision with sapi.model.AdminNoticeStatus
 import com.hsbc.ccaas.sapi.controller.model.CreateNotices200Response;
 import com.hsbc.ccaas.sapi.controller.model.CreateNoticesRequest;
 import com.hsbc.ccaas.sapi.controller.model.ListNotices200Response;
@@ -24731,7 +24730,7 @@ class AdminNoticeControllerTest {
         AdminNotice entity = new AdminNotice();
         ReflectionTestUtils.setField(entity, "id", noticeId);
         AdminNoticeResponse response = new AdminNoticeResponse();
-        response.setStatusCode(AdminNoticeStatusDto.ARCHIVED);
+        response.setStatusCode(com.hsbc.ccaas.sapi.controller.model.AdminNoticeStatus.ARCHIVED);
 
         when(adminNoticeFacade.updateStatus(noticeId, AdminNoticeStatus.ARCHIVED)).thenReturn(entity);
         when(adminNoticeMapper.toResponse(entity)).thenReturn(response);

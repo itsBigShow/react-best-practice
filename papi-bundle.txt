@@ -1,5 +1,5 @@
 # CCaaS Entitlement PAPI - Source Bundle
-# Generated: 2026-02-09 15:43:31
+# Generated: 2026-02-09 16:52:25
 # Total files: 261
 # Categories: 1 pom.xml, 1 CLAUDE.md, 4 docs, 3 resources, 119 YAML specs, 79 main Java, 52 test Java, 2 other
 # Note: target/generated-sources NOT included - run 'mvn generate-sources' after extraction
@@ -10668,7 +10668,8 @@ public class ApprovalWorkflowController implements PendingChangesApi, ChangeAppr
         log.info("Approve change: id={}", changeId);
 
         String approverId = requireEmployeeId();
-        String approverName = identity.displayName();
+        // TODO: restore identity.displayName() once enterprise ccaas-identity-mock library supports it
+        String approverName = "";
         String comment = approveChangeRequest.getCommentText();
         List<String> adGroups = identity.adGroups();
 
@@ -10694,7 +10695,8 @@ public class ApprovalWorkflowController implements PendingChangesApi, ChangeAppr
         }
 
         String rejectorId = requireEmployeeId();
-        String rejectorName = identity.displayName();
+        // TODO: restore identity.displayName() once enterprise ccaas-identity-mock library supports it
+        String rejectorName = "";
         List<String> adGroups = identity.adGroups();
         SapiPendingChange sapiResult = sapiApprovalClient.reject(
                 changeId, rejectorId, rejectorName, rejectChangeRequest.getReasonText(), adGroups);
@@ -10845,7 +10847,8 @@ public class DirectSaveController implements AdGroupConfigsApi {
         log.info("Direct save: groupIdentifier={}", groupIdentifier);
 
         String superAdminId = requireEmployeeId();
-        String superAdminName = identity.displayName();
+        // TODO: restore identity.displayName() once enterprise ccaas-identity-mock library supports it
+        String superAdminName = "";
         java.util.List<String> adGroups = identity.adGroups();
 
         sapiApprovalClient.directSave(
@@ -10857,9 +10860,10 @@ public class DirectSaveController implements AdGroupConfigsApi {
                 request.getConfigVersionNumber(),
                 adGroups);
 
-        DirectSaveResponseData data = new DirectSaveResponseData(true);
-        data.setMessageText("Configuration saved successfully");
-        DirectSaveResponse response = new DirectSaveResponse(data);
+        DirectSaveResponseData data = new DirectSaveResponseData()
+                .successIndicator(true)
+                .messageText("Configuration saved successfully");
+        DirectSaveResponse response = new DirectSaveResponse().data(data);
 
         return ResponseEntity.ok(response);
     }
@@ -19861,12 +19865,12 @@ class ApprovalWorkflowControllerTest {
         @DisplayName("should approve change and return 200")
         void approveChange_returns200() throws Exception {
             when(identity.employeeId()).thenReturn(USER_ID);
-            when(identity.displayName()).thenReturn(DISPLAY_NAME);
+            // TODO: restore when enterprise ccaas-identity-mock supports displayName()
 
             SapiPendingChange approvedResult = buildSapiPendingChange(
                 CHANGE_ID, GROUP_ID, "APPROVED", false);
 
-            when(sapiApprovalClient.approve(eq(CHANGE_ID), eq(USER_ID), eq(DISPLAY_NAME), any(), any()))
+            when(sapiApprovalClient.approve(eq(CHANGE_ID), eq(USER_ID), eq(""), any(), any()))
                 .thenReturn(approvedResult);
 
             ApproveChangeRequest approveRequest = new ApproveChangeRequest(CHANGE_ID);
@@ -19880,19 +19884,19 @@ class ApprovalWorkflowControllerTest {
                 controller.approveChange(requestContext);
 
             assertThat(result.getStatusCode().value()).isEqualTo(200);
-            verify(sapiApprovalClient).approve(eq(CHANGE_ID), eq(USER_ID), eq(DISPLAY_NAME), eq("Looks good"), any());
+            verify(sapiApprovalClient).approve(eq(CHANGE_ID), eq(USER_ID), eq(""), eq("Looks good"), any());
         }
 
         @Test
         @DisplayName("should approve critical change and return 200")
         void approveChange_critical_returns200() throws Exception {
             when(identity.employeeId()).thenReturn(USER_ID);
-            when(identity.displayName()).thenReturn(DISPLAY_NAME);
+            // TODO: restore when enterprise ccaas-identity-mock supports displayName()
 
             SapiPendingChange approvedResult = buildSapiPendingChange(
                 CHANGE_ID, GROUP_ID, "APPROVED", true);
 
-            when(sapiApprovalClient.approve(eq(CHANGE_ID), eq(USER_ID), eq(DISPLAY_NAME), any(), any()))
+            when(sapiApprovalClient.approve(eq(CHANGE_ID), eq(USER_ID), eq(""), any(), any()))
                 .thenReturn(approvedResult);
 
             ApproveChangeRequest approveRequest = new ApproveChangeRequest(CHANGE_ID);
@@ -19905,7 +19909,7 @@ class ApprovalWorkflowControllerTest {
                 controller.approveChange(requestContext);
 
             assertThat(result.getStatusCode().value()).isEqualTo(200);
-            verify(sapiApprovalClient).approve(eq(CHANGE_ID), eq(USER_ID), eq(DISPLAY_NAME), any(), any());
+            verify(sapiApprovalClient).approve(eq(CHANGE_ID), eq(USER_ID), eq(""), any(), any());
         }
 
         @Test
@@ -19913,11 +19917,11 @@ class ApprovalWorkflowControllerTest {
         void approveChange_forwardsAdGroups() throws Exception {
             List<String> adGroups = List.of("CN=Admin_Checker_EMEA,OU=Groups,DC=hsbc,DC=com");
             when(identity.employeeId()).thenReturn(USER_ID);
-            when(identity.displayName()).thenReturn(DISPLAY_NAME);
+            // TODO: restore when enterprise ccaas-identity-mock supports displayName()
             when(identity.adGroups()).thenReturn(adGroups);
 
             SapiPendingChange approvedResult = buildSapiPendingChange(CHANGE_ID, GROUP_ID, "APPROVED", false);
-            when(sapiApprovalClient.approve(eq(CHANGE_ID), eq(USER_ID), eq(DISPLAY_NAME), any(), eq(adGroups)))
+            when(sapiApprovalClient.approve(eq(CHANGE_ID), eq(USER_ID), eq(""), any(), eq(adGroups)))
                 .thenReturn(approvedResult);
 
             ApproveChangeRequest approveRequest = new ApproveChangeRequest(CHANGE_ID);
@@ -19929,19 +19933,19 @@ class ApprovalWorkflowControllerTest {
 
             controller.approveChange(requestContext);
 
-            verify(sapiApprovalClient).approve(eq(CHANGE_ID), eq(USER_ID), eq(DISPLAY_NAME), any(), eq(adGroups));
+            verify(sapiApprovalClient).approve(eq(CHANGE_ID), eq(USER_ID), eq(""), any(), eq(adGroups));
         }
 
         @Test
         @DisplayName("should indicate escalation when approval results in PENDING_LEVEL_TWO")
         void approveChange_escalatesToL2_indicatesEscalation() throws Exception {
             when(identity.employeeId()).thenReturn(USER_ID);
-            when(identity.displayName()).thenReturn(DISPLAY_NAME);
+            // TODO: restore when enterprise ccaas-identity-mock supports displayName()
 
             SapiPendingChange escalatedResult = buildSapiPendingChange(
                 CHANGE_ID, GROUP_ID, "PENDING_LEVEL_TWO", true);
 
-            when(sapiApprovalClient.approve(eq(CHANGE_ID), eq(USER_ID), eq(DISPLAY_NAME), any(), any()))
+            when(sapiApprovalClient.approve(eq(CHANGE_ID), eq(USER_ID), eq(""), any(), any()))
                 .thenReturn(escalatedResult);
 
             ApproveChangeRequest approveRequest = new ApproveChangeRequest(CHANGE_ID);
@@ -19969,11 +19973,11 @@ class ApprovalWorkflowControllerTest {
         @DisplayName("should reject change with valid reason")
         void rejectChange_validReason_returns200() throws Exception {
             when(identity.employeeId()).thenReturn(USER_ID);
-            when(identity.displayName()).thenReturn(DISPLAY_NAME);
+            // TODO: restore when enterprise ccaas-identity-mock supports displayName()
 
             SapiPendingChange sapiResult = buildSapiPendingChange(
                 CHANGE_ID, GROUP_ID, "REJECTED", false);
-            when(sapiApprovalClient.reject(eq(CHANGE_ID), eq(USER_ID), eq(DISPLAY_NAME), eq("Policy violation"), any()))
+            when(sapiApprovalClient.reject(eq(CHANGE_ID), eq(USER_ID), eq(""), eq("Policy violation"), any()))
                 .thenReturn(sapiResult);
 
             RejectChangeRequest rejectRequest = new RejectChangeRequest(CHANGE_ID, "Policy violation");
@@ -19986,7 +19990,7 @@ class ApprovalWorkflowControllerTest {
                 controller.rejectChange(requestContext);
 
             assertThat(result.getStatusCode().value()).isEqualTo(200);
-            verify(sapiApprovalClient).reject(eq(CHANGE_ID), eq(USER_ID), eq(DISPLAY_NAME), eq("Policy violation"), any());
+            verify(sapiApprovalClient).reject(eq(CHANGE_ID), eq(USER_ID), eq(""), eq("Policy violation"), any());
         }
 
         @Test
@@ -20154,9 +20158,9 @@ class ApprovalWorkflowControllerTest {
         @DisplayName("should propagate 400 from SAPI when approving already-approved change")
         void approveChange_alreadyApproved_propagates400() {
             when(identity.employeeId()).thenReturn(USER_ID);
-            when(identity.displayName()).thenReturn(DISPLAY_NAME);
+            // TODO: restore when enterprise ccaas-identity-mock supports displayName()
 
-            when(sapiApprovalClient.approve(eq(CHANGE_ID), eq(USER_ID), eq(DISPLAY_NAME), any(), any()))
+            when(sapiApprovalClient.approve(eq(CHANGE_ID), eq(USER_ID), eq(""), any(), any()))
                 .thenThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Approve pending change - SAPI error: Change is already approved"));
 
@@ -20178,9 +20182,9 @@ class ApprovalWorkflowControllerTest {
         @DisplayName("should propagate 404 from SAPI when approving non-existent change")
         void approveChange_notFound_propagates404() {
             when(identity.employeeId()).thenReturn(USER_ID);
-            when(identity.displayName()).thenReturn(DISPLAY_NAME);
+            // TODO: restore when enterprise ccaas-identity-mock supports displayName()
 
-            when(sapiApprovalClient.approve(eq(CHANGE_ID), eq(USER_ID), eq(DISPLAY_NAME), any(), any()))
+            when(sapiApprovalClient.approve(eq(CHANGE_ID), eq(USER_ID), eq(""), any(), any()))
                 .thenThrow(new ResponseStatusException(HttpStatus.NOT_FOUND,
                     "Approve pending change - SAPI error: Pending change not found"));
 
@@ -20201,9 +20205,9 @@ class ApprovalWorkflowControllerTest {
         @DisplayName("should propagate 400 from SAPI when rejecting already-approved change")
         void rejectChange_alreadyApproved_propagates400() {
             when(identity.employeeId()).thenReturn(USER_ID);
-            when(identity.displayName()).thenReturn(DISPLAY_NAME);
+            // TODO: restore when enterprise ccaas-identity-mock supports displayName()
 
-            when(sapiApprovalClient.reject(eq(CHANGE_ID), eq(USER_ID), eq(DISPLAY_NAME), anyString(), any()))
+            when(sapiApprovalClient.reject(eq(CHANGE_ID), eq(USER_ID), eq(""), anyString(), any()))
                 .thenThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Reject pending change - SAPI error: Cannot reject an already approved change"));
 
@@ -20513,7 +20517,7 @@ class DirectSaveControllerTest {
         @DisplayName("should direct save and return 200")
         void directSave_success_returns200() throws Exception {
             when(identity.employeeId()).thenReturn(SUPER_ADMIN_ID);
-            when(identity.displayName()).thenReturn(SUPER_ADMIN_NAME);
+            // TODO: restore when enterprise ccaas-identity-mock supports displayName()
 
             DirectSaveRequest request = new DirectSaveRequest(GROUP_ID, Map.of("roleName", "chat_agent"));
             request.setCurrentState(Map.of("roleName", "voice_agent"));
@@ -20535,7 +20539,7 @@ class DirectSaveControllerTest {
                 eq(Map.of("roleName", "voice_agent")),
                 eq(Map.of("roleName", "chat_agent")),
                 eq(SUPER_ADMIN_ID),
-                eq(SUPER_ADMIN_NAME),
+                eq(""),
                 eq(5L),
                 any());
         }
@@ -20544,7 +20548,7 @@ class DirectSaveControllerTest {
         @DisplayName("should direct save without optional fields")
         void directSave_minimalRequest_returns200() throws Exception {
             when(identity.employeeId()).thenReturn(SUPER_ADMIN_ID);
-            when(identity.displayName()).thenReturn(SUPER_ADMIN_NAME);
+            // TODO: restore when enterprise ccaas-identity-mock supports displayName()
 
             DirectSaveRequest request = new DirectSaveRequest(GROUP_ID, Map.of("roleName", "chat_agent"));
             DirectSaveRequestEnvelope envelope = new DirectSaveRequestEnvelope(request);
@@ -20561,7 +20565,7 @@ class DirectSaveControllerTest {
                 any(),
                 eq(Map.of("roleName", "chat_agent")),
                 eq(SUPER_ADMIN_ID),
-                eq(SUPER_ADMIN_NAME),
+                eq(""),
                 isNull(),
                 any());
         }
@@ -20665,7 +20669,7 @@ class DirectSaveControllerTest {
         @DisplayName("should propagate 404 from SAPI")
         void directSave_sapiReturns404_propagates() {
             when(identity.employeeId()).thenReturn(SUPER_ADMIN_ID);
-            when(identity.displayName()).thenReturn(SUPER_ADMIN_NAME);
+            // TODO: restore when enterprise ccaas-identity-mock supports displayName()
 
             doThrow(new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Direct save - SAPI error: AD group not found"))
@@ -20689,7 +20693,7 @@ class DirectSaveControllerTest {
         @DisplayName("should propagate 409 from SAPI for optimistic lock conflict")
         void directSave_sapiReturns409_propagates() {
             when(identity.employeeId()).thenReturn(SUPER_ADMIN_ID);
-            when(identity.displayName()).thenReturn(SUPER_ADMIN_NAME);
+            // TODO: restore when enterprise ccaas-identity-mock supports displayName()
 
             doThrow(new ResponseStatusException(HttpStatus.CONFLICT,
                 "Direct save - SAPI error: Optimistic locking conflict"))
