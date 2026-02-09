@@ -1,5 +1,5 @@
 # CCaaS Entitlement PAPI - Source Bundle
-# Generated: 2026-02-10 01:38:45
+# Generated: 2026-02-10 01:44:20
 # Total files: 279
 # Categories: 1 pom.xml, 1 CLAUDE.md, 4 docs, 3 resources, 125 YAML specs, 86 main Java, 52 test Java, 7 other
 # Note: target/generated-sources NOT included - run 'mvn generate-sources' after extraction
