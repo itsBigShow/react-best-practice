@@ -1,5 +1,5 @@
 # CCaaS Entitlement PAPI - Source Bundle
-# Generated: 2026-02-09 22:45:23
+# Generated: 2026-02-09 23:01:35
 # Total files: 260
 # Categories: 1 pom.xml, 1 CLAUDE.md, 4 docs, 3 resources, 119 YAML specs, 81 main Java, 49 test Java, 2 other
 # Note: target/generated-sources NOT included - run 'mvn generate-sources' after extraction
@@ -7394,8 +7394,10 @@ package com.hsbc.ccaas.papi;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.annotation.ComponentScan;
 
 @SpringBootApplication
+@ComponentScan(basePackages = {"com.hsbc.ccaas.papi", "com.hsbc.ccaas.identity"})
 public class CcaasEntitlementPapiApplication {
 
     public static void main(String[] args) {
