@@ -1,5 +1,5 @@
 # CCaaS Entitlement PAPI - Source Bundle
-# Generated: 2026-02-09 20:59:34
+# Generated: 2026-02-09 21:08:11
 # Total files: 258
 # Categories: 1 pom.xml, 1 CLAUDE.md, 4 docs, 3 resources, 119 YAML specs, 78 main Java, 50 test Java, 2 other
 # Note: target/generated-sources NOT included - run 'mvn generate-sources' after extraction
@@ -9919,7 +9919,7 @@ public final class CommonConstants {
         public static final String PAPI_V1_BASE = "/papi/v1";
         public static final String SAPI_V1_BASE = "/sapi/v1";
         public static final String SAPI_SET_PRIMARY_ROLE = "/sapi/v1/users/{userIdentifier}/primaries/{roleName}";
-        public static final String SAPI_CHECK_REQUIRES_PRIMARY = "/sapi/v1/users/{userIdentifier}/requires-primaries/{roleName}";
+
         public static final String SAPI_LAYOUTS_CACHE_AD_GROUP = "/sapi/v1/sessions/invalidate-cache";
         public static final String HEALTH = "/health";
         public static final String ACTUATOR_HEALTH = "/actuator/health";
@@ -10126,7 +10126,6 @@ public final class SapiApiPaths {
 
     // ==================== User Role Endpoints ====================
     public static final String SET_PRIMARY_ROLE = "/sapi/v1/users/{userIdentifier}/primaries/{roleName}";
-    public static final String CHECK_REQUIRES_PRIMARY = "/sapi/v1/users/{userIdentifier}/requires-primaries/{roleName}";
 
     // ==================== Layout Endpoints ====================
     public static final String LAYOUTS_ADD_ENTITLEMENT = "/sapi/v1/entitlements";
@@ -10134,7 +10133,6 @@ public final class SapiApiPaths {
 
     // ==================== Cache Endpoints ====================
     public static final String CACHE_INVALIDATE_AD_GROUP = "/sapi/v1/sessions/invalidate-cache";
-    public static final String CACHE_INVALIDATE_USER = "/sapi/v1/sessions/{layoutIdentifier}/users/{userIdentifier}";
 
     // ==================== Admin Notice Endpoints ====================
     public static final String CREATE_NOTICES = "/sapi/v1/notices";
