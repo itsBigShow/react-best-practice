@@ -1,5 +1,5 @@
 # CCaaS Entitlement PAPI - Source Bundle
-# Generated: 2026-02-10 01:37:46
+# Generated: 2026-02-10 01:38:45
 # Total files: 279
 # Categories: 1 pom.xml, 1 CLAUDE.md, 4 docs, 3 resources, 125 YAML specs, 86 main Java, 52 test Java, 7 other
 # Note: target/generated-sources NOT included - run 'mvn generate-sources' after extraction
@@ -13075,46 +13075,69 @@ public class SecurityConfig {
     }
 
     @Bean
-    @Order(1)
-    public SecurityFilterChain securityFilterChain(
+@Order(1)
+public SecurityFilterChain securityFilterChain(
         HttpSecurity http,
         IdentityContextFilter papiIdentityContextFilter
-    ) throws Exception {
-        http
-            .csrf(AbstractHttpConfigurer::disable)
-            .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-            // Matchers use servlet-relative paths (context-path /papi/v1 is already stripped)
-            .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/", "/index.html", "/api-docs.html").permitAll()
-                .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/scalar-api-reference.min.js").permitAll()
-                .requestMatchers("/actuator/**", "/health").permitAll()
-                .requestMatchers("/static/**").permitAll()
-                // User-facing endpoints (must be before admin matchers)
-                .requestMatchers("/embedded-apps/user-apps").authenticated()
-                // Admin endpoints
-                .requestMatchers("/ad-groups", "/ad-groups/**").hasRole(ROLE_ADMIN)
-                .requestMatchers("/ad-group-configuration-copies").hasRole(ROLE_ADMIN)
-                .requestMatchers("/ad-group-configs/**").hasRole(ROLE_ADMIN)
-                .requestMatchers("/notices", "/notices/**").hasRole(ROLE_ADMIN)
-                .requestMatchers("/embedded-apps", "/embedded-apps/**").hasRole(ROLE_ADMIN)
-                .requestMatchers("/embedded-apps-ad-groups", "/embedded-apps-ad-groups/**").hasRole(ROLE_ADMIN)
-                .requestMatchers("/pending-changes", "/pending-changes/**").hasRole(ROLE_ADMIN)
-                .requestMatchers("/change-approvals", "/change-rejections").hasRole(ROLE_ADMIN)
-                // Supervisor endpoints
-                .requestMatchers("/users/*/primaries/**").hasRole(ROLE_SUPERVISOR)
-                .requestMatchers("/users/primary-assignments").hasRole(ROLE_SUPERVISOR)
-                // Authenticated endpoints
-                .requestMatchers("/regions", "/countries").authenticated()
-                .requestMatchers("/business-units", "/regions-countries/**").authenticated()
-                .requestMatchers("/markets", "/regions-markets/**").authenticated()
-                .requestMatchers("/sessions", "/sessions/**",
-                    "/entitlements").authenticated()
-                .anyRequest().authenticated()
-            )
-            .addFilterBefore(papiIdentityContextFilter, UsernamePasswordAuthenticationFilter.class);
+) throws Exception {
 
-        return http.build();
-    }
+    http
+        // Only secure the PAPI surface; the platform security auto-config provides the global chain.
+        .securityMatcher("/papi/**")
+        .csrf(AbstractHttpConfigurer::disable)
+        .sessionManagement(session ->
+                session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+        )
+        .authorizeHttpRequests(auth -> auth
+
+            // Public endpoints
+            .requestMatchers(
+                    "/",
+                    "/index.html",
+                    "/api-docs.html",
+                    "/v3/api-docs/**",
+                    "/swagger-ui/**",
+                    "/scalar-api-reference.min.js",
+                    "/actuator/**",
+                    "/health",
+                    "/static/**"
+            ).permitAll()
+
+            // User-facing endpoints
+            .requestMatchers("/embedded-apps/user-apps").authenticated()
+
+            // Admin endpoints
+            .requestMatchers("/ad-groups", "/ad-groups/**").hasRole(ROLE_ADMIN)
+            .requestMatchers("/ad-group-configuration-copies").hasRole(ROLE_ADMIN)
+            .requestMatchers("/ad-group-configs/**").hasRole(ROLE_ADMIN)
+            .requestMatchers("/notices", "/notices/**").hasRole(ROLE_ADMIN)
+            .requestMatchers("/embedded-apps", "/embedded-apps/**").hasRole(ROLE_ADMIN)
+            .requestMatchers("/embedded-apps-ad-groups",
+                             "/embedded-apps-ad-groups/**").hasRole(ROLE_ADMIN)
+            .requestMatchers("/pending-changes",
+                             "/pending-changes/**").hasRole(ROLE_ADMIN)
+            .requestMatchers("/change-approvals",
+                             "/change-rejections").hasRole(ROLE_ADMIN)
+
+            // Supervisor endpoints
+            .requestMatchers("/users//primaries/*").hasRole(ROLE_SUPERVISOR)
+            .requestMatchers("/users/primary-assignments").hasRole(ROLE_SUPERVISOR)
+
+            // Authenticated endpoints
+            .requestMatchers("/regions", "/countries").authenticated()
+            .requestMatchers("/business-units", "/regions-countries/**").authenticated()
+            .requestMatchers("/markets", "/regions-markets/**").authenticated()
+            .requestMatchers("/sessions", "/sessions/**", "/entitlements").authenticated()
+
+            .anyRequest().authenticated()
+        )
+        .addFilterBefore(
+                papiIdentityContextFilter,
+                UsernamePasswordAuthenticationFilter.class
+        );
+
+    return http.build();
+}
 }
 ===ENDFILE
 ===FILE: ./src/main/java/com/hsbc/ccaas/papi/config/WebConfig.java
