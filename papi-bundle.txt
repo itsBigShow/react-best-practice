@@ -1,7 +1,7 @@
 # CCaaS Entitlement PAPI - Source Bundle
-# Generated: 2026-02-09 17:30:30
-# Total files: 261
-# Categories: 1 pom.xml, 1 CLAUDE.md, 4 docs, 3 resources, 119 YAML specs, 79 main Java, 52 test Java, 2 other
+# Generated: 2026-02-09 18:05:07
+# Total files: 260
+# Categories: 1 pom.xml, 1 CLAUDE.md, 4 docs, 3 resources, 119 YAML specs, 79 main Java, 51 test Java, 2 other
 # Note: target/generated-sources NOT included - run 'mvn generate-sources' after extraction
 ===FILE: ./AGENTS.md
 # AGENTS.md - ccaas-entitlement-papi
@@ -15304,8 +15304,10 @@ class SapiAdminNoticeClientTest {
                 .setHeader("Content-Type", "application/json")
                 .setBody(sampleNoticeResponse("00000000-0000-0000-0000-000000000001", "Test Title")));
 
-            AdminNoticeRequest request = new AdminNoticeRequest("Test Title", "Test message",
-                AdminNoticeRequest.SeverityValueEnum.INFO);
+            AdminNoticeRequest request = new AdminNoticeRequest();
+            request.setTitleText("Test Title");
+            request.setMessageText("Test message");
+            request.setSeverityValue(AdminNoticeRequest.SeverityValueEnum.INFO);
             request.setTargetRoleValues(List.of("admin", "supervisor"));
 
             AdminNoticeResponse result = client.createNotice(request);
@@ -15416,8 +15418,10 @@ class SapiAdminNoticeClientTest {
                 .setHeader("Content-Type", "application/json")
                 .setBody(sampleNoticeResponse(noticeId.toString(), "Updated Title")));
 
-            AdminNoticeRequest request = new AdminNoticeRequest("Updated Title", "Updated message",
-                AdminNoticeRequest.SeverityValueEnum.WARNING);
+            AdminNoticeRequest request = new AdminNoticeRequest();
+            request.setTitleText("Updated Title");
+            request.setMessageText("Updated message");
+            request.setSeverityValue(AdminNoticeRequest.SeverityValueEnum.WARNING);
 
             AdminNoticeResponse result = client.updateNotice(noticeId, request);
 
@@ -15432,8 +15436,10 @@ class SapiAdminNoticeClientTest {
         @Test
         @DisplayName("should reject null notice ID")
         void shouldRejectNullNoticeId() {
-            AdminNoticeRequest request = new AdminNoticeRequest("Title", "Message",
-                AdminNoticeRequest.SeverityValueEnum.INFO);
+            AdminNoticeRequest request = new AdminNoticeRequest();
+            request.setTitleText("Title");
+            request.setMessageText("Message");
+            request.setSeverityValue(AdminNoticeRequest.SeverityValueEnum.INFO);
 
             assertThatThrownBy(() -> client.updateNotice(null, request))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -18001,8 +18007,8 @@ class IdentityContextFilterTest {
             assertThat(auth.getDetails()).isInstanceOf(IdentityRequestContext.class);
 
             IdentityRequestContext requestContext = (IdentityRequestContext) auth.getDetails();
-            assertThat(requestContext.token()).isEqualTo(token);
-            assertThat(requestContext.identity()).isEqualTo(validContext);
+            assertThat(requestContext.getToken()).isEqualTo(token);
+            assertThat(requestContext.getIdentity()).isEqualTo(validContext);
         }
     }
 
@@ -18964,9 +18970,8 @@ package com.hsbc.ccaas.papi.controller;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.*;
 
 import com.hsbc.ccaas.papi.application.AdGroupManagementFacade;
 import com.hsbc.ccaas.papi.controller.helper.AdGroupResponseAssembler;
@@ -18975,10 +18980,10 @@ import com.hsbc.ccaas.papi.controller.model.*;
 import com.hsbc.ccaas.papi.dto.AdGroupFilterCriteria;
 import com.hsbc.ccaas.papi.dto.PaginatedResult;
 import com.hsbc.ccaas.identity.service.helper.IdentityContextAccessor;
-import com.hsbc.ccaas.papi.testutil.TestContextFactory;
 import com.hsbc.wpb.ef.ports.RequestContext;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -19010,6 +19015,15 @@ class AdGroupLayoutAssignmentControllerTest {
         );
     }
 
+    @SuppressWarnings("unchecked")
+    private <T> RequestContext<T> mockRequestContext() {
+        RequestContext<T> rc = (RequestContext<T>) mock(RequestContext.class);
+        lenient().when(rc.getBody()).thenReturn(Optional.empty());
+        lenient().when(rc.getQueryParameter(anyString())).thenReturn(Optional.empty());
+        lenient().when(rc.getPathVariable(anyString())).thenReturn(Optional.empty());
+        return rc;
+    }
+
     @Test
     @DisplayName("GET /papi/v1/ad-groups passes filters through query parameters")
     void getAllAdGroupsDelegatesToService() throws Exception {
@@ -19021,16 +19035,16 @@ class AdGroupLayoutAssignmentControllerTest {
         when(adGroupManagementFacade.getAllAdGroups(any(AdGroupFilterCriteria.class)))
             .thenReturn(response);
 
-        RequestContext<Void> requestContext = TestContextFactory.<Void>withQuery(Map.of(
-                "offset", "2",
-                "limit", "50",
-                "search", "voice",
-                "roleText", "voice_agent",
-                "statusCode", "ACTIVE",
-                "marketText", "UK",
-                "regionText", "EMEA",
-                "countryText", "GB",
-                "businessUnitText", "Retail"));
+        RequestContext<Void> requestContext = mockRequestContext();
+        when(requestContext.getQueryParameter("offset")).thenReturn(Optional.of("2"));
+        when(requestContext.getQueryParameter("limit")).thenReturn(Optional.of("50"));
+        when(requestContext.getQueryParameter("search")).thenReturn(Optional.of("voice"));
+        when(requestContext.getQueryParameter("roleText")).thenReturn(Optional.of("voice_agent"));
+        when(requestContext.getQueryParameter("statusCode")).thenReturn(Optional.of("ACTIVE"));
+        when(requestContext.getQueryParameter("marketText")).thenReturn(Optional.of("UK"));
+        when(requestContext.getQueryParameter("regionText")).thenReturn(Optional.of("EMEA"));
+        when(requestContext.getQueryParameter("countryText")).thenReturn(Optional.of("GB"));
+        when(requestContext.getQueryParameter("businessUnitText")).thenReturn(Optional.of("Retail"));
 
         ResponseEntity<DataMetaResponseAdGroupsData> result = controller.getAllAdGroups(requestContext);
 
@@ -19067,8 +19081,8 @@ class AdGroupLayoutAssignmentControllerTest {
         AdGroupLookupRequestEnvelope envelope = new AdGroupLookupRequestEnvelope();
         envelope.setData(lookupRequest);
 
-        RequestContext<AdGroupLookupRequestEnvelope> requestContext =
-            TestContextFactory.withBody(envelope);
+        RequestContext<AdGroupLookupRequestEnvelope> requestContext = mockRequestContext();
+        when(requestContext.getBody()).thenReturn(Optional.of(envelope));
 
         ResponseEntity<DataResponseAdGroupData> result = controller.lookupAdGroup(requestContext);
 
@@ -19087,8 +19101,8 @@ class AdGroupLayoutAssignmentControllerTest {
         AdGroupLookupRequestEnvelope envelope = new AdGroupLookupRequestEnvelope();
         envelope.setData(lookupRequest);
 
-        RequestContext<AdGroupLookupRequestEnvelope> requestContext =
-            TestContextFactory.withBody(envelope);
+        RequestContext<AdGroupLookupRequestEnvelope> requestContext = mockRequestContext();
+        when(requestContext.getBody()).thenReturn(Optional.of(envelope));
 
         ResponseEntity<DataResponseAdGroupData> result = controller.lookupAdGroup(requestContext);
 
@@ -19107,8 +19121,8 @@ class AdGroupLayoutAssignmentControllerTest {
         AdGroupLookupRequestEnvelope envelope = new AdGroupLookupRequestEnvelope();
         envelope.setData(lookupRequest);
 
-        RequestContext<AdGroupLookupRequestEnvelope> requestContext =
-            TestContextFactory.withBody(envelope);
+        RequestContext<AdGroupLookupRequestEnvelope> requestContext = mockRequestContext();
+        when(requestContext.getBody()).thenReturn(Optional.of(envelope));
 
         assertThatThrownBy(() -> controller.lookupAdGroup(requestContext))
             .isInstanceOf(ResponseStatusException.class)
@@ -19130,8 +19144,8 @@ class AdGroupLayoutAssignmentControllerTest {
         AdGroupLookupRequestEnvelope envelope = new AdGroupLookupRequestEnvelope();
         envelope.setData(lookupRequest);
 
-        RequestContext<AdGroupLookupRequestEnvelope> requestContext =
-            TestContextFactory.withBody(envelope);
+        RequestContext<AdGroupLookupRequestEnvelope> requestContext = mockRequestContext();
+        when(requestContext.getBody()).thenReturn(Optional.of(envelope));
 
         assertThatThrownBy(() -> controller.lookupAdGroup(requestContext))
             .isInstanceOf(ResponseStatusException.class)
@@ -19149,11 +19163,14 @@ class AdGroupLayoutAssignmentControllerTest {
         when(adGroupManagementFacade.copyAdGroupConfiguration(any(AdGroupCopyRequest.class)))
             .thenReturn(response);
 
-        AdGroupCopyRequest request = new AdGroupCopyRequest("SRC", "TGT");
-        AdGroupCopyRequestEnvelope envelope = new AdGroupCopyRequestEnvelope(request);
+        AdGroupCopyRequest request = new AdGroupCopyRequest();
+        request.setSourceGroupIdentifier("SRC");
+        request.setTargetGroupIdentifier("TGT");
+        AdGroupCopyRequestEnvelope envelope = new AdGroupCopyRequestEnvelope();
+        envelope.setData(request);
 
-        RequestContext<AdGroupCopyRequestEnvelope> requestContext =
-            TestContextFactory.withBody(envelope);
+        RequestContext<AdGroupCopyRequestEnvelope> requestContext = mockRequestContext();
+        when(requestContext.getBody()).thenReturn(Optional.of(envelope));
 
         ResponseEntity<DataResponseCopyResultData> result =
             controller.copyAdGroupConfiguration(requestContext);
@@ -19172,11 +19189,14 @@ class AdGroupLayoutAssignmentControllerTest {
         when(adGroupManagementFacade.copyAdGroupConfiguration(any(AdGroupCopyRequest.class)))
             .thenReturn(response);
 
-        AdGroupCopyRequest request = new AdGroupCopyRequest("SRC", "TGT");
-        AdGroupCopyRequestEnvelope envelope = new AdGroupCopyRequestEnvelope(request);
+        AdGroupCopyRequest request = new AdGroupCopyRequest();
+        request.setSourceGroupIdentifier("SRC");
+        request.setTargetGroupIdentifier("TGT");
+        AdGroupCopyRequestEnvelope envelope = new AdGroupCopyRequestEnvelope();
+        envelope.setData(request);
 
-        RequestContext<AdGroupCopyRequestEnvelope> requestContext =
-            TestContextFactory.withBody(envelope);
+        RequestContext<AdGroupCopyRequestEnvelope> requestContext = mockRequestContext();
+        when(requestContext.getBody()).thenReturn(Optional.of(envelope));
 
         ResponseEntity<DataResponseCopyResultData> result =
             controller.copyAdGroupConfiguration(requestContext);
@@ -19196,11 +19216,14 @@ class AdGroupLayoutAssignmentControllerTest {
         when(adGroupManagementFacade.copyAdGroupConfiguration(any(AdGroupCopyRequest.class)))
             .thenReturn(response);
 
-        AdGroupCopyRequest request = new AdGroupCopyRequest("SRC", "TGT");
-        AdGroupCopyRequestEnvelope envelope = new AdGroupCopyRequestEnvelope(request);
+        AdGroupCopyRequest request = new AdGroupCopyRequest();
+        request.setSourceGroupIdentifier("SRC");
+        request.setTargetGroupIdentifier("TGT");
+        AdGroupCopyRequestEnvelope envelope = new AdGroupCopyRequestEnvelope();
+        envelope.setData(request);
 
-        RequestContext<AdGroupCopyRequestEnvelope> requestContext =
-            TestContextFactory.withBody(envelope);
+        RequestContext<AdGroupCopyRequestEnvelope> requestContext = mockRequestContext();
+        when(requestContext.getBody()).thenReturn(Optional.of(envelope));
 
         ResponseEntity<DataResponseCopyResultData> result =
             controller.copyAdGroupConfiguration(requestContext);
@@ -19220,11 +19243,14 @@ class AdGroupLayoutAssignmentControllerTest {
         when(adGroupManagementFacade.copyAdGroupConfiguration(any(AdGroupCopyRequest.class)))
             .thenReturn(response);
 
-        AdGroupCopyRequest request = new AdGroupCopyRequest("SRC", "TGT");
-        AdGroupCopyRequestEnvelope envelope = new AdGroupCopyRequestEnvelope(request);
+        AdGroupCopyRequest request = new AdGroupCopyRequest();
+        request.setSourceGroupIdentifier("SRC");
+        request.setTargetGroupIdentifier("TGT");
+        AdGroupCopyRequestEnvelope envelope = new AdGroupCopyRequestEnvelope();
+        envelope.setData(request);
 
-        RequestContext<AdGroupCopyRequestEnvelope> requestContext =
-            TestContextFactory.withBody(envelope);
+        RequestContext<AdGroupCopyRequestEnvelope> requestContext = mockRequestContext();
+        when(requestContext.getBody()).thenReturn(Optional.of(envelope));
 
         ResponseEntity<DataResponseCopyResultData> result =
             controller.copyAdGroupConfiguration(requestContext);
@@ -19240,11 +19266,14 @@ class AdGroupLayoutAssignmentControllerTest {
         doThrow(new IllegalArgumentException("validation failure")).when(adGroupManagementFacade)
             .copyAdGroupConfiguration(any(AdGroupCopyRequest.class));
 
-        AdGroupCopyRequest request = new AdGroupCopyRequest("SRC", "TGT");
-        AdGroupCopyRequestEnvelope envelope = new AdGroupCopyRequestEnvelope(request);
+        AdGroupCopyRequest request = new AdGroupCopyRequest();
+        request.setSourceGroupIdentifier("SRC");
+        request.setTargetGroupIdentifier("TGT");
+        AdGroupCopyRequestEnvelope envelope = new AdGroupCopyRequestEnvelope();
+        envelope.setData(request);
 
-        RequestContext<AdGroupCopyRequestEnvelope> requestContext =
-            TestContextFactory.withBody(envelope);
+        RequestContext<AdGroupCopyRequestEnvelope> requestContext = mockRequestContext();
+        when(requestContext.getBody()).thenReturn(Optional.of(envelope));
 
         assertThatThrownBy(() -> controller.copyAdGroupConfiguration(requestContext))
             .isInstanceOf(IllegalArgumentException.class)
@@ -19254,8 +19283,7 @@ class AdGroupLayoutAssignmentControllerTest {
     @Test
     @DisplayName("POST /papi/v1/ad-groups/lookup throws when body is null")
     void lookupAdGroupNullBodyThrows() {
-        RequestContext<AdGroupLookupRequestEnvelope> requestContext =
-            TestContextFactory.<AdGroupLookupRequestEnvelope>create();
+        RequestContext<AdGroupLookupRequestEnvelope> requestContext = mockRequestContext();
 
         assertThatThrownBy(() -> controller.lookupAdGroup(requestContext))
             .isInstanceOf(IllegalArgumentException.class)
@@ -19270,8 +19298,8 @@ class AdGroupLayoutAssignmentControllerTest {
         AdGroupLookupRequestEnvelope envelope = new AdGroupLookupRequestEnvelope();
         envelope.setData(lookupRequest);
 
-        RequestContext<AdGroupLookupRequestEnvelope> requestContext =
-            TestContextFactory.withBody(envelope);
+        RequestContext<AdGroupLookupRequestEnvelope> requestContext = mockRequestContext();
+        when(requestContext.getBody()).thenReturn(Optional.of(envelope));
 
         assertThatThrownBy(() -> controller.lookupAdGroup(requestContext))
             .isInstanceOf(ResponseStatusException.class)
@@ -19284,8 +19312,7 @@ class AdGroupLayoutAssignmentControllerTest {
     @Test
     @DisplayName("POST /papi/v1/ad-group-configuration-copies throws when body is null")
     void copyAdGroupNullBodyThrows() {
-        RequestContext<AdGroupCopyRequestEnvelope> requestContext =
-            TestContextFactory.<AdGroupCopyRequestEnvelope>create();
+        RequestContext<AdGroupCopyRequestEnvelope> requestContext = mockRequestContext();
 
         assertThatThrownBy(() -> controller.copyAdGroupConfiguration(requestContext))
             .isInstanceOf(IllegalArgumentException.class)
@@ -19295,10 +19322,10 @@ class AdGroupLayoutAssignmentControllerTest {
     @Test
     @DisplayName("POST /papi/v1/ad-group-configuration-copies throws when data is null")
     void copyAdGroupNullDataThrows() {
-        AdGroupCopyRequestEnvelope envelope = new AdGroupCopyRequestEnvelope(null);
+        AdGroupCopyRequestEnvelope envelope = new AdGroupCopyRequestEnvelope();
 
-        RequestContext<AdGroupCopyRequestEnvelope> requestContext =
-            TestContextFactory.withBody(envelope);
+        RequestContext<AdGroupCopyRequestEnvelope> requestContext = mockRequestContext();
+        when(requestContext.getBody()).thenReturn(Optional.of(envelope));
 
         assertThatThrownBy(() -> controller.copyAdGroupConfiguration(requestContext))
             .isInstanceOf(ResponseStatusException.class)
@@ -19311,11 +19338,14 @@ class AdGroupLayoutAssignmentControllerTest {
     @Test
     @DisplayName("POST /papi/v1/ad-group-configuration-copies throws when source identifier is blank")
     void copyAdGroupBlankSourceThrows() {
-        AdGroupCopyRequest request = new AdGroupCopyRequest("  ", "TGT");
-        AdGroupCopyRequestEnvelope envelope = new AdGroupCopyRequestEnvelope(request);
+        AdGroupCopyRequest request = new AdGroupCopyRequest();
+        request.setSourceGroupIdentifier("  ");
+        request.setTargetGroupIdentifier("TGT");
+        AdGroupCopyRequestEnvelope envelope = new AdGroupCopyRequestEnvelope();
+        envelope.setData(request);
 
-        RequestContext<AdGroupCopyRequestEnvelope> requestContext =
-            TestContextFactory.withBody(envelope);
+        RequestContext<AdGroupCopyRequestEnvelope> requestContext = mockRequestContext();
+        when(requestContext.getBody()).thenReturn(Optional.of(envelope));
 
         assertThatThrownBy(() -> controller.copyAdGroupConfiguration(requestContext))
             .isInstanceOf(ResponseStatusException.class)
@@ -19328,11 +19358,14 @@ class AdGroupLayoutAssignmentControllerTest {
     @Test
     @DisplayName("POST /papi/v1/ad-group-configuration-copies throws when target identifier is blank")
     void copyAdGroupBlankTargetThrows() {
-        AdGroupCopyRequest request = new AdGroupCopyRequest("SRC", "  ");
-        AdGroupCopyRequestEnvelope envelope = new AdGroupCopyRequestEnvelope(request);
+        AdGroupCopyRequest request = new AdGroupCopyRequest();
+        request.setSourceGroupIdentifier("SRC");
+        request.setTargetGroupIdentifier("  ");
+        AdGroupCopyRequestEnvelope envelope = new AdGroupCopyRequestEnvelope();
+        envelope.setData(request);
 
-        RequestContext<AdGroupCopyRequestEnvelope> requestContext =
-            TestContextFactory.withBody(envelope);
+        RequestContext<AdGroupCopyRequestEnvelope> requestContext = mockRequestContext();
+        when(requestContext.getBody()).thenReturn(Optional.of(envelope));
 
         assertThatThrownBy(() -> controller.copyAdGroupConfiguration(requestContext))
             .isInstanceOf(ResponseStatusException.class)
@@ -19349,18 +19382,18 @@ package com.hsbc.ccaas.papi.controller;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 import com.hsbc.ccaas.papi.application.AdminNoticeFacade;
 import com.hsbc.ccaas.papi.controller.model.*;
-import com.hsbc.ccaas.papi.testutil.TestContextFactory;
 import com.hsbc.wpb.ef.ports.RequestContext;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -19385,12 +19418,22 @@ class AdminNoticeControllerTest {
         controller = new AdminNoticeController(adminNoticeFacade);
     }
 
+    @SuppressWarnings("unchecked")
+    private <T> RequestContext<T> mockRequestContext() {
+        RequestContext<T> rc = (RequestContext<T>) mock(RequestContext.class);
+        lenient().when(rc.getBody()).thenReturn(Optional.empty());
+        lenient().when(rc.getQueryParameter(anyString())).thenReturn(Optional.empty());
+        lenient().when(rc.getPathVariable(anyString())).thenReturn(Optional.empty());
+        return rc;
+    }
+
     @Test
     @DisplayName("POST /papi/v1/notices creates notice and returns 200")
     void createNoticeReturnsOk() throws Exception {
-        var genRequest = new AdminNoticeRequest(
-            "Maintenance", "Scheduled maintenance window",
-            AdminNoticeRequest.SeverityValueEnum.INFO);
+        AdminNoticeRequest genRequest = new AdminNoticeRequest();
+        genRequest.setTitleText("Maintenance");
+        genRequest.setMessageText("Scheduled maintenance window");
+        genRequest.setSeverityValue(AdminNoticeRequest.SeverityValueEnum.INFO);
         genRequest.setStatusCode(AdminNoticeRequest.StatusCodeEnum.ACTIVE);
         genRequest.setStartAtDate(OffsetDateTime.now(ZoneOffset.UTC));
         genRequest.setEndAtDate(OffsetDateTime.now(ZoneOffset.UTC).plusHours(1));
@@ -19406,7 +19449,8 @@ class AdminNoticeControllerTest {
 
         when(adminNoticeFacade.createNotice(any(AdminNoticeRequest.class))).thenReturn(response);
 
-        RequestContext<AdminNoticeRequestEnvelope> requestContext = TestContextFactory.withBody(envelope);
+        RequestContext<AdminNoticeRequestEnvelope> requestContext = mockRequestContext();
+        when(requestContext.getBody()).thenReturn(Optional.of(envelope));
         ResponseEntity<DataResponseNoticeData> result = controller.createAdminNotice(requestContext);
 
         assertThat(result.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -19425,7 +19469,7 @@ class AdminNoticeControllerTest {
 
         when(adminNoticeFacade.listNotices(null)).thenReturn(List.of(response));
 
-        RequestContext<Void> requestContext = TestContextFactory.<Void>create();
+        RequestContext<Void> requestContext = mockRequestContext();
         ResponseEntity<DataResponseNoticesData> result = controller.listAdminNotices(requestContext);
 
         assertThat(result.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -19438,9 +19482,10 @@ class AdminNoticeControllerTest {
     @DisplayName("PUT /papi/v1/notices/{noticeIdentifier} delegates to service")
     void updateNoticeReturnsResponse() throws Exception {
         UUID noticeId = UUID.fromString("00000000-0000-0000-0000-000000000009");
-        var genRequest = new AdminNoticeRequest(
-            "Updated Title", "Updated message content",
-            AdminNoticeRequest.SeverityValueEnum.WARNING);
+        AdminNoticeRequest genRequest = new AdminNoticeRequest();
+        genRequest.setTitleText("Updated Title");
+        genRequest.setMessageText("Updated message content");
+        genRequest.setSeverityValue(AdminNoticeRequest.SeverityValueEnum.WARNING);
         genRequest.setStatusCode(AdminNoticeRequest.StatusCodeEnum.ACTIVE);
 
         var envelope = new AdminNoticeRequestEnvelope();
@@ -19453,7 +19498,9 @@ class AdminNoticeControllerTest {
 
         when(adminNoticeFacade.updateNotice(eq(noticeId), any(AdminNoticeRequest.class))).thenReturn(response);
 
-        RequestContext<AdminNoticeRequestEnvelope> requestContext = TestContextFactory.withBodyAndPath(envelope, Map.of("noticeIdentifier", noticeId.toString()));
+        RequestContext<AdminNoticeRequestEnvelope> requestContext = mockRequestContext();
+        when(requestContext.getBody()).thenReturn(Optional.of(envelope));
+        when(requestContext.getPathVariable("noticeIdentifier")).thenReturn(Optional.of(noticeId.toString()));
         ResponseEntity<DataResponseNoticeData> result = controller.updateAdminNotice(requestContext);
 
         assertThat(result.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -19471,10 +19518,14 @@ class AdminNoticeControllerTest {
 
         when(adminNoticeFacade.updateStatus(noticeId, "ARCHIVED")).thenReturn(response);
 
-        var statusRequest = new UpdateStatusRequest(UpdateStatusRequest.StatusCodeEnum.ARCHIVED);
-        var envelope = new UpdateStatusRequestEnvelope(statusRequest);
+        UpdateStatusRequest statusRequest = new UpdateStatusRequest();
+        statusRequest.setStatusCode(UpdateStatusRequest.StatusCodeEnum.ARCHIVED);
+        UpdateStatusRequestEnvelope envelope = new UpdateStatusRequestEnvelope();
+        envelope.setData(statusRequest);
 
-        RequestContext<UpdateStatusRequestEnvelope> requestContext = TestContextFactory.withBodyAndPath(envelope, Map.of("noticeIdentifier", noticeId.toString()));
+        RequestContext<UpdateStatusRequestEnvelope> requestContext = mockRequestContext();
+        when(requestContext.getBody()).thenReturn(Optional.of(envelope));
+        when(requestContext.getPathVariable("noticeIdentifier")).thenReturn(Optional.of(noticeId.toString()));
         ResponseEntity<DataResponseNoticeData> result = controller.updateAdminNoticeStatus(requestContext);
 
         assertThat(result.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -19487,7 +19538,8 @@ class AdminNoticeControllerTest {
     void createNoticeWithEmptyBodyReturnsBadRequest() {
         var envelope = new AdminNoticeRequestEnvelope();
 
-        RequestContext<AdminNoticeRequestEnvelope> requestContext = TestContextFactory.withBody(envelope);
+        RequestContext<AdminNoticeRequestEnvelope> requestContext = mockRequestContext();
+        when(requestContext.getBody()).thenReturn(Optional.of(envelope));
 
         assertThatThrownBy(() -> controller.createAdminNotice(requestContext))
                 .isInstanceOf(IllegalArgumentException.class);
@@ -19499,7 +19551,9 @@ class AdminNoticeControllerTest {
         UUID noticeId = UUID.fromString("00000000-0000-0000-0000-000000000009");
         var envelope = new AdminNoticeRequestEnvelope();
 
-        RequestContext<AdminNoticeRequestEnvelope> requestContext = TestContextFactory.withBodyAndPath(envelope, Map.of("noticeIdentifier", noticeId.toString()));
+        RequestContext<AdminNoticeRequestEnvelope> requestContext = mockRequestContext();
+        when(requestContext.getBody()).thenReturn(Optional.of(envelope));
+        when(requestContext.getPathVariable("noticeIdentifier")).thenReturn(Optional.of(noticeId.toString()));
 
         assertThatThrownBy(() -> controller.updateAdminNotice(requestContext))
                 .isInstanceOf(IllegalArgumentException.class);
@@ -19508,9 +19562,10 @@ class AdminNoticeControllerTest {
     @Test
     @DisplayName("POST /papi/v1/notices sends request payload to service")
     void createNoticeDelegatesCorrectRequest() throws Exception {
-        var genRequest = new AdminNoticeRequest(
-            "Notice", "Message",
-            AdminNoticeRequest.SeverityValueEnum.CRITICAL);
+        AdminNoticeRequest genRequest = new AdminNoticeRequest();
+        genRequest.setTitleText("Notice");
+        genRequest.setMessageText("Message");
+        genRequest.setSeverityValue(AdminNoticeRequest.SeverityValueEnum.CRITICAL);
 
         var envelope = new AdminNoticeRequestEnvelope();
         envelope.setData(genRequest);
@@ -19521,7 +19576,8 @@ class AdminNoticeControllerTest {
 
         when(adminNoticeFacade.createNotice(any(AdminNoticeRequest.class))).thenReturn(response);
 
-        RequestContext<AdminNoticeRequestEnvelope> requestContext = TestContextFactory.withBody(envelope);
+        RequestContext<AdminNoticeRequestEnvelope> requestContext = mockRequestContext();
+        when(requestContext.getBody()).thenReturn(Optional.of(envelope));
         ResponseEntity<DataResponseNoticeData> result = controller.createAdminNotice(requestContext);
 
         assertThat(result.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -19549,7 +19605,6 @@ import com.hsbc.ccaas.papi.controller.helper.ApprovalResponseMapper;
 import com.hsbc.ccaas.papi.dto.PaginatedResult;
 import com.hsbc.ccaas.papi.dto.sapi.SapiPayloads.SapiPendingChange;
 import com.hsbc.ccaas.identity.service.helper.IdentityContextAccessor;
-import com.hsbc.ccaas.papi.testutil.TestContextFactory;
 import com.hsbc.wpb.ef.ports.RequestContext;
 
 import java.time.LocalDateTime;
@@ -19597,6 +19652,15 @@ class ApprovalWorkflowControllerTest {
         lenient().when(identity.adGroups()).thenReturn(Collections.emptyList());
     }
 
+    @SuppressWarnings("unchecked")
+    private <T> RequestContext<T> mockRequestContext() {
+        RequestContext<T> rc = (RequestContext<T>) mock(RequestContext.class);
+        lenient().when(rc.getBody()).thenReturn(Optional.empty());
+        lenient().when(rc.getQueryParameter(anyString())).thenReturn(Optional.empty());
+        lenient().when(rc.getPathVariable(anyString())).thenReturn(Optional.empty());
+        return rc;
+    }
+
     // ========================================================================
     // submitChange Tests
     // ========================================================================
@@ -19619,10 +19683,11 @@ class ApprovalWorkflowControllerTest {
                 .thenReturn(new PendingChangeResponse().changeIdentifier(CHANGE_ID).statusCode("PENDING_LEVEL_ONE"));
 
             SubmitChangeRequest submitRequest = buildSubmitChangeRequest();
-            SubmitChangeRequestEnvelope envelope = new SubmitChangeRequestEnvelope(submitRequest);
+            SubmitChangeRequestEnvelope envelope = new SubmitChangeRequestEnvelope();
+            envelope.setData(submitRequest);
 
-            RequestContext<SubmitChangeRequestEnvelope> requestContext =
-                TestContextFactory.withBody(envelope);
+            RequestContext<SubmitChangeRequestEnvelope> requestContext = mockRequestContext();
+            when(requestContext.getBody()).thenReturn(Optional.of(envelope));
 
             ResponseEntity<DataResponsePendingChangeData> result =
                 controller.submitChange(requestContext);
@@ -19651,10 +19716,11 @@ class ApprovalWorkflowControllerTest {
                 .thenReturn(new PendingChangeResponse().changeIdentifier(CHANGE_ID).statusCode("PENDING_LEVEL_ONE"));
 
             SubmitChangeRequest submitRequest = buildSubmitChangeRequest();
-            SubmitChangeRequestEnvelope envelope = new SubmitChangeRequestEnvelope(submitRequest);
+            SubmitChangeRequestEnvelope envelope = new SubmitChangeRequestEnvelope();
+            envelope.setData(submitRequest);
 
-            RequestContext<SubmitChangeRequestEnvelope> requestContext =
-                TestContextFactory.withBody(envelope);
+            RequestContext<SubmitChangeRequestEnvelope> requestContext = mockRequestContext();
+            when(requestContext.getBody()).thenReturn(Optional.of(envelope));
 
             ResponseEntity<DataResponsePendingChangeData> result =
                 controller.submitChange(requestContext);
@@ -19676,11 +19742,11 @@ class ApprovalWorkflowControllerTest {
                 .thenReturn(new PendingChangeResponse().changeIdentifier(CHANGE_ID).statusCode("PENDING_LEVEL_ONE"));
 
             SubmitChangeRequest submitRequest = buildSubmitChangeRequest();
+            SubmitChangeRequestEnvelope envelope = new SubmitChangeRequestEnvelope();
+            envelope.setData(submitRequest);
 
-            SubmitChangeRequestEnvelope envelope = new SubmitChangeRequestEnvelope(submitRequest);
-
-            RequestContext<SubmitChangeRequestEnvelope> requestContext =
-                TestContextFactory.withBody(envelope);
+            RequestContext<SubmitChangeRequestEnvelope> requestContext = mockRequestContext();
+            when(requestContext.getBody()).thenReturn(Optional.of(envelope));
 
             controller.submitChange(requestContext);
 
@@ -19708,8 +19774,8 @@ class ApprovalWorkflowControllerTest {
                 eq("PENDING_LEVEL_ONE"), eq(USER_ID), anyList(), any(), eq(0), eq(25)))
                 .thenReturn(sapiResponse);
 
-            RequestContext<Void> requestContext =
-                TestContextFactory.<Void>withQuery(Map.of("statusCode", "PENDING_LEVEL_ONE"));
+            RequestContext<Void> requestContext = mockRequestContext();
+            when(requestContext.getQueryParameter("statusCode")).thenReturn(Optional.of("PENDING_LEVEL_ONE"));
 
             ResponseEntity<DataMetaResponsePendingChangesData> result =
                 controller.listPendingChanges(requestContext);
@@ -19730,8 +19796,8 @@ class ApprovalWorkflowControllerTest {
             when(sapiApprovalClient.listPendingChanges(any(), any(), anyList(), any(), anyInt(), anyInt()))
                 .thenReturn(sapiResponse);
 
-            RequestContext<Void> requestContext =
-                TestContextFactory.<Void>withQuery(Map.of("statusCode", "PENDING_LEVEL_ONE"));
+            RequestContext<Void> requestContext = mockRequestContext();
+            when(requestContext.getQueryParameter("statusCode")).thenReturn(Optional.of("PENDING_LEVEL_ONE"));
 
             ResponseEntity<DataMetaResponsePendingChangesData> result =
                 controller.listPendingChanges(requestContext);
@@ -19751,8 +19817,8 @@ class ApprovalWorkflowControllerTest {
             when(sapiApprovalClient.listPendingChanges(any(), any(), anyList(), any(), anyInt(), anyInt()))
                 .thenReturn(sapiResponse);
 
-            RequestContext<Void> requestContext =
-                TestContextFactory.<Void>withQuery(Map.of("statusCode", "PENDING_LEVEL_ONE"));
+            RequestContext<Void> requestContext = mockRequestContext();
+            when(requestContext.getQueryParameter("statusCode")).thenReturn(Optional.of("PENDING_LEVEL_ONE"));
 
             ResponseEntity<DataMetaResponsePendingChangesData> result =
                 controller.listPendingChanges(requestContext);
@@ -19783,8 +19849,8 @@ class ApprovalWorkflowControllerTest {
 
             when(sapiApprovalClient.getPendingChange(CHANGE_ID)).thenReturn(sapiResponse);
 
-            RequestContext<Void> requestContext =
-                TestContextFactory.<Void>withPath(Map.of("changeIdentifier", CHANGE_ID));
+            RequestContext<Void> requestContext = mockRequestContext();
+            when(requestContext.getPathVariable("changeIdentifier")).thenReturn(Optional.of(CHANGE_ID));
 
             ResponseEntity<DataResponsePendingChangeData> result =
                 controller.getPendingChange(requestContext);
@@ -19798,8 +19864,8 @@ class ApprovalWorkflowControllerTest {
         void getPendingChange_notFound_returns404() throws Exception {
             when(sapiApprovalClient.getPendingChange(CHANGE_ID)).thenReturn(null);
 
-            RequestContext<Void> requestContext =
-                TestContextFactory.<Void>withPath(Map.of("changeIdentifier", CHANGE_ID));
+            RequestContext<Void> requestContext = mockRequestContext();
+            when(requestContext.getPathVariable("changeIdentifier")).thenReturn(Optional.of(CHANGE_ID));
 
             ResponseEntity<DataResponsePendingChangeData> result =
                 controller.getPendingChange(requestContext);
@@ -19822,8 +19888,8 @@ class ApprovalWorkflowControllerTest {
 
             when(sapiApprovalClient.getPendingChange(CHANGE_ID)).thenReturn(sapiResponse);
 
-            RequestContext<Void> requestContext =
-                TestContextFactory.<Void>withPath(Map.of("changeIdentifier", CHANGE_ID));
+            RequestContext<Void> requestContext = mockRequestContext();
+            when(requestContext.getPathVariable("changeIdentifier")).thenReturn(Optional.of(CHANGE_ID));
 
             ResponseEntity<DataResponsePendingChangeData> result =
                 controller.getPendingChange(requestContext);
@@ -19844,8 +19910,8 @@ class ApprovalWorkflowControllerTest {
 
             when(sapiApprovalClient.getPendingChange(CHANGE_ID)).thenReturn(sapiResponse);
 
-            RequestContext<Void> requestContext =
-                TestContextFactory.<Void>withPath(Map.of("changeIdentifier", CHANGE_ID));
+            RequestContext<Void> requestContext = mockRequestContext();
+            when(requestContext.getPathVariable("changeIdentifier")).thenReturn(Optional.of(CHANGE_ID));
 
             ResponseEntity<DataResponsePendingChangeData> result =
                 controller.getPendingChange(requestContext);
@@ -19873,12 +19939,14 @@ class ApprovalWorkflowControllerTest {
             when(sapiApprovalClient.approve(eq(CHANGE_ID), eq(USER_ID), eq(""), any(), any()))
                 .thenReturn(approvedResult);
 
-            ApproveChangeRequest approveRequest = new ApproveChangeRequest(CHANGE_ID);
+            ApproveChangeRequest approveRequest = new ApproveChangeRequest();
+            approveRequest.setChangeIdentifier(CHANGE_ID);
             approveRequest.setCommentText("Looks good");
-            ApproveChangeRequestEnvelope envelope = new ApproveChangeRequestEnvelope(approveRequest);
+            ApproveChangeRequestEnvelope envelope = new ApproveChangeRequestEnvelope();
+            envelope.setData(approveRequest);
 
-            RequestContext<ApproveChangeRequestEnvelope> requestContext =
-                TestContextFactory.withBody(envelope);
+            RequestContext<ApproveChangeRequestEnvelope> requestContext = mockRequestContext();
+            when(requestContext.getBody()).thenReturn(Optional.of(envelope));
 
             ResponseEntity<DataResponseApprovalData> result =
                 controller.approveChange(requestContext);
@@ -19899,11 +19967,13 @@ class ApprovalWorkflowControllerTest {
             when(sapiApprovalClient.approve(eq(CHANGE_ID), eq(USER_ID), eq(""), any(), any()))
                 .thenReturn(approvedResult);
 
-            ApproveChangeRequest approveRequest = new ApproveChangeRequest(CHANGE_ID);
-            ApproveChangeRequestEnvelope envelope = new ApproveChangeRequestEnvelope(approveRequest);
+            ApproveChangeRequest approveRequest = new ApproveChangeRequest();
+            approveRequest.setChangeIdentifier(CHANGE_ID);
+            ApproveChangeRequestEnvelope envelope = new ApproveChangeRequestEnvelope();
+            envelope.setData(approveRequest);
 
-            RequestContext<ApproveChangeRequestEnvelope> requestContext =
-                TestContextFactory.withBody(envelope);
+            RequestContext<ApproveChangeRequestEnvelope> requestContext = mockRequestContext();
+            when(requestContext.getBody()).thenReturn(Optional.of(envelope));
 
             ResponseEntity<DataResponseApprovalData> result =
                 controller.approveChange(requestContext);
@@ -19924,12 +19994,14 @@ class ApprovalWorkflowControllerTest {
             when(sapiApprovalClient.approve(eq(CHANGE_ID), eq(USER_ID), eq(""), any(), eq(adGroups)))
                 .thenReturn(approvedResult);
 
-            ApproveChangeRequest approveRequest = new ApproveChangeRequest(CHANGE_ID);
+            ApproveChangeRequest approveRequest = new ApproveChangeRequest();
+            approveRequest.setChangeIdentifier(CHANGE_ID);
             approveRequest.setCommentText("Approved");
-            ApproveChangeRequestEnvelope envelope = new ApproveChangeRequestEnvelope(approveRequest);
+            ApproveChangeRequestEnvelope envelope = new ApproveChangeRequestEnvelope();
+            envelope.setData(approveRequest);
 
-            RequestContext<ApproveChangeRequestEnvelope> requestContext =
-                TestContextFactory.withBody(envelope);
+            RequestContext<ApproveChangeRequestEnvelope> requestContext = mockRequestContext();
+            when(requestContext.getBody()).thenReturn(Optional.of(envelope));
 
             controller.approveChange(requestContext);
 
@@ -19948,11 +20020,13 @@ class ApprovalWorkflowControllerTest {
             when(sapiApprovalClient.approve(eq(CHANGE_ID), eq(USER_ID), eq(""), any(), any()))
                 .thenReturn(escalatedResult);
 
-            ApproveChangeRequest approveRequest = new ApproveChangeRequest(CHANGE_ID);
-            ApproveChangeRequestEnvelope envelope = new ApproveChangeRequestEnvelope(approveRequest);
+            ApproveChangeRequest approveRequest = new ApproveChangeRequest();
+            approveRequest.setChangeIdentifier(CHANGE_ID);
+            ApproveChangeRequestEnvelope envelope = new ApproveChangeRequestEnvelope();
+            envelope.setData(approveRequest);
 
-            RequestContext<ApproveChangeRequestEnvelope> requestContext =
-                TestContextFactory.withBody(envelope);
+            RequestContext<ApproveChangeRequestEnvelope> requestContext = mockRequestContext();
+            when(requestContext.getBody()).thenReturn(Optional.of(envelope));
 
             ResponseEntity<DataResponseApprovalData> result =
                 controller.approveChange(requestContext);
@@ -19980,11 +20054,14 @@ class ApprovalWorkflowControllerTest {
             when(sapiApprovalClient.reject(eq(CHANGE_ID), eq(USER_ID), eq(""), eq("Policy violation"), any()))
                 .thenReturn(sapiResult);
 
-            RejectChangeRequest rejectRequest = new RejectChangeRequest(CHANGE_ID, "Policy violation");
-            RejectChangeRequestEnvelope envelope = new RejectChangeRequestEnvelope(rejectRequest);
+            RejectChangeRequest rejectRequest = new RejectChangeRequest();
+            rejectRequest.setChangeIdentifier(CHANGE_ID);
+            rejectRequest.setReasonText("Policy violation");
+            RejectChangeRequestEnvelope envelope = new RejectChangeRequestEnvelope();
+            envelope.setData(rejectRequest);
 
-            RequestContext<RejectChangeRequestEnvelope> requestContext =
-                TestContextFactory.withBody(envelope);
+            RequestContext<RejectChangeRequestEnvelope> requestContext = mockRequestContext();
+            when(requestContext.getBody()).thenReturn(Optional.of(envelope));
 
             ResponseEntity<DataResponseRejectionData> result =
                 controller.rejectChange(requestContext);
@@ -19996,11 +20073,14 @@ class ApprovalWorkflowControllerTest {
         @Test
         @DisplayName("should return 400 when rejection reason is null")
         void rejectChange_nullReason_returns400() throws Exception {
-            RejectChangeRequest rejectRequest = new RejectChangeRequest(CHANGE_ID, null);
-            RejectChangeRequestEnvelope envelope = new RejectChangeRequestEnvelope(rejectRequest);
+            RejectChangeRequest rejectRequest = new RejectChangeRequest();
+            rejectRequest.setChangeIdentifier(CHANGE_ID);
+            rejectRequest.setReasonText(null);
+            RejectChangeRequestEnvelope envelope = new RejectChangeRequestEnvelope();
+            envelope.setData(rejectRequest);
 
-            RequestContext<RejectChangeRequestEnvelope> requestContext =
-                TestContextFactory.withBody(envelope);
+            RequestContext<RejectChangeRequestEnvelope> requestContext = mockRequestContext();
+            when(requestContext.getBody()).thenReturn(Optional.of(envelope));
 
             ResponseEntity<DataResponseRejectionData> result =
                 controller.rejectChange(requestContext);
@@ -20011,11 +20091,14 @@ class ApprovalWorkflowControllerTest {
         @Test
         @DisplayName("should return 400 when rejection reason is blank")
         void rejectChange_blankReason_returns400() throws Exception {
-            RejectChangeRequest rejectRequest = new RejectChangeRequest(CHANGE_ID, "   ");
-            RejectChangeRequestEnvelope envelope = new RejectChangeRequestEnvelope(rejectRequest);
+            RejectChangeRequest rejectRequest = new RejectChangeRequest();
+            rejectRequest.setChangeIdentifier(CHANGE_ID);
+            rejectRequest.setReasonText("   ");
+            RejectChangeRequestEnvelope envelope = new RejectChangeRequestEnvelope();
+            envelope.setData(rejectRequest);
 
-            RequestContext<RejectChangeRequestEnvelope> requestContext =
-                TestContextFactory.withBody(envelope);
+            RequestContext<RejectChangeRequestEnvelope> requestContext = mockRequestContext();
+            when(requestContext.getBody()).thenReturn(Optional.of(envelope));
 
             ResponseEntity<DataResponseRejectionData> result =
                 controller.rejectChange(requestContext);
@@ -20038,8 +20121,8 @@ class ApprovalWorkflowControllerTest {
         void cancelChange_success_returns200() throws Exception {
             when(identity.employeeId()).thenReturn(USER_ID);
 
-            RequestContext<Void> requestContext =
-                TestContextFactory.<Void>withPath(Map.of("changeIdentifier", CHANGE_ID));
+            RequestContext<Void> requestContext = mockRequestContext();
+            when(requestContext.getPathVariable("changeIdentifier")).thenReturn(Optional.of(CHANGE_ID));
 
             ResponseEntity<DataResponseCancellationData> result =
                 controller.cancelChange(requestContext);
@@ -20065,9 +20148,11 @@ class ApprovalWorkflowControllerTest {
             when(identity.employeeId()).thenReturn(null);
 
             SubmitChangeRequest submitRequest = buildSubmitChangeRequest();
-            SubmitChangeRequestEnvelope envelope = new SubmitChangeRequestEnvelope(submitRequest);
-            RequestContext<SubmitChangeRequestEnvelope> requestContext =
-                TestContextFactory.withBody(envelope);
+            SubmitChangeRequestEnvelope envelope = new SubmitChangeRequestEnvelope();
+            envelope.setData(submitRequest);
+
+            RequestContext<SubmitChangeRequestEnvelope> requestContext = mockRequestContext();
+            when(requestContext.getBody()).thenReturn(Optional.of(envelope));
 
             assertThatThrownBy(() -> controller.submitChange(requestContext))
                 .isInstanceOf(ResponseStatusException.class)
@@ -20082,10 +20167,13 @@ class ApprovalWorkflowControllerTest {
         void approveChange_blankEmployeeId_throws401() {
             when(identity.employeeId()).thenReturn("  ");
 
-            ApproveChangeRequest approveRequest = new ApproveChangeRequest(CHANGE_ID);
-            ApproveChangeRequestEnvelope envelope = new ApproveChangeRequestEnvelope(approveRequest);
-            RequestContext<ApproveChangeRequestEnvelope> requestContext =
-                TestContextFactory.withBody(envelope);
+            ApproveChangeRequest approveRequest = new ApproveChangeRequest();
+            approveRequest.setChangeIdentifier(CHANGE_ID);
+            ApproveChangeRequestEnvelope envelope = new ApproveChangeRequestEnvelope();
+            envelope.setData(approveRequest);
+
+            RequestContext<ApproveChangeRequestEnvelope> requestContext = mockRequestContext();
+            when(requestContext.getBody()).thenReturn(Optional.of(envelope));
 
             assertThatThrownBy(() -> controller.approveChange(requestContext))
                 .isInstanceOf(ResponseStatusException.class)
@@ -20100,10 +20188,14 @@ class ApprovalWorkflowControllerTest {
         void rejectChange_nullEmployeeId_throws401() {
             when(identity.employeeId()).thenReturn(null);
 
-            RejectChangeRequest rejectRequest = new RejectChangeRequest(CHANGE_ID, "Policy violation");
-            RejectChangeRequestEnvelope envelope = new RejectChangeRequestEnvelope(rejectRequest);
-            RequestContext<RejectChangeRequestEnvelope> requestContext =
-                TestContextFactory.withBody(envelope);
+            RejectChangeRequest rejectRequest = new RejectChangeRequest();
+            rejectRequest.setChangeIdentifier(CHANGE_ID);
+            rejectRequest.setReasonText("Policy violation");
+            RejectChangeRequestEnvelope envelope = new RejectChangeRequestEnvelope();
+            envelope.setData(rejectRequest);
+
+            RequestContext<RejectChangeRequestEnvelope> requestContext = mockRequestContext();
+            when(requestContext.getBody()).thenReturn(Optional.of(envelope));
 
             assertThatThrownBy(() -> controller.rejectChange(requestContext))
                 .isInstanceOf(ResponseStatusException.class)
@@ -20118,8 +20210,8 @@ class ApprovalWorkflowControllerTest {
         void cancelChange_nullEmployeeId_throws401() {
             when(identity.employeeId()).thenReturn(null);
 
-            RequestContext<Void> requestContext =
-                TestContextFactory.<Void>withPath(Map.of("changeIdentifier", CHANGE_ID));
+            RequestContext<Void> requestContext = mockRequestContext();
+            when(requestContext.getPathVariable("changeIdentifier")).thenReturn(Optional.of(CHANGE_ID));
 
             assertThatThrownBy(() -> controller.cancelChange(requestContext))
                 .isInstanceOf(ResponseStatusException.class)
@@ -20134,8 +20226,8 @@ class ApprovalWorkflowControllerTest {
         void listPendingChanges_nullEmployeeId_throws401() {
             when(identity.employeeId()).thenReturn(null);
 
-            RequestContext<Void> requestContext =
-                TestContextFactory.<Void>withQuery(Map.of("statusCode", "PENDING_LEVEL_ONE"));
+            RequestContext<Void> requestContext = mockRequestContext();
+            when(requestContext.getQueryParameter("statusCode")).thenReturn(Optional.of("PENDING_LEVEL_ONE"));
 
             assertThatThrownBy(() -> controller.listPendingChanges(requestContext))
                 .isInstanceOf(ResponseStatusException.class)
@@ -20164,10 +20256,13 @@ class ApprovalWorkflowControllerTest {
                 .thenThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Approve pending change - SAPI error: Change is already approved"));
 
-            ApproveChangeRequest approveRequest = new ApproveChangeRequest(CHANGE_ID);
-            ApproveChangeRequestEnvelope envelope = new ApproveChangeRequestEnvelope(approveRequest);
-            RequestContext<ApproveChangeRequestEnvelope> requestContext =
-                TestContextFactory.withBody(envelope);
+            ApproveChangeRequest approveRequest = new ApproveChangeRequest();
+            approveRequest.setChangeIdentifier(CHANGE_ID);
+            ApproveChangeRequestEnvelope envelope = new ApproveChangeRequestEnvelope();
+            envelope.setData(approveRequest);
+
+            RequestContext<ApproveChangeRequestEnvelope> requestContext = mockRequestContext();
+            when(requestContext.getBody()).thenReturn(Optional.of(envelope));
 
             assertThatThrownBy(() -> controller.approveChange(requestContext))
                 .isInstanceOf(ResponseStatusException.class)
@@ -20188,10 +20283,13 @@ class ApprovalWorkflowControllerTest {
                 .thenThrow(new ResponseStatusException(HttpStatus.NOT_FOUND,
                     "Approve pending change - SAPI error: Pending change not found"));
 
-            ApproveChangeRequest approveRequest = new ApproveChangeRequest(CHANGE_ID);
-            ApproveChangeRequestEnvelope envelope = new ApproveChangeRequestEnvelope(approveRequest);
-            RequestContext<ApproveChangeRequestEnvelope> requestContext =
-                TestContextFactory.withBody(envelope);
+            ApproveChangeRequest approveRequest = new ApproveChangeRequest();
+            approveRequest.setChangeIdentifier(CHANGE_ID);
+            ApproveChangeRequestEnvelope envelope = new ApproveChangeRequestEnvelope();
+            envelope.setData(approveRequest);
+
+            RequestContext<ApproveChangeRequestEnvelope> requestContext = mockRequestContext();
+            when(requestContext.getBody()).thenReturn(Optional.of(envelope));
 
             assertThatThrownBy(() -> controller.approveChange(requestContext))
                 .isInstanceOf(ResponseStatusException.class)
@@ -20211,10 +20309,14 @@ class ApprovalWorkflowControllerTest {
                 .thenThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Reject pending change - SAPI error: Cannot reject an already approved change"));
 
-            RejectChangeRequest rejectRequest = new RejectChangeRequest(CHANGE_ID, "Too late");
-            RejectChangeRequestEnvelope envelope = new RejectChangeRequestEnvelope(rejectRequest);
-            RequestContext<RejectChangeRequestEnvelope> requestContext =
-                TestContextFactory.withBody(envelope);
+            RejectChangeRequest rejectRequest = new RejectChangeRequest();
+            rejectRequest.setChangeIdentifier(CHANGE_ID);
+            rejectRequest.setReasonText("Too late");
+            RejectChangeRequestEnvelope envelope = new RejectChangeRequestEnvelope();
+            envelope.setData(rejectRequest);
+
+            RequestContext<RejectChangeRequestEnvelope> requestContext = mockRequestContext();
+            when(requestContext.getBody()).thenReturn(Optional.of(envelope));
 
             assertThatThrownBy(() -> controller.rejectChange(requestContext))
                 .isInstanceOf(ResponseStatusException.class)
@@ -20234,8 +20336,8 @@ class ApprovalWorkflowControllerTest {
                 .thenThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Cancel pending change - SAPI error: Cannot cancel a rejected change"));
 
-            RequestContext<Void> requestContext =
-                TestContextFactory.<Void>withPath(Map.of("changeIdentifier", CHANGE_ID));
+            RequestContext<Void> requestContext = mockRequestContext();
+            when(requestContext.getPathVariable("changeIdentifier")).thenReturn(Optional.of(CHANGE_ID));
 
             assertThatThrownBy(() -> controller.cancelChange(requestContext))
                 .isInstanceOf(ResponseStatusException.class)
@@ -20268,8 +20370,8 @@ class ApprovalWorkflowControllerTest {
 
             when(sapiApprovalClient.getPendingChange(CHANGE_ID)).thenReturn(sapiResponse);
 
-            RequestContext<Void> requestContext =
-                TestContextFactory.<Void>withPath(Map.of("changeIdentifier", CHANGE_ID));
+            RequestContext<Void> requestContext = mockRequestContext();
+            when(requestContext.getPathVariable("changeIdentifier")).thenReturn(Optional.of(CHANGE_ID));
 
             ResponseEntity<DataResponsePendingChangeData> result =
                 controller.getPendingChange(requestContext);
@@ -20289,8 +20391,8 @@ class ApprovalWorkflowControllerTest {
 
             when(sapiApprovalClient.getPendingChange(CHANGE_ID)).thenReturn(sapiResponse);
 
-            RequestContext<Void> requestContext =
-                TestContextFactory.<Void>withPath(Map.of("changeIdentifier", CHANGE_ID));
+            RequestContext<Void> requestContext = mockRequestContext();
+            when(requestContext.getPathVariable("changeIdentifier")).thenReturn(Optional.of(CHANGE_ID));
 
             ResponseEntity<DataResponsePendingChangeData> result =
                 controller.getPendingChange(requestContext);
@@ -20310,8 +20412,8 @@ class ApprovalWorkflowControllerTest {
 
             when(sapiApprovalClient.getPendingChange(CHANGE_ID)).thenReturn(sapiResponse);
 
-            RequestContext<Void> requestContext =
-                TestContextFactory.<Void>withPath(Map.of("changeIdentifier", CHANGE_ID));
+            RequestContext<Void> requestContext = mockRequestContext();
+            when(requestContext.getPathVariable("changeIdentifier")).thenReturn(Optional.of(CHANGE_ID));
 
             ResponseEntity<DataResponsePendingChangeData> result =
                 controller.getPendingChange(requestContext);
@@ -20331,8 +20433,8 @@ class ApprovalWorkflowControllerTest {
 
             when(sapiApprovalClient.getPendingChange(CHANGE_ID)).thenReturn(sapiResponse);
 
-            RequestContext<Void> requestContext =
-                TestContextFactory.<Void>withPath(Map.of("changeIdentifier", CHANGE_ID));
+            RequestContext<Void> requestContext = mockRequestContext();
+            when(requestContext.getPathVariable("changeIdentifier")).thenReturn(Optional.of(CHANGE_ID));
 
             ResponseEntity<DataResponsePendingChangeData> result =
                 controller.getPendingChange(requestContext);
@@ -20345,7 +20447,9 @@ class ApprovalWorkflowControllerTest {
     // ========================================================================
 
     private SubmitChangeRequest buildSubmitChangeRequest() {
-        SubmitChangeRequest request = new SubmitChangeRequest(GROUP_ID, Map.of("roleName", "chat_agent"));
+        SubmitChangeRequest request = new SubmitChangeRequest();
+        request.setTargetGroupIdentifier(GROUP_ID);
+        request.setProposedConfig(Map.of("roleName", "chat_agent"));
         request.setChangeDescription("Test change description");
         request.setConfigVersionNumber(42L);
         return request;
@@ -20472,10 +20576,10 @@ import static org.mockito.Mockito.*;
 import com.hsbc.ccaas.papi.controller.model.*;
 import com.hsbc.ccaas.papi.client.SapiApprovalClient;
 import com.hsbc.ccaas.identity.service.helper.IdentityContextAccessor;
-import com.hsbc.ccaas.papi.testutil.TestContextFactory;
 import com.hsbc.wpb.ef.ports.RequestContext;
 
 import java.util.Map;
+import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -20509,6 +20613,15 @@ class DirectSaveControllerTest {
         lenient().when(identity.adGroups()).thenReturn(java.util.Collections.emptyList());
     }
 
+    @SuppressWarnings("unchecked")
+    private <T> RequestContext<T> mockRequestContext() {
+        RequestContext<T> rc = (RequestContext<T>) mock(RequestContext.class);
+        lenient().when(rc.getBody()).thenReturn(Optional.empty());
+        lenient().when(rc.getQueryParameter(anyString())).thenReturn(Optional.empty());
+        lenient().when(rc.getPathVariable(anyString())).thenReturn(Optional.empty());
+        return rc;
+    }
+
     @Nested
     @DisplayName("directSaveConfig success")
     class SuccessTests {
@@ -20519,13 +20632,16 @@ class DirectSaveControllerTest {
             when(identity.employeeId()).thenReturn(SUPER_ADMIN_ID);
             // TODO: restore when enterprise ccaas-identity-mock supports displayName()
 
-            DirectSaveRequest request = new DirectSaveRequest(GROUP_ID, Map.of("roleName", "chat_agent"));
+            DirectSaveRequest request = new DirectSaveRequest();
+            request.setTargetGroupIdentifier(GROUP_ID);
+            request.setProposedState(Map.of("roleName", "chat_agent"));
             request.setCurrentState(Map.of("roleName", "voice_agent"));
             request.setConfigVersionNumber(5L);
-            DirectSaveRequestEnvelope envelope = new DirectSaveRequestEnvelope(request);
+            DirectSaveRequestEnvelope envelope = new DirectSaveRequestEnvelope();
+            envelope.setData(request);
 
-            RequestContext<DirectSaveRequestEnvelope> requestContext =
-                TestContextFactory.withBody(envelope);
+            RequestContext<DirectSaveRequestEnvelope> requestContext = mockRequestContext();
+            when(requestContext.getBody()).thenReturn(Optional.of(envelope));
 
             ResponseEntity<DirectSaveResponse> result = controller.directSaveConfig(requestContext);
 
@@ -20550,11 +20666,14 @@ class DirectSaveControllerTest {
             when(identity.employeeId()).thenReturn(SUPER_ADMIN_ID);
             // TODO: restore when enterprise ccaas-identity-mock supports displayName()
 
-            DirectSaveRequest request = new DirectSaveRequest(GROUP_ID, Map.of("roleName", "chat_agent"));
-            DirectSaveRequestEnvelope envelope = new DirectSaveRequestEnvelope(request);
+            DirectSaveRequest request = new DirectSaveRequest();
+            request.setTargetGroupIdentifier(GROUP_ID);
+            request.setProposedState(Map.of("roleName", "chat_agent"));
+            DirectSaveRequestEnvelope envelope = new DirectSaveRequestEnvelope();
+            envelope.setData(request);
 
-            RequestContext<DirectSaveRequestEnvelope> requestContext =
-                TestContextFactory.withBody(envelope);
+            RequestContext<DirectSaveRequestEnvelope> requestContext = mockRequestContext();
+            when(requestContext.getBody()).thenReturn(Optional.of(envelope));
 
             ResponseEntity<DirectSaveResponse> result = controller.directSaveConfig(requestContext);
 
@@ -20580,11 +20699,14 @@ class DirectSaveControllerTest {
         void directSave_nullEmployeeId_throws401() {
             when(identity.employeeId()).thenReturn(null);
 
-            DirectSaveRequest request = new DirectSaveRequest(GROUP_ID, Map.of("roleName", "chat_agent"));
-            DirectSaveRequestEnvelope envelope = new DirectSaveRequestEnvelope(request);
+            DirectSaveRequest request = new DirectSaveRequest();
+            request.setTargetGroupIdentifier(GROUP_ID);
+            request.setProposedState(Map.of("roleName", "chat_agent"));
+            DirectSaveRequestEnvelope envelope = new DirectSaveRequestEnvelope();
+            envelope.setData(request);
 
-            RequestContext<DirectSaveRequestEnvelope> requestContext =
-                TestContextFactory.withBody(envelope);
+            RequestContext<DirectSaveRequestEnvelope> requestContext = mockRequestContext();
+            when(requestContext.getBody()).thenReturn(Optional.of(envelope));
 
             assertThatThrownBy(() -> controller.directSaveConfig(requestContext))
                 .isInstanceOf(ResponseStatusException.class)
@@ -20599,11 +20721,14 @@ class DirectSaveControllerTest {
         void directSave_blankEmployeeId_throws401() {
             when(identity.employeeId()).thenReturn("  ");
 
-            DirectSaveRequest request = new DirectSaveRequest(GROUP_ID, Map.of("roleName", "chat_agent"));
-            DirectSaveRequestEnvelope envelope = new DirectSaveRequestEnvelope(request);
+            DirectSaveRequest request = new DirectSaveRequest();
+            request.setTargetGroupIdentifier(GROUP_ID);
+            request.setProposedState(Map.of("roleName", "chat_agent"));
+            DirectSaveRequestEnvelope envelope = new DirectSaveRequestEnvelope();
+            envelope.setData(request);
 
-            RequestContext<DirectSaveRequestEnvelope> requestContext =
-                TestContextFactory.withBody(envelope);
+            RequestContext<DirectSaveRequestEnvelope> requestContext = mockRequestContext();
+            when(requestContext.getBody()).thenReturn(Optional.of(envelope));
 
             assertThatThrownBy(() -> controller.directSaveConfig(requestContext))
                 .isInstanceOf(ResponseStatusException.class)
@@ -20616,7 +20741,7 @@ class DirectSaveControllerTest {
         @Test
         @DisplayName("should throw 400 when request body is missing")
         void directSave_noBody_throws400() {
-            RequestContext<DirectSaveRequestEnvelope> requestContext = TestContextFactory.create();
+            RequestContext<DirectSaveRequestEnvelope> requestContext = mockRequestContext();
 
             assertThatThrownBy(() -> controller.directSaveConfig(requestContext))
                 .isInstanceOf(ResponseStatusException.class)
@@ -20631,8 +20756,8 @@ class DirectSaveControllerTest {
         void directSave_nullData_throws400() {
             DirectSaveRequestEnvelope envelope = new DirectSaveRequestEnvelope();
 
-            RequestContext<DirectSaveRequestEnvelope> requestContext =
-                TestContextFactory.withBody(envelope);
+            RequestContext<DirectSaveRequestEnvelope> requestContext = mockRequestContext();
+            when(requestContext.getBody()).thenReturn(Optional.of(envelope));
 
             assertThatThrownBy(() -> controller.directSaveConfig(requestContext))
                 .isInstanceOf(ResponseStatusException.class)
@@ -20645,11 +20770,14 @@ class DirectSaveControllerTest {
         @Test
         @DisplayName("should throw 400 when targetGroupIdentifier is missing")
         void directSave_missingGroupId_throws400() {
-            DirectSaveRequest request = new DirectSaveRequest(null, Map.of("roleName", "chat_agent"));
-            DirectSaveRequestEnvelope envelope = new DirectSaveRequestEnvelope(request);
+            DirectSaveRequest request = new DirectSaveRequest();
+            request.setTargetGroupIdentifier(null);
+            request.setProposedState(Map.of("roleName", "chat_agent"));
+            DirectSaveRequestEnvelope envelope = new DirectSaveRequestEnvelope();
+            envelope.setData(request);
 
-            RequestContext<DirectSaveRequestEnvelope> requestContext =
-                TestContextFactory.withBody(envelope);
+            RequestContext<DirectSaveRequestEnvelope> requestContext = mockRequestContext();
+            when(requestContext.getBody()).thenReturn(Optional.of(envelope));
 
             assertThatThrownBy(() -> controller.directSaveConfig(requestContext))
                 .isInstanceOf(ResponseStatusException.class)
@@ -20675,11 +20803,14 @@ class DirectSaveControllerTest {
                 "Direct save - SAPI error: AD group not found"))
                 .when(sapiApprovalClient).directSave(anyString(), any(), any(), anyString(), anyString(), any(), any());
 
-            DirectSaveRequest request = new DirectSaveRequest(GROUP_ID, Map.of("roleName", "chat_agent"));
-            DirectSaveRequestEnvelope envelope = new DirectSaveRequestEnvelope(request);
+            DirectSaveRequest request = new DirectSaveRequest();
+            request.setTargetGroupIdentifier(GROUP_ID);
+            request.setProposedState(Map.of("roleName", "chat_agent"));
+            DirectSaveRequestEnvelope envelope = new DirectSaveRequestEnvelope();
+            envelope.setData(request);
 
-            RequestContext<DirectSaveRequestEnvelope> requestContext =
-                TestContextFactory.withBody(envelope);
+            RequestContext<DirectSaveRequestEnvelope> requestContext = mockRequestContext();
+            when(requestContext.getBody()).thenReturn(Optional.of(envelope));
 
             assertThatThrownBy(() -> controller.directSaveConfig(requestContext))
                 .isInstanceOf(ResponseStatusException.class)
@@ -20699,12 +20830,15 @@ class DirectSaveControllerTest {
                 "Direct save - SAPI error: Optimistic locking conflict"))
                 .when(sapiApprovalClient).directSave(anyString(), any(), any(), anyString(), anyString(), any(), any());
 
-            DirectSaveRequest request = new DirectSaveRequest(GROUP_ID, Map.of("roleName", "chat_agent"));
+            DirectSaveRequest request = new DirectSaveRequest();
+            request.setTargetGroupIdentifier(GROUP_ID);
+            request.setProposedState(Map.of("roleName", "chat_agent"));
             request.setConfigVersionNumber(1L);
-            DirectSaveRequestEnvelope envelope = new DirectSaveRequestEnvelope(request);
+            DirectSaveRequestEnvelope envelope = new DirectSaveRequestEnvelope();
+            envelope.setData(request);
 
-            RequestContext<DirectSaveRequestEnvelope> requestContext =
-                TestContextFactory.withBody(envelope);
+            RequestContext<DirectSaveRequestEnvelope> requestContext = mockRequestContext();
+            when(requestContext.getBody()).thenReturn(Optional.of(envelope));
 
             assertThatThrownBy(() -> controller.directSaveConfig(requestContext))
                 .isInstanceOf(ResponseStatusException.class)
@@ -20722,20 +20856,19 @@ package com.hsbc.ccaas.papi.controller;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 import com.hsbc.ccaas.papi.application.EmbeddedAppFacade;
 import com.hsbc.ccaas.papi.controller.helper.EmbeddedAppResponseAssembler;
 import com.hsbc.ccaas.papi.controller.model.*;
-import com.hsbc.ccaas.papi.testutil.TestContextFactory;
 import com.hsbc.ccaas.identity.service.helper.IdentityContextAccessor;
 import com.hsbc.wpb.ef.ports.RequestContext;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -20766,6 +20899,15 @@ class EmbeddedAppAdminControllerTest {
         );
     }
 
+    @SuppressWarnings("unchecked")
+    private <T> RequestContext<T> mockRequestContext() {
+        RequestContext<T> rc = (RequestContext<T>) mock(RequestContext.class);
+        lenient().when(rc.getBody()).thenReturn(Optional.empty());
+        lenient().when(rc.getQueryParameter(anyString())).thenReturn(Optional.empty());
+        lenient().when(rc.getPathVariable(anyString())).thenReturn(Optional.empty());
+        return rc;
+    }
+
     @Test
     @DisplayName("GET /papi/v1/embedded-apps returns list of apps")
     void getAllEmbeddedAppsReturnsList() throws Exception {
@@ -20773,7 +20915,9 @@ class EmbeddedAppAdminControllerTest {
         app.setAppKey("wealth");
         when(embeddedAppFacade.getAllEmbeddedApps(any(), eq(0), eq(0))).thenReturn(List.of(app));
 
-        var requestContext = TestContextFactory.<Void>withQuery(Map.of("offset", "0", "limit", "0"));
+        RequestContext<Void> requestContext = mockRequestContext();
+        when(requestContext.getQueryParameter("offset")).thenReturn(Optional.of("0"));
+        when(requestContext.getQueryParameter("limit")).thenReturn(Optional.of("0"));
 
         var response = controller.getAllEmbeddedApps(requestContext);
 
@@ -20790,7 +20934,8 @@ class EmbeddedAppAdminControllerTest {
         app.setAppKey("wealth");
         when(embeddedAppFacade.getEmbeddedAppByKey("wealth")).thenReturn(app);
 
-        var requestContext = TestContextFactory.<Void>withPath(Map.of("appKey", "wealth"));
+        RequestContext<Void> requestContext = mockRequestContext();
+        when(requestContext.getPathVariable("appKey")).thenReturn(Optional.of("wealth"));
 
         var response = controller.getEmbeddedApp(requestContext);
 
@@ -20803,7 +20948,8 @@ class EmbeddedAppAdminControllerTest {
     void getEmbeddedAppNotFound() throws Exception {
         when(embeddedAppFacade.getEmbeddedAppByKey("missing")).thenReturn(null);
 
-        var requestContext = TestContextFactory.<Void>withPath(Map.of("appKey", "missing"));
+        RequestContext<Void> requestContext = mockRequestContext();
+        when(requestContext.getPathVariable("appKey")).thenReturn(Optional.of("missing"));
 
         var response = controller.getEmbeddedApp(requestContext);
 
@@ -20819,9 +20965,13 @@ class EmbeddedAppAdminControllerTest {
             .thenReturn(configResponse);
 
         var body = new GetAppAdGroupConfigurationRequest();
-        body.setData(new GetAppAdGroupConfigurationRequestData("CN=Voice"));
+        GetAppAdGroupConfigurationRequestData requestData = new GetAppAdGroupConfigurationRequestData();
+        requestData.setGroupIdentifier("CN=Voice");
+        body.setData(requestData);
 
-        var requestContext = TestContextFactory.withBodyAndPath(body, Map.of("appKey", "wealth"));
+        RequestContext<GetAppAdGroupConfigurationRequest> requestContext = mockRequestContext();
+        when(requestContext.getBody()).thenReturn(Optional.of(body));
+        when(requestContext.getPathVariable("appKey")).thenReturn(Optional.of("wealth"));
 
         var response = controller.getAppAdGroupConfiguration(requestContext);
 
@@ -20835,7 +20985,9 @@ class EmbeddedAppAdminControllerTest {
         var body = new GetAppAdGroupConfigurationRequest();
         body.setData(new GetAppAdGroupConfigurationRequestData());
 
-        var requestContext = TestContextFactory.withBodyAndPath(body, Map.of("appKey", "wealth"));
+        RequestContext<GetAppAdGroupConfigurationRequest> requestContext = mockRequestContext();
+        when(requestContext.getBody()).thenReturn(Optional.of(body));
+        when(requestContext.getPathVariable("appKey")).thenReturn(Optional.of("wealth"));
 
         assertThatThrownBy(() -> controller.getAppAdGroupConfiguration(requestContext))
             .isInstanceOf(ResponseStatusException.class)
@@ -20849,9 +21001,13 @@ class EmbeddedAppAdminControllerTest {
     @DisplayName("POST /papi/v1/embedded-apps-ad-groups/{appKey} returns 400 when groupIdentifier is blank")
     void getAppAdGroupConfigurationBlankGroupIdentifier() throws Exception {
         var body = new GetAppAdGroupConfigurationRequest();
-        body.setData(new GetAppAdGroupConfigurationRequestData("   "));
+        GetAppAdGroupConfigurationRequestData requestData = new GetAppAdGroupConfigurationRequestData();
+        requestData.setGroupIdentifier("   ");
+        body.setData(requestData);
 
-        var requestContext = TestContextFactory.withBodyAndPath(body, Map.of("appKey", "wealth"));
+        RequestContext<GetAppAdGroupConfigurationRequest> requestContext = mockRequestContext();
+        when(requestContext.getBody()).thenReturn(Optional.of(body));
+        when(requestContext.getPathVariable("appKey")).thenReturn(Optional.of("wealth"));
 
         assertThatThrownBy(() -> controller.getAppAdGroupConfiguration(requestContext))
             .isInstanceOf(ResponseStatusException.class)
@@ -20867,9 +21023,13 @@ class EmbeddedAppAdminControllerTest {
         when(embeddedAppFacade.getAppAdGroupConfiguration("wealth", "CN=Missing")).thenReturn(null);
 
         var body = new GetAppAdGroupConfigurationRequest();
-        body.setData(new GetAppAdGroupConfigurationRequestData("CN=Missing"));
+        GetAppAdGroupConfigurationRequestData requestData = new GetAppAdGroupConfigurationRequestData();
+        requestData.setGroupIdentifier("CN=Missing");
+        body.setData(requestData);
 
-        var requestContext = TestContextFactory.withBodyAndPath(body, Map.of("appKey", "wealth"));
+        RequestContext<GetAppAdGroupConfigurationRequest> requestContext = mockRequestContext();
+        when(requestContext.getBody()).thenReturn(Optional.of(body));
+        when(requestContext.getPathVariable("appKey")).thenReturn(Optional.of("wealth"));
 
         var response = controller.getAppAdGroupConfiguration(requestContext);
 
@@ -20884,9 +21044,13 @@ class EmbeddedAppAdminControllerTest {
                 "Fetch app AD group config for INVALID_APP/CN=Voice - SAPI error: "));
 
         var body = new GetAppAdGroupConfigurationRequest();
-        body.setData(new GetAppAdGroupConfigurationRequestData("CN=Voice"));
+        GetAppAdGroupConfigurationRequestData requestData = new GetAppAdGroupConfigurationRequestData();
+        requestData.setGroupIdentifier("CN=Voice");
+        body.setData(requestData);
 
-        var requestContext = TestContextFactory.withBodyAndPath(body, Map.of("appKey", "INVALID_APP"));
+        RequestContext<GetAppAdGroupConfigurationRequest> requestContext = mockRequestContext();
+        when(requestContext.getBody()).thenReturn(Optional.of(body));
+        when(requestContext.getPathVariable("appKey")).thenReturn(Optional.of("INVALID_APP"));
 
         var response = controller.getAppAdGroupConfiguration(requestContext);
 
@@ -20901,9 +21065,13 @@ class EmbeddedAppAdminControllerTest {
                 "Fetch app AD group config - Network error: Connection refused"));
 
         var body = new GetAppAdGroupConfigurationRequest();
-        body.setData(new GetAppAdGroupConfigurationRequestData("CN=Voice"));
+        GetAppAdGroupConfigurationRequestData requestData = new GetAppAdGroupConfigurationRequestData();
+        requestData.setGroupIdentifier("CN=Voice");
+        body.setData(requestData);
 
-        var requestContext = TestContextFactory.withBodyAndPath(body, Map.of("appKey", "wealth"));
+        RequestContext<GetAppAdGroupConfigurationRequest> requestContext = mockRequestContext();
+        when(requestContext.getBody()).thenReturn(Optional.of(body));
+        when(requestContext.getPathVariable("appKey")).thenReturn(Optional.of("wealth"));
 
         assertThatThrownBy(() -> controller.getAppAdGroupConfiguration(requestContext))
             .isInstanceOf(ResponseStatusException.class)
@@ -20916,7 +21084,9 @@ class EmbeddedAppAdminControllerTest {
     void getAppAdGroupConfigurationValidationFailure() throws Exception {
         var envelope = new UpdateAdGroupConfigRequestEnvelope();
 
-        var requestContext = TestContextFactory.withBodyAndPath(envelope, Map.of("appKey", "wealth"));
+        RequestContext<UpdateAdGroupConfigRequestEnvelope> requestContext = mockRequestContext();
+        when(requestContext.getBody()).thenReturn(Optional.of(envelope));
+        when(requestContext.getPathVariable("appKey")).thenReturn(Optional.of("wealth"));
 
         assertThatThrownBy(() -> controller.updateAppAdGroupConfiguration(requestContext))
             .isInstanceOf(ResponseStatusException.class)
@@ -20935,13 +21105,16 @@ class EmbeddedAppAdminControllerTest {
             List.of("transfer"), "default"))
             .thenReturn(configResponse);
 
-        UpdateAdGroupConfigRequest request = new UpdateAdGroupConfigRequest("CN=Voice");
+        UpdateAdGroupConfigRequest request = new UpdateAdGroupConfigRequest();
+        request.setGroupIdentifier("CN=Voice");
         request.setFunctionValues(List.of("transfer"));
         request.setDefaultFunctionText("default");
         UpdateAdGroupConfigRequestEnvelope envelope = new UpdateAdGroupConfigRequestEnvelope();
         envelope.setData(request);
 
-        var requestContext = TestContextFactory.withBodyAndPath(envelope, Map.of("appKey", "wealth"));
+        RequestContext<UpdateAdGroupConfigRequestEnvelope> requestContext = mockRequestContext();
+        when(requestContext.getBody()).thenReturn(Optional.of(envelope));
+        when(requestContext.getPathVariable("appKey")).thenReturn(Optional.of("wealth"));
 
         var response = controller.updateAppAdGroupConfiguration(requestContext);
 
@@ -20959,11 +21132,14 @@ class EmbeddedAppAdminControllerTest {
     void updateAppAdGroupConfigurationBadRequest() throws Exception {
         when(embeddedAppFacade.updateAppAdGroupConfiguration(any(), any(), any(), any())).thenReturn(null);
 
-        UpdateAdGroupConfigRequest request = new UpdateAdGroupConfigRequest("CN=Voice");
+        UpdateAdGroupConfigRequest request = new UpdateAdGroupConfigRequest();
+        request.setGroupIdentifier("CN=Voice");
         UpdateAdGroupConfigRequestEnvelope envelope = new UpdateAdGroupConfigRequestEnvelope();
         envelope.setData(request);
 
-        var requestContext = TestContextFactory.withBodyAndPath(envelope, Map.of("appKey", "wealth"));
+        RequestContext<UpdateAdGroupConfigRequestEnvelope> requestContext = mockRequestContext();
+        when(requestContext.getBody()).thenReturn(Optional.of(envelope));
+        when(requestContext.getPathVariable("appKey")).thenReturn(Optional.of("wealth"));
 
         var response = controller.updateAppAdGroupConfiguration(requestContext);
 
@@ -20975,7 +21151,9 @@ class EmbeddedAppAdminControllerTest {
     void updateAppAdGroupConfigurationValidationFailure() throws Exception {
         var envelope = new UpdateAdGroupConfigRequestEnvelope();
 
-        var requestContext = TestContextFactory.withBodyAndPath(envelope, Map.of("appKey", "wealth"));
+        RequestContext<UpdateAdGroupConfigRequestEnvelope> requestContext = mockRequestContext();
+        when(requestContext.getBody()).thenReturn(Optional.of(envelope));
+        when(requestContext.getPathVariable("appKey")).thenReturn(Optional.of("wealth"));
 
         assertThatThrownBy(() -> controller.updateAppAdGroupConfiguration(requestContext))
             .isInstanceOf(ResponseStatusException.class)
@@ -20992,7 +21170,10 @@ class EmbeddedAppAdminControllerTest {
         app.setAppKey("wealth");
         when(embeddedAppFacade.getAllEmbeddedApps("CN=Voice", 0, 0)).thenReturn(List.of(app));
 
-        var requestContext = TestContextFactory.<Void>withQuery(Map.of("adGroupIdentifier", "CN=Voice", "offset", "0", "limit", "0"));
+        RequestContext<Void> requestContext = mockRequestContext();
+        when(requestContext.getQueryParameter("adGroupIdentifier")).thenReturn(Optional.of("CN=Voice"));
+        when(requestContext.getQueryParameter("offset")).thenReturn(Optional.of("0"));
+        when(requestContext.getQueryParameter("limit")).thenReturn(Optional.of("0"));
 
         var response = controller.getAllEmbeddedApps(requestContext);
 
@@ -21009,7 +21190,7 @@ class EmbeddedAppAdminControllerTest {
         app.setAppKey("wealth");
         when(embeddedAppFacade.getAppsForUser()).thenReturn(List.of(app));
 
-        var requestContext = TestContextFactory.<Void>create();
+        RequestContext<Void> requestContext = mockRequestContext();
 
         var response = controller.getAppsForCurrentUser(requestContext);
 
@@ -21028,9 +21209,12 @@ class EmbeddedAppAdminControllerTest {
             .thenReturn(List.of(app));
 
         var body = new GetAppsForAdGroupRequestEnvelope();
-        body.setData(new GetAppsForAdGroupRequest("CN=Admin_AMER,OU=Admin,OU=Groups,DC=hsbc,DC=com"));
+        GetAppsForAdGroupRequest adGroupRequest = new GetAppsForAdGroupRequest();
+        adGroupRequest.setGroupIdentifier("CN=Admin_AMER,OU=Admin,OU=Groups,DC=hsbc,DC=com");
+        body.setData(adGroupRequest);
 
-        var requestContext = TestContextFactory.withBody(body);
+        RequestContext<GetAppsForAdGroupRequestEnvelope> requestContext = mockRequestContext();
+        when(requestContext.getBody()).thenReturn(Optional.of(body));
 
         var response = controller.getEmbeddedAppsForAdGroup(requestContext);
 
@@ -21051,7 +21235,9 @@ class EmbeddedAppAdminControllerTest {
         }
         when(embeddedAppFacade.getAllEmbeddedApps(any(), eq(0), eq(3))).thenReturn(pagedApps);
 
-        var requestContext = TestContextFactory.<Void>withQuery(Map.of("offset", "0", "limit", "3"));
+        RequestContext<Void> requestContext = mockRequestContext();
+        when(requestContext.getQueryParameter("offset")).thenReturn(Optional.of("0"));
+        when(requestContext.getQueryParameter("limit")).thenReturn(Optional.of("3"));
 
         var response = controller.getAllEmbeddedApps(requestContext);
 
@@ -21074,7 +21260,9 @@ class EmbeddedAppAdminControllerTest {
         }
         when(embeddedAppFacade.getAllEmbeddedApps(any(), eq(5), eq(3))).thenReturn(pagedApps);
 
-        var requestContext = TestContextFactory.<Void>withQuery(Map.of("offset", "5", "limit", "3"));
+        RequestContext<Void> requestContext = mockRequestContext();
+        when(requestContext.getQueryParameter("offset")).thenReturn(Optional.of("5"));
+        when(requestContext.getQueryParameter("limit")).thenReturn(Optional.of("3"));
 
         var response = controller.getAllEmbeddedApps(requestContext);
 
@@ -21097,7 +21285,7 @@ class EmbeddedAppAdminControllerTest {
         }
         when(embeddedAppFacade.getAllEmbeddedApps(any(), eq(0), eq(0))).thenReturn(allApps);
 
-        var requestContext = TestContextFactory.<Void>create();
+        RequestContext<Void> requestContext = mockRequestContext();
 
         var response = controller.getAllEmbeddedApps(requestContext);
 
@@ -21110,17 +21298,16 @@ class EmbeddedAppAdminControllerTest {
 package com.hsbc.ccaas.papi.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.*;
 
 import com.hsbc.ccaas.papi.application.ReferenceDataFacade;
 import com.hsbc.ccaas.papi.controller.helper.ReferenceDataResponseAssembler;
 import com.hsbc.ccaas.papi.controller.model.*;
-import com.hsbc.ccaas.papi.testutil.TestContextFactory;
 import com.hsbc.wpb.ef.ports.RequestContext;
 import java.time.LocalDate;
 import java.util.List;
-import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -21143,13 +21330,23 @@ class ReferenceDataControllerTest {
         controller = new ReferenceDataController(referenceDataFacade, new ReferenceDataResponseAssembler());
     }
 
+    @SuppressWarnings("unchecked")
+    private <T> RequestContext<T> mockRequestContext() {
+        RequestContext<T> rc = (RequestContext<T>) mock(RequestContext.class);
+        lenient().when(rc.getBody()).thenReturn(Optional.empty());
+        lenient().when(rc.getQueryParameter(anyString())).thenReturn(Optional.empty());
+        lenient().when(rc.getPathVariable(anyString())).thenReturn(Optional.empty());
+        return rc;
+    }
+
     @Test
     @DisplayName("GET /papi/v1/regions returns regions")
     void getAllRegionsReturnsList() throws Exception {
         Region region = new Region().regionCode("APAC").regionName("Asia Pacific").displayOrderNumber(1).isActiveFlag(true);
         when(referenceDataFacade.getAllRegions()).thenReturn(List.of(region));
 
-        ResponseEntity<DataResponseRegionsData> response = controller.getAllRegions(TestContextFactory.<Void>create());
+        RequestContext<Void> requestContext = mockRequestContext();
+        ResponseEntity<DataResponseRegionsData> response = controller.getAllRegions(requestContext);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody().getData().getRegions()).hasSize(1);
@@ -21163,7 +21360,8 @@ class ReferenceDataControllerTest {
         BusinessUnit unit = new BusinessUnit().unitCode("UK").unitName("United Kingdom").description("Retail").effectiveDate(LocalDate.now()).displayOrderNumber(1).isActiveFlag(true);
         when(referenceDataFacade.getAllBusinessUnits()).thenReturn(List.of(unit));
 
-        ResponseEntity<DataResponseBusinessUnitsData> response = controller.getAllBusinessUnits(TestContextFactory.<Void>create());
+        RequestContext<Void> requestContext = mockRequestContext();
+        ResponseEntity<DataResponseBusinessUnitsData> response = controller.getAllBusinessUnits(requestContext);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody().getData().getBusinessUnits()).hasSize(1);
@@ -21177,7 +21375,8 @@ class ReferenceDataControllerTest {
         Country country = new Country().countryCode("HKG").countryName("Hong Kong").regionCode("APAC").marketCode("HK_MKT").displayOrderNumber(1).isActiveFlag(true);
         when(referenceDataFacade.getAllCountries()).thenReturn(List.of(country));
 
-        ResponseEntity<DataResponseCountriesData> response = controller.getAllCountries(TestContextFactory.<Void>create());
+        RequestContext<Void> requestContext = mockRequestContext();
+        ResponseEntity<DataResponseCountriesData> response = controller.getAllCountries(requestContext);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody().getData().getCountries()).hasSize(1);
@@ -21191,7 +21390,8 @@ class ReferenceDataControllerTest {
         Country country = new Country().countryCode("CAN").countryName("Canada").regionCode("Americas").marketCode("AM_MKT").displayOrderNumber(1).isActiveFlag(true);
         when(referenceDataFacade.getCountriesByRegion("Americas")).thenReturn(List.of(country));
 
-        RequestContext<Void> requestContext = TestContextFactory.<Void>withPath(Map.of("regionCode", "Americas"));
+        RequestContext<Void> requestContext = mockRequestContext();
+        when(requestContext.getPathVariable("regionCode")).thenReturn(Optional.of("Americas"));
         ResponseEntity<DataResponseCountriesData> response = controller.getCountriesByRegion(requestContext);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -21206,7 +21406,8 @@ class ReferenceDataControllerTest {
         Market market = new Market().marketCode("UK_CI").marketName("UK & Channel Islands").regionCode("EMEA").displayOrderNumber(1).isActiveFlag(true);
         when(referenceDataFacade.getAllMarkets()).thenReturn(List.of(market));
 
-        ResponseEntity<DataResponseMarketsData> response = controller.getAllMarkets(TestContextFactory.<Void>create());
+        RequestContext<Void> requestContext = mockRequestContext();
+        ResponseEntity<DataResponseMarketsData> response = controller.getAllMarkets(requestContext);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody().getData().getMarkets()).hasSize(1);
@@ -21220,7 +21421,8 @@ class ReferenceDataControllerTest {
         Market market = new Market().marketCode("HK").marketName("Hong Kong").regionCode("APAC").displayOrderNumber(11).isActiveFlag(true);
         when(referenceDataFacade.getMarketsByRegion("APAC")).thenReturn(List.of(market));
 
-        RequestContext<Void> requestContext = TestContextFactory.<Void>withPath(Map.of("regionCode", "APAC"));
+        RequestContext<Void> requestContext = mockRequestContext();
+        when(requestContext.getPathVariable("regionCode")).thenReturn(Optional.of("APAC"));
         ResponseEntity<DataResponseMarketsData> response = controller.getMarketsByRegion(requestContext);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -21236,17 +21438,16 @@ package com.hsbc.ccaas.papi.controller;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.*;
 
 import com.hsbc.ccaas.papi.application.SessionLayoutFacade;
 import com.hsbc.ccaas.papi.constants.CommonConstants;
 import com.hsbc.ccaas.papi.controller.model.*;
-import com.hsbc.ccaas.papi.testutil.TestContextFactory;
 import com.hsbc.ccaas.identity.service.helper.IdentityContextAccessor;
 import com.hsbc.wpb.ef.ports.RequestContext;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -21274,16 +21475,26 @@ class SessionLayoutControllerTest {
         controller = new SessionLayoutController(sessionLayoutFacade, identity);
     }
 
+    @SuppressWarnings("unchecked")
+    private <T> RequestContext<T> mockRequestContext() {
+        RequestContext<T> rc = (RequestContext<T>) mock(RequestContext.class);
+        lenient().when(rc.getBody()).thenReturn(Optional.empty());
+        lenient().when(rc.getQueryParameter(anyString())).thenReturn(Optional.empty());
+        lenient().when(rc.getPathVariable(anyString())).thenReturn(Optional.empty());
+        return rc;
+    }
+
     @Test
     @DisplayName("POST /papi/v1/notices delegates to service")
     void acknowledgeNoticeUpdatesService() throws Exception {
-        var genRequest = new NoticeAcknowledgmentRequest(
-            "ADMIN_NOTICE_1",
-            NoticeAcknowledgmentRequest.StateCodeEnum.ACKNOWLEDGED);
-        var envelope = new NoticeAcknowledgmentRequestEnvelope(genRequest);
+        NoticeAcknowledgmentRequest genRequest = new NoticeAcknowledgmentRequest();
+        genRequest.setNoticeCode("ADMIN_NOTICE_1");
+        genRequest.setStateCode(NoticeAcknowledgmentRequest.StateCodeEnum.ACKNOWLEDGED);
+        NoticeAcknowledgmentRequestEnvelope envelope = new NoticeAcknowledgmentRequestEnvelope();
+        envelope.setData(genRequest);
 
-        RequestContext<NoticeAcknowledgmentRequestEnvelope> requestContext =
-            TestContextFactory.withBody(envelope);
+        RequestContext<NoticeAcknowledgmentRequestEnvelope> requestContext = mockRequestContext();
+        when(requestContext.getBody()).thenReturn(Optional.of(envelope));
 
         ResponseEntity<AcknowledgeNotice200Response> response = controller.acknowledgeNotice(requestContext);
 
@@ -21302,8 +21513,8 @@ class SessionLayoutControllerTest {
     void acknowledgeNoticeValidationFailure() {
         var envelope = new NoticeAcknowledgmentRequestEnvelope();
 
-        RequestContext<NoticeAcknowledgmentRequestEnvelope> requestContext =
-            TestContextFactory.withBody(envelope);
+        RequestContext<NoticeAcknowledgmentRequestEnvelope> requestContext = mockRequestContext();
+        when(requestContext.getBody()).thenReturn(Optional.of(envelope));
 
         assertThatThrownBy(() -> controller.acknowledgeNotice(requestContext))
             .isInstanceOf(ResponseStatusException.class)
@@ -21326,16 +21537,16 @@ class SessionLayoutControllerTest {
         when(sessionLayoutFacade.addEntitlementToRoleTemplates(any(AddEntitlementRequest.class)))
             .thenReturn(serviceResponse);
 
-        var genRequest = new AddEntitlementRequest(
-            AddEntitlementRequest.EntitlementTypeCodeEnum.WIDGETS,
-            "customer.sentimentAnalysis",
-            value)
-            .targetRoleValues(List.of("voice_agent"));
+        AddEntitlementRequest genRequest = new AddEntitlementRequest();
+        genRequest.setEntitlementTypeCode(AddEntitlementRequest.EntitlementTypeCodeEnum.WIDGETS);
+        genRequest.setKeyCode("customer.sentimentAnalysis");
+        genRequest.setStateValue(value);
+        genRequest.setTargetRoleValues(List.of("voice_agent"));
         var envelope = new AddEntitlementRequestEnvelope();
         envelope.setData(genRequest);
 
-        RequestContext<AddEntitlementRequestEnvelope> requestContext =
-            TestContextFactory.withBody(envelope);
+        RequestContext<AddEntitlementRequestEnvelope> requestContext = mockRequestContext();
+        when(requestContext.getBody()).thenReturn(Optional.of(envelope));
 
         ResponseEntity<DataResponseEntitlementResultData> response = controller.addEntitlements(requestContext);
 
@@ -21349,8 +21560,8 @@ class SessionLayoutControllerTest {
     void addEntitlementValidationFailure() {
         var envelope = new AddEntitlementRequestEnvelope();
 
-        RequestContext<AddEntitlementRequestEnvelope> requestContext =
-            TestContextFactory.withBody(envelope);
+        RequestContext<AddEntitlementRequestEnvelope> requestContext = mockRequestContext();
+        when(requestContext.getBody()).thenReturn(Optional.of(envelope));
 
         assertThatThrownBy(() -> controller.addEntitlements(requestContext))
             .isInstanceOf(ResponseStatusException.class)
@@ -21367,19 +21578,21 @@ package com.hsbc.ccaas.papi.controller;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.lenient;
 
 import com.hsbc.ccaas.papi.application.UserRoleManagementFacade;
 import com.hsbc.ccaas.papi.controller.helper.BulkValidationHelper;
 import com.hsbc.ccaas.papi.controller.model.*;
 import com.hsbc.ccaas.identity.service.helper.IdentityContextAccessor;
-import com.hsbc.ccaas.papi.testutil.TestContextFactory;
 import com.hsbc.wpb.ef.ports.RequestContext;
 import java.util.List;
-import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.core.MethodParameter;
 import org.springframework.validation.BeanPropertyBindingResult;
@@ -21412,6 +21625,15 @@ class UserRoleManagementControllerTest {
         controller = new UserRoleManagementController(userRoleManagementFacade, bulkValidationHelper, identity);
     }
 
+    @SuppressWarnings("unchecked")
+    private <T> RequestContext<T> mockRequestContext() {
+        RequestContext<T> rc = (RequestContext<T>) mock(RequestContext.class);
+        lenient().when(rc.getBody()).thenReturn(Optional.empty());
+        lenient().when(rc.getQueryParameter(anyString())).thenReturn(Optional.empty());
+        lenient().when(rc.getPathVariable(anyString())).thenReturn(Optional.empty());
+        return rc;
+    }
+
     @Test
     @DisplayName("POST /papi/v1/users/{userId}/primaries/{roleName} returns service response")
     void setPrimaryAssignmentReturnsResponse() throws Exception {
@@ -21422,11 +21644,15 @@ class UserRoleManagementControllerTest {
         when(userRoleManagementFacade.setPrimaryAssignment("600001", "voice_agent", "CN=Voice"))
             .thenReturn(response);
 
-        SetPrimaryAssignmentRequest request = new SetPrimaryAssignmentRequest("CN=Voice");
-        SetPrimaryAssignmentRequestEnvelope envelope = new SetPrimaryAssignmentRequestEnvelope(request);
+        SetPrimaryAssignmentRequest request = new SetPrimaryAssignmentRequest();
+        request.setAdGroupIdentifier("CN=Voice");
+        SetPrimaryAssignmentRequestEnvelope envelope = new SetPrimaryAssignmentRequestEnvelope();
+        envelope.setData(request);
 
-        RequestContext<SetPrimaryAssignmentRequestEnvelope> requestContext =
-            TestContextFactory.withBodyAndPath(envelope, Map.of("userIdentifier", "600001", "roleName", "voice_agent"));
+        RequestContext<SetPrimaryAssignmentRequestEnvelope> requestContext = mockRequestContext();
+        when(requestContext.getBody()).thenReturn(Optional.of(envelope));
+        when(requestContext.getPathVariable("userIdentifier")).thenReturn(Optional.of("600001"));
+        when(requestContext.getPathVariable("roleName")).thenReturn(Optional.of("voice_agent"));
 
         ResponseEntity<DataResponsePrimaryAssignmentData> result = controller.setPrimaryAssignment(requestContext);
 
@@ -21441,10 +21667,13 @@ class UserRoleManagementControllerTest {
     @DisplayName("POST /papi/v1/users/{userId}/primaries/{roleName} validates request")
     void setPrimaryAssignmentValidationFailure() throws Exception {
         SetPrimaryAssignmentRequest request = new SetPrimaryAssignmentRequest();
-        SetPrimaryAssignmentRequestEnvelope envelope = new SetPrimaryAssignmentRequestEnvelope(request);
+        SetPrimaryAssignmentRequestEnvelope envelope = new SetPrimaryAssignmentRequestEnvelope();
+        envelope.setData(request);
 
-        RequestContext<SetPrimaryAssignmentRequestEnvelope> requestContext =
-            TestContextFactory.withBodyAndPath(envelope, Map.of("userIdentifier", "600001", "roleName", "voice_agent"));
+        RequestContext<SetPrimaryAssignmentRequestEnvelope> requestContext = mockRequestContext();
+        when(requestContext.getBody()).thenReturn(Optional.of(envelope));
+        when(requestContext.getPathVariable("userIdentifier")).thenReturn(Optional.of("600001"));
+        when(requestContext.getPathVariable("roleName")).thenReturn(Optional.of("voice_agent"));
 
         assertThatThrownBy(() -> controller.setPrimaryAssignment(requestContext))
             .isInstanceOf(ResponseStatusException.class)
@@ -21460,11 +21689,15 @@ class UserRoleManagementControllerTest {
         when(userRoleManagementFacade.setPrimaryAssignment("600001", "voice_agent", "CN=Voice"))
             .thenThrow(new IllegalArgumentException("Invalid state"));
 
-        SetPrimaryAssignmentRequest request = new SetPrimaryAssignmentRequest("CN=Voice");
-        SetPrimaryAssignmentRequestEnvelope envelope = new SetPrimaryAssignmentRequestEnvelope(request);
+        SetPrimaryAssignmentRequest request = new SetPrimaryAssignmentRequest();
+        request.setAdGroupIdentifier("CN=Voice");
+        SetPrimaryAssignmentRequestEnvelope envelope = new SetPrimaryAssignmentRequestEnvelope();
+        envelope.setData(request);
 
-        RequestContext<SetPrimaryAssignmentRequestEnvelope> requestContext =
-            TestContextFactory.withBodyAndPath(envelope, Map.of("userIdentifier", "600001", "roleName", "voice_agent"));
+        RequestContext<SetPrimaryAssignmentRequestEnvelope> requestContext = mockRequestContext();
+        when(requestContext.getBody()).thenReturn(Optional.of(envelope));
+        when(requestContext.getPathVariable("userIdentifier")).thenReturn(Optional.of("600001"));
+        when(requestContext.getPathVariable("roleName")).thenReturn(Optional.of("voice_agent"));
 
         ResponseEntity<DataResponsePrimaryAssignmentData> result = controller.setPrimaryAssignment(requestContext);
 
@@ -21480,11 +21713,15 @@ class UserRoleManagementControllerTest {
         when(userRoleManagementFacade.setPrimaryAssignment("600001", "voice_agent", "CN=Voice"))
             .thenThrow(new SecurityException("forbidden"));
 
-        SetPrimaryAssignmentRequest request = new SetPrimaryAssignmentRequest("CN=Voice");
-        SetPrimaryAssignmentRequestEnvelope envelope = new SetPrimaryAssignmentRequestEnvelope(request);
+        SetPrimaryAssignmentRequest request = new SetPrimaryAssignmentRequest();
+        request.setAdGroupIdentifier("CN=Voice");
+        SetPrimaryAssignmentRequestEnvelope envelope = new SetPrimaryAssignmentRequestEnvelope();
+        envelope.setData(request);
 
-        RequestContext<SetPrimaryAssignmentRequestEnvelope> requestContext =
-            TestContextFactory.withBodyAndPath(envelope, Map.of("userIdentifier", "600001", "roleName", "voice_agent"));
+        RequestContext<SetPrimaryAssignmentRequestEnvelope> requestContext = mockRequestContext();
+        when(requestContext.getBody()).thenReturn(Optional.of(envelope));
+        when(requestContext.getPathVariable("userIdentifier")).thenReturn(Optional.of("600001"));
+        when(requestContext.getPathVariable("roleName")).thenReturn(Optional.of("voice_agent"));
 
         ResponseEntity<DataResponsePrimaryAssignmentData> result = controller.setPrimaryAssignment(requestContext);
 
@@ -21498,11 +21735,15 @@ class UserRoleManagementControllerTest {
         when(userRoleManagementFacade.setPrimaryAssignment("600001", "voice_agent", "CN=Voice"))
             .thenThrow(new RuntimeException("failure"));
 
-        SetPrimaryAssignmentRequest request = new SetPrimaryAssignmentRequest("CN=Voice");
-        SetPrimaryAssignmentRequestEnvelope envelope = new SetPrimaryAssignmentRequestEnvelope(request);
+        SetPrimaryAssignmentRequest request = new SetPrimaryAssignmentRequest();
+        request.setAdGroupIdentifier("CN=Voice");
+        SetPrimaryAssignmentRequestEnvelope envelope = new SetPrimaryAssignmentRequestEnvelope();
+        envelope.setData(request);
 
-        RequestContext<SetPrimaryAssignmentRequestEnvelope> requestContext =
-            TestContextFactory.withBodyAndPath(envelope, Map.of("userIdentifier", "600001", "roleName", "voice_agent"));
+        RequestContext<SetPrimaryAssignmentRequestEnvelope> requestContext = mockRequestContext();
+        when(requestContext.getBody()).thenReturn(Optional.of(envelope));
+        when(requestContext.getPathVariable("userIdentifier")).thenReturn(Optional.of("600001"));
+        when(requestContext.getPathVariable("roleName")).thenReturn(Optional.of("voice_agent"));
 
         ResponseEntity<DataResponsePrimaryAssignmentData> result = controller.setPrimaryAssignment(requestContext);
 
@@ -21520,15 +21761,23 @@ class UserRoleManagementControllerTest {
         when(userRoleManagementFacade.setBulkPrimaryAssignments(any()))
             .thenReturn(response);
 
-        List<BulkPrimaryAssignmentRequest> requests = List.of(
-            new BulkPrimaryAssignmentRequest("600001", "voice_agent", "CN=Voice"),
-            new BulkPrimaryAssignmentRequest("600002", "chat_agent", "CN=Chat")
-        );
-        BulkPrimaryAssignmentRequestEnvelope body = new BulkPrimaryAssignmentRequestEnvelope();
-        body.setData(new BulkPrimaryAssignmentRequestEnvelopeData(requests));
+        BulkPrimaryAssignmentRequest req1 = new BulkPrimaryAssignmentRequest();
+        req1.setUserIdentifier("600001");
+        req1.setRoleNameText("voice_agent");
+        req1.setAdGroupIdentifier("CN=Voice");
+        BulkPrimaryAssignmentRequest req2 = new BulkPrimaryAssignmentRequest();
+        req2.setUserIdentifier("600002");
+        req2.setRoleNameText("chat_agent");
+        req2.setAdGroupIdentifier("CN=Chat");
+        List<BulkPrimaryAssignmentRequest> requests = List.of(req1, req2);
 
-        RequestContext<BulkPrimaryAssignmentRequestEnvelope> requestContext =
-            TestContextFactory.withBody(body);
+        BulkPrimaryAssignmentRequestEnvelopeData envelopeData = new BulkPrimaryAssignmentRequestEnvelopeData();
+        envelopeData.setAssignmentValues(requests);
+        BulkPrimaryAssignmentRequestEnvelope body = new BulkPrimaryAssignmentRequestEnvelope();
+        body.setData(envelopeData);
+
+        RequestContext<BulkPrimaryAssignmentRequestEnvelope> requestContext = mockRequestContext();
+        when(requestContext.getBody()).thenReturn(Optional.of(body));
 
         ResponseEntity<DataResponseBulkPrimaryData> result = controller.setBulkPrimaryAssignments(requestContext);
 
@@ -21541,16 +21790,18 @@ class UserRoleManagementControllerTest {
     @DisplayName("POST /papi/v1/bulk-primaries validates request body")
     void setBulkPrimaryAssignmentsValidationFailure() throws Exception {
         List<BulkPrimaryAssignmentRequest> requests = List.of(new BulkPrimaryAssignmentRequest());
+        BulkPrimaryAssignmentRequestEnvelopeData envelopeData = new BulkPrimaryAssignmentRequestEnvelopeData();
+        envelopeData.setAssignmentValues(requests);
         BulkPrimaryAssignmentRequestEnvelope body = new BulkPrimaryAssignmentRequestEnvelope();
-        body.setData(new BulkPrimaryAssignmentRequestEnvelopeData(requests));
+        body.setData(envelopeData);
 
         MethodParameter methodParam = new MethodParameter(
             UserRoleManagementController.class.getDeclaredMethods()[0], -1);
         doThrow(new MethodArgumentNotValidException(methodParam, new BeanPropertyBindingResult(new Object(), "request")))
             .when(bulkValidationHelper).validateBulkPrimaryRequests(any(), any(), any());
 
-        RequestContext<BulkPrimaryAssignmentRequestEnvelope> requestContext =
-            TestContextFactory.withBody(body);
+        RequestContext<BulkPrimaryAssignmentRequestEnvelope> requestContext = mockRequestContext();
+        when(requestContext.getBody()).thenReturn(Optional.of(body));
 
         assertThatThrownBy(() -> controller.setBulkPrimaryAssignments(requestContext))
             .isInstanceOf(ResponseStatusException.class)
@@ -21566,14 +21817,19 @@ class UserRoleManagementControllerTest {
         when(userRoleManagementFacade.setBulkPrimaryAssignments(any()))
             .thenThrow(new IllegalArgumentException("Invalid bulk request"));
 
-        List<BulkPrimaryAssignmentRequest> requests = List.of(
-            new BulkPrimaryAssignmentRequest("600001", "voice_agent", "CN=Voice")
-        );
-        BulkPrimaryAssignmentRequestEnvelope body = new BulkPrimaryAssignmentRequestEnvelope();
-        body.setData(new BulkPrimaryAssignmentRequestEnvelopeData(requests));
+        BulkPrimaryAssignmentRequest req1 = new BulkPrimaryAssignmentRequest();
+        req1.setUserIdentifier("600001");
+        req1.setRoleNameText("voice_agent");
+        req1.setAdGroupIdentifier("CN=Voice");
+        List<BulkPrimaryAssignmentRequest> requests = List.of(req1);
 
-        RequestContext<BulkPrimaryAssignmentRequestEnvelope> requestContext =
-            TestContextFactory.withBody(body);
+        BulkPrimaryAssignmentRequestEnvelopeData envelopeData = new BulkPrimaryAssignmentRequestEnvelopeData();
+        envelopeData.setAssignmentValues(requests);
+        BulkPrimaryAssignmentRequestEnvelope body = new BulkPrimaryAssignmentRequestEnvelope();
+        body.setData(envelopeData);
+
+        RequestContext<BulkPrimaryAssignmentRequestEnvelope> requestContext = mockRequestContext();
+        when(requestContext.getBody()).thenReturn(Optional.of(body));
 
         ResponseEntity<DataResponseBulkPrimaryData> result = controller.setBulkPrimaryAssignments(requestContext);
 
@@ -21588,14 +21844,19 @@ class UserRoleManagementControllerTest {
         when(userRoleManagementFacade.setBulkPrimaryAssignments(any()))
             .thenThrow(new SecurityException("forbidden"));
 
-        List<BulkPrimaryAssignmentRequest> requests = List.of(
-            new BulkPrimaryAssignmentRequest("600001", "voice_agent", "CN=Voice")
-        );
-        BulkPrimaryAssignmentRequestEnvelope body = new BulkPrimaryAssignmentRequestEnvelope();
-        body.setData(new BulkPrimaryAssignmentRequestEnvelopeData(requests));
+        BulkPrimaryAssignmentRequest req1 = new BulkPrimaryAssignmentRequest();
+        req1.setUserIdentifier("600001");
+        req1.setRoleNameText("voice_agent");
+        req1.setAdGroupIdentifier("CN=Voice");
+        List<BulkPrimaryAssignmentRequest> requests = List.of(req1);
 
-        RequestContext<BulkPrimaryAssignmentRequestEnvelope> requestContext =
-            TestContextFactory.withBody(body);
+        BulkPrimaryAssignmentRequestEnvelopeData envelopeData = new BulkPrimaryAssignmentRequestEnvelopeData();
+        envelopeData.setAssignmentValues(requests);
+        BulkPrimaryAssignmentRequestEnvelope body = new BulkPrimaryAssignmentRequestEnvelope();
+        body.setData(envelopeData);
+
+        RequestContext<BulkPrimaryAssignmentRequestEnvelope> requestContext = mockRequestContext();
+        when(requestContext.getBody()).thenReturn(Optional.of(body));
 
         ResponseEntity<DataResponseBulkPrimaryData> result = controller.setBulkPrimaryAssignments(requestContext);
 
@@ -21609,14 +21870,19 @@ class UserRoleManagementControllerTest {
         doThrow(new RuntimeException("failure")).when(userRoleManagementFacade)
             .setBulkPrimaryAssignments(any());
 
-        List<BulkPrimaryAssignmentRequest> requests = List.of(
-            new BulkPrimaryAssignmentRequest("600001", "voice_agent", "CN=Voice")
-        );
-        BulkPrimaryAssignmentRequestEnvelope body = new BulkPrimaryAssignmentRequestEnvelope();
-        body.setData(new BulkPrimaryAssignmentRequestEnvelopeData(requests));
+        BulkPrimaryAssignmentRequest req1 = new BulkPrimaryAssignmentRequest();
+        req1.setUserIdentifier("600001");
+        req1.setRoleNameText("voice_agent");
+        req1.setAdGroupIdentifier("CN=Voice");
+        List<BulkPrimaryAssignmentRequest> requests = List.of(req1);
 
-        RequestContext<BulkPrimaryAssignmentRequestEnvelope> requestContext =
-            TestContextFactory.withBody(body);
+        BulkPrimaryAssignmentRequestEnvelopeData envelopeData = new BulkPrimaryAssignmentRequestEnvelopeData();
+        envelopeData.setAssignmentValues(requests);
+        BulkPrimaryAssignmentRequestEnvelope body = new BulkPrimaryAssignmentRequestEnvelope();
+        body.setData(envelopeData);
+
+        RequestContext<BulkPrimaryAssignmentRequestEnvelope> requestContext = mockRequestContext();
+        when(requestContext.getBody()).thenReturn(Optional.of(body));
 
         ResponseEntity<DataResponseBulkPrimaryData> result = controller.setBulkPrimaryAssignments(requestContext);
 
@@ -25007,8 +25273,10 @@ class DefaultAdminNoticeServiceTest {
             .setHeader("Content-Type", "application/json")
             .setBody(sampleCreateResponse()));
 
-        AdminNoticeRequest request = new AdminNoticeRequest("Pilot", "Maintenance window",
-            AdminNoticeRequest.SeverityValueEnum.WARNING);
+        AdminNoticeRequest request = new AdminNoticeRequest();
+        request.setTitleText("Pilot");
+        request.setMessageText("Maintenance window");
+        request.setSeverityValue(AdminNoticeRequest.SeverityValueEnum.WARNING);
         request.setBroadcastToAllFlag(true);
 
         AdminNoticeResponse response = service.createNotice(request);
@@ -25027,8 +25295,10 @@ class DefaultAdminNoticeServiceTest {
     void createNoticeRejectsNonAdmin() {
         roleResolutionService.setRole("voice_agent");
 
-        AdminNoticeRequest request = new AdminNoticeRequest("Pilot", "Maintenance window",
-            AdminNoticeRequest.SeverityValueEnum.INFO);
+        AdminNoticeRequest request = new AdminNoticeRequest();
+        request.setTitleText("Pilot");
+        request.setMessageText("Maintenance window");
+        request.setSeverityValue(AdminNoticeRequest.SeverityValueEnum.INFO);
 
         assertThatThrownBy(() -> service.createNotice(request))
             .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
@@ -25183,8 +25453,10 @@ class DefaultAdminNoticeServiceTest {
                 .setHeader("Content-Type", "application/json")
                 .setBody(sampleCreateResponse()));
 
-            AdminNoticeRequest request = new AdminNoticeRequest("Updated Title", "Updated message",
-                AdminNoticeRequest.SeverityValueEnum.INFO);
+            AdminNoticeRequest request = new AdminNoticeRequest();
+            request.setTitleText("Updated Title");
+            request.setMessageText("Updated message");
+            request.setSeverityValue(AdminNoticeRequest.SeverityValueEnum.INFO);
 
             AdminNoticeResponse response = service.updateNotice(noticeId, request);
 
@@ -25199,8 +25471,10 @@ class DefaultAdminNoticeServiceTest {
         @Test
         @DisplayName("should reject null notice ID")
         void shouldRejectNullNoticeId() {
-            AdminNoticeRequest request = new AdminNoticeRequest("Test", "Test",
-                AdminNoticeRequest.SeverityValueEnum.INFO);
+            AdminNoticeRequest request = new AdminNoticeRequest();
+            request.setTitleText("Test");
+            request.setMessageText("Test");
+            request.setSeverityValue(AdminNoticeRequest.SeverityValueEnum.INFO);
 
             assertThatThrownBy(() -> service.updateNotice(null, request))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -25260,8 +25534,10 @@ class DefaultAdminNoticeServiceTest {
                 .setHeader("Content-Type", "application/json")
                 .setBody("null"));
 
-            AdminNoticeRequest request = new AdminNoticeRequest("Test", "Test",
-                AdminNoticeRequest.SeverityValueEnum.INFO);
+            AdminNoticeRequest request = new AdminNoticeRequest();
+            request.setTitleText("Test");
+            request.setMessageText("Test");
+            request.setSeverityValue(AdminNoticeRequest.SeverityValueEnum.INFO);
 
             assertThatThrownBy(() -> service.updateNotice(noticeId, request))
                 .isInstanceOf(ResponseStatusException.class)
@@ -25350,8 +25626,10 @@ class DefaultAdminNoticeServiceTest {
                 .setHeader("Content-Type", "application/json")
                 .setBody(sampleCreateResponse()));
 
-            AdminNoticeRequest request = new AdminNoticeRequest("Test", "Test message",
-                AdminNoticeRequest.SeverityValueEnum.INFO);
+            AdminNoticeRequest request = new AdminNoticeRequest();
+            request.setTitleText("Test");
+            request.setMessageText("Test message");
+            request.setSeverityValue(AdminNoticeRequest.SeverityValueEnum.INFO);
 
             service.createNotice(request);
 
@@ -25367,8 +25645,10 @@ class DefaultAdminNoticeServiceTest {
                 .setHeader("Content-Type", "application/json")
                 .setBody(sampleCreateResponse()));
 
-            AdminNoticeRequest request = new AdminNoticeRequest("Test", "Test message",
-                AdminNoticeRequest.SeverityValueEnum.INFO);
+            AdminNoticeRequest request = new AdminNoticeRequest();
+            request.setTitleText("Test");
+            request.setMessageText("Test message");
+            request.setSeverityValue(AdminNoticeRequest.SeverityValueEnum.INFO);
             request.setCreatedByText("custom.user@hsbc.com");
 
             service.createNotice(request);
@@ -25471,12 +25751,6 @@ class DefaultAdminNoticeServiceTest {
         }
     }
 
-    private static class StaticIdentityService implements IdentityService {
-        @Override
-        public IdentityContext getIdentityContext(String amToken) {
-            return new IdentityContext("1001", "admin.user@hsbc.com", Collections.emptyList());
-        }
-    }
 }
 ===ENDFILE
 ===FILE: ./src/test/java/com/hsbc/ccaas/papi/service/impl/DefaultSessionLayoutServiceTest.java
@@ -25612,11 +25886,11 @@ class DefaultSessionLayoutServiceTest {
                 anyString(), anyString(), any(), any(), any()))
                 .thenReturn(sapiResponse);
 
-            AddEntitlementRequest request = new AddEntitlementRequest(
-                AddEntitlementRequest.EntitlementTypeCodeEnum.FEATURES,
-                "feature.newWidget",
-                new EntitlementStateValue().stateText(StateTextEnum.ENABLED).reasonText("New feature rollout"))
-                .targetRoleValues(List.of("voice_agent", "chat_agent"));
+            AddEntitlementRequest request = new AddEntitlementRequest();
+            request.setEntitlementTypeCode(AddEntitlementRequest.EntitlementTypeCodeEnum.FEATURES);
+            request.setKeyCode("feature.newWidget");
+            request.setStateValue(new EntitlementStateValue().stateText(StateTextEnum.ENABLED).reasonText("New feature rollout"));
+            request.setTargetRoleValues(List.of("voice_agent", "chat_agent"));
 
             AddEntitlementResponse result = service.addEntitlementToRoleTemplates(request);
 
@@ -25637,11 +25911,11 @@ class DefaultSessionLayoutServiceTest {
         @Test
         @DisplayName("should throw BAD_REQUEST when key is blank")
         void shouldThrowBadRequestWhenKeyBlank() {
-            AddEntitlementRequest request = new AddEntitlementRequest(
-                AddEntitlementRequest.EntitlementTypeCodeEnum.FEATURES,
-                "",
-                new EntitlementStateValue())
-                .targetRoleValues(List.of("voice_agent"));
+            AddEntitlementRequest request = new AddEntitlementRequest();
+            request.setEntitlementTypeCode(AddEntitlementRequest.EntitlementTypeCodeEnum.FEATURES);
+            request.setKeyCode("");
+            request.setStateValue(new EntitlementStateValue());
+            request.setTargetRoleValues(List.of("voice_agent"));
 
             assertThatThrownBy(() -> service.addEntitlementToRoleTemplates(request))
                 .isInstanceOf(ResponseStatusException.class)
@@ -25652,12 +25926,11 @@ class DefaultSessionLayoutServiceTest {
         @Test
         @DisplayName("should throw BAD_REQUEST when value is null")
         void shouldThrowBadRequestWhenValueNull() {
-            AddEntitlementRequest request = new AddEntitlementRequest(
-                AddEntitlementRequest.EntitlementTypeCodeEnum.FEATURES,
-                "feature.test",
-                null)
-                .targetRoleValues(List.of("voice_agent"));
+            AddEntitlementRequest request = new AddEntitlementRequest();
+            request.setEntitlementTypeCode(AddEntitlementRequest.EntitlementTypeCodeEnum.FEATURES);
+            request.setKeyCode("feature.test");
             request.setStateValue(null);
+            request.setTargetRoleValues(List.of("voice_agent"));
 
             assertThatThrownBy(() -> service.addEntitlementToRoleTemplates(request))
                 .isInstanceOf(ResponseStatusException.class)
@@ -25672,11 +25945,11 @@ class DefaultSessionLayoutServiceTest {
                 anyString(), anyString(), any(), any(), any()))
                 .thenReturn(null);
 
-            AddEntitlementRequest request = new AddEntitlementRequest(
-                AddEntitlementRequest.EntitlementTypeCodeEnum.FEATURES,
-                "feature.test",
-                new EntitlementStateValue().stateText(StateTextEnum.ENABLED))
-                .targetRoleValues(List.of("voice_agent"));
+            AddEntitlementRequest request = new AddEntitlementRequest();
+            request.setEntitlementTypeCode(AddEntitlementRequest.EntitlementTypeCodeEnum.FEATURES);
+            request.setKeyCode("feature.test");
+            request.setStateValue(new EntitlementStateValue().stateText(StateTextEnum.ENABLED));
+            request.setTargetRoleValues(List.of("voice_agent"));
 
             assertThatThrownBy(() -> service.addEntitlementToRoleTemplates(request))
                 .isInstanceOf(ResponseStatusException.class)
@@ -26067,67 +26340,6 @@ class DefaultUserRoleManagementServiceTest {
         request.setRoleNameText(roleName);
         request.setAdGroupIdentifier(adGroupIdentifier);
         return request;
-    }
-}
-===ENDFILE
-===FILE: ./src/test/java/com/hsbc/ccaas/papi/testutil/TestContextFactory.java
-package com.hsbc.ccaas.papi.testutil;
-
-import com.hsbc.wpb.ef.ports.RequestContext;
-import java.util.Map;
-
-/**
- * Factory for creating RequestContext instances in tests without depending on
- * the builder() method, which may not exist in the enterprise-published JAR.
- * Uses the public no-arg constructor + setters available in all versions.
- */
-public final class TestContextFactory {
-
-    private TestContextFactory() {
-    }
-
-    public static <T> RequestContext<T> create() {
-        return new RequestContext<>();
-    }
-
-    public static <T> RequestContext<T> withBody(T body) {
-        RequestContext<T> rc = new RequestContext<>();
-        rc.setBody(body);
-        return rc;
-    }
-
-    public static <T> RequestContext<T> withBodyAndPath(T body, Map<String, String> pathVars) {
-        RequestContext<T> rc = new RequestContext<>();
-        rc.setBody(body);
-        rc.setPathVariables(pathVars);
-        return rc;
-    }
-
-    public static <T> RequestContext<T> withQuery(Map<String, String> queryParams) {
-        RequestContext<T> rc = new RequestContext<>();
-        rc.setQueryParameters(queryParams);
-        return rc;
-    }
-
-    public static <T> RequestContext<T> withPath(Map<String, String> pathVars) {
-        RequestContext<T> rc = new RequestContext<>();
-        rc.setPathVariables(pathVars);
-        return rc;
-    }
-
-    public static <T> RequestContext<T> withBodyAndQuery(T body, Map<String, String> queryParams) {
-        RequestContext<T> rc = new RequestContext<>();
-        rc.setBody(body);
-        rc.setQueryParameters(queryParams);
-        return rc;
-    }
-
-    public static <T> RequestContext<T> withBodyQueryAndPath(T body, Map<String, String> queryParams, Map<String, String> pathVars) {
-        RequestContext<T> rc = new RequestContext<>();
-        rc.setBody(body);
-        rc.setQueryParameters(queryParams);
-        rc.setPathVariables(pathVars);
-        return rc;
     }
 }
 ===ENDFILE
