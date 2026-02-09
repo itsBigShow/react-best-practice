@@ -1,5 +1,5 @@
 # CCaaS Entitlement SAPI - Source Bundle
-# Generated: 2026-02-09 22:45:24
+# Generated: 2026-02-09 22:57:28
 # Total files: 339
 # Categories: 1 pom.xml, 1 CLAUDE.md, 3 docs, 4 resources, 120 YAML specs, 134 main Java, 64 test Java, 12 other
 # Note: target/generated-sources NOT included - run 'mvn generate-sources' after extraction
