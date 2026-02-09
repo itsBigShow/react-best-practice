@@ -1,5 +1,5 @@
 # CCaaS Entitlement SAPI - Source Bundle
-# Generated: 2026-02-09 20:49:27
+# Generated: 2026-02-09 21:08:10
 # Total files: 333
 # Categories: 1 pom.xml, 1 CLAUDE.md, 3 docs, 4 resources, 120 YAML specs, 137 main Java, 56 test Java, 11 other
 # Note: target/generated-sources NOT included - run 'mvn generate-sources' after extraction
@@ -16021,8 +16021,6 @@ public interface MarketRepository extends JpaRepository<Market, String> {
 package com.hsbc.ccaas.sapi.repository;
 
 import com.hsbc.ccaas.sapi.entity.PendingChange;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -16055,12 +16053,7 @@ public interface PendingChangeRepository extends JpaRepository<PendingChange, UU
     Optional<PendingChange> findActivePendingChangeForGroup(@Param("groupId") String targetGroupIdentifier);
 
     /**
-     * Find pending changes by status with pagination.
-     */
-    Page<PendingChange> findByStatus(PendingChange.Status status, Pageable pageable);
-
-    /**
-     * Find pending changes by status (no pagination).
+     * Find pending changes by status (used by expiration and simplified helpers).
      */
     List<PendingChange> findByStatus(PendingChange.Status status);
 
@@ -16070,58 +16063,6 @@ public interface PendingChangeRepository extends JpaRepository<PendingChange, UU
     @Modifying
     @Query("UPDATE PendingChange p SET p.status = 'EXPIRED' WHERE p.status IN ('PENDING_LEVEL_ONE', 'PENDING_LEVEL_TWO') AND p.expiresAt < :now")
     int expireOldChanges(@Param("now") LocalDateTime now);
-
-    /**
-     * Find pending changes for target groups where user has CHECKER access.
-     * This requires joining with ad_group_layout_assignments to check checker_ad_group.
-     * Uses IS DISTINCT FROM to handle NULL userId correctly (self-approval prevention).
-     */
-    @Query(value = """
-        SELECT p.* FROM pending_changes p
-        JOIN ad_group_layout_assignments a ON p.target_group_identifier = a.group_identifier
-        WHERE p.status = 'PENDING_LEVEL_ONE'
-        AND a.checker_ad_group IN :userAdGroups
-        AND (p.created_by IS DISTINCT FROM :userId)
-        ORDER BY p.created_at DESC
-        """, nativeQuery = true)
-    List<PendingChange> findPendingL1ForChecker(
-            @Param("userAdGroups") List<String> userAdGroups,
-            @Param("userId") String userId);
-
-    /**
-     * Find pending changes for target groups where user has SUPER_ADMIN access.
-     * Uses IS DISTINCT FROM to handle NULL userId correctly (self-approval prevention).
-     */
-    @Query(value = """
-        SELECT p.* FROM pending_changes p
-        JOIN ad_group_layout_assignments a ON p.target_group_identifier = a.group_identifier
-        WHERE p.status = 'PENDING_LEVEL_TWO'
-        AND a.super_admin_ad_group IN :userAdGroups
-        AND (p.created_by IS DISTINCT FROM :userId)
-        ORDER BY p.created_at DESC
-        """, nativeQuery = true)
-    List<PendingChange> findPendingL2ForSuperAdmin(
-            @Param("userAdGroups") List<String> userAdGroups,
-            @Param("userId") String userId);
-
-    /**
-     * Find changes by status scoped to AD groups where user has checker or super-admin access.
-     */
-    @Query(value = """
-        SELECT DISTINCT p.* FROM pending_changes p
-        JOIN ad_group_layout_assignments a ON p.target_group_identifier = a.group_identifier
-        WHERE p.status = :statusCode
-        AND (a.checker_ad_group IN :userAdGroups OR a.super_admin_ad_group IN :userAdGroups)
-        ORDER BY p.created_at DESC
-        """, nativeQuery = true)
-    List<PendingChange> findByStatusForAdGroups(
-            @Param("statusCode") String statusCode,
-            @Param("userAdGroups") List<String> userAdGroups);
-
-    /**
-     * Count pending changes by status.
-     */
-    long countByStatus(PendingChange.Status status);
 
     // ========================================================================
     // Paginated queries — push LIMIT/OFFSET + optional targetGroupIdentifier
@@ -18575,56 +18516,6 @@ public class PendingChangeService {
         );
 
         return result.pendingChange();
-    }
-
-    /**
-     * Find pending L1 changes for AD groups (simplified).
-     */
-    public List<PendingChange> findPendingL1ForAdGroups(List<String> adGroups) {
-        return findPendingL1ForAdGroups(adGroups, null);
-    }
-
-    /**
-     * Find pending L1 changes for AD groups with self-approval exclusion support.
-     */
-    public List<PendingChange> findPendingL1ForAdGroups(List<String> adGroups, String userId) {
-        if (adGroups == null || adGroups.isEmpty()) {
-            return pendingChangeRepository.findByStatus(PendingChange.Status.PENDING_LEVEL_ONE);
-        }
-        return pendingChangeRepository.findPendingL1ForChecker(adGroups, userId);
-    }
-
-    /**
-     * Find pending L2 changes for AD groups (simplified).
-     */
-    public List<PendingChange> findPendingL2ForAdGroups(List<String> adGroups) {
-        return findPendingL2ForAdGroups(adGroups, null);
-    }
-
-    /**
-     * Find pending L2 changes for AD groups with self-approval exclusion support.
-     */
-    public List<PendingChange> findPendingL2ForAdGroups(List<String> adGroups, String userId) {
-        if (adGroups == null || adGroups.isEmpty()) {
-            return pendingChangeRepository.findByStatus(PendingChange.Status.PENDING_LEVEL_TWO);
-        }
-        return pendingChangeRepository.findPendingL2ForSuperAdmin(adGroups, userId);
-    }
-
-    /**
-     * Find changes by arbitrary status, scoped by AD groups when provided.
-     */
-    public List<PendingChange> findByStatusForAdGroups(PendingChange.Status status, List<String> adGroups) {
-        if (status == PendingChange.Status.PENDING_LEVEL_ONE) {
-            return findPendingL1ForAdGroups(adGroups, null);
-        }
-        if (status == PendingChange.Status.PENDING_LEVEL_TWO) {
-            return findPendingL2ForAdGroups(adGroups, null);
-        }
-        if (adGroups == null || adGroups.isEmpty()) {
-            return pendingChangeRepository.findByStatus(status);
-        }
-        return pendingChangeRepository.findByStatusForAdGroups(status.name(), adGroups);
     }
 
     /**
@@ -31063,68 +30954,6 @@ class PendingChangeServiceTest {
             assertTrue(service.hasActivePendingChange("GROUP1"));
         }
 
-        @Test
-        @DisplayName("findPendingL1ForAdGroups should return status-based results when no groups")
-        void shouldFindPendingL1WithNullGroups() {
-            List<PendingChange> expected = List.of(buildPendingL1("EMP001"));
-            when(pendingChangeRepository.findByStatus(PendingChange.Status.PENDING_LEVEL_ONE))
-                    .thenReturn(expected);
-
-            List<PendingChange> result = service.findPendingL1ForAdGroups(null);
-
-            assertEquals(expected, result);
-        }
-
-        @Test
-        @DisplayName("findPendingL1ForAdGroups should filter by groups when provided")
-        void shouldFindPendingL1WithGroups() {
-            List<String> adGroups = List.of("GROUP1", "GROUP2");
-            List<PendingChange> expected = List.of(buildPendingL1("EMP001"));
-            when(pendingChangeRepository.findPendingL1ForChecker(adGroups, null))
-                    .thenReturn(expected);
-
-            List<PendingChange> result = service.findPendingL1ForAdGroups(adGroups);
-
-            assertEquals(expected, result);
-        }
-
-        @Test
-        @DisplayName("findPendingL1ForAdGroups should exclude submitter when userId provided")
-        void shouldFindPendingL1WithGroupsAndUser() {
-            List<String> adGroups = List.of("GROUP1", "GROUP2");
-            List<PendingChange> expected = List.of(buildPendingL1("EMP001"));
-            when(pendingChangeRepository.findPendingL1ForChecker(adGroups, "CHK001"))
-                    .thenReturn(expected);
-
-            List<PendingChange> result = service.findPendingL1ForAdGroups(adGroups, "CHK001");
-
-            assertEquals(expected, result);
-        }
-
-        @Test
-        @DisplayName("findPendingL2ForAdGroups should return status-based results when no groups")
-        void shouldFindPendingL2WithNullGroups() {
-            List<PendingChange> expected = List.of(buildPendingL2("EMP001"));
-            when(pendingChangeRepository.findByStatus(PendingChange.Status.PENDING_LEVEL_TWO))
-                    .thenReturn(expected);
-
-            List<PendingChange> result = service.findPendingL2ForAdGroups(null);
-
-            assertEquals(expected, result);
-        }
-
-        @Test
-        @DisplayName("findByStatusForAdGroups should scope non-pending statuses by ad groups")
-        void shouldFindByStatusForAdGroups() {
-            List<String> adGroups = List.of("GROUP1");
-            List<PendingChange> expected = List.of(buildPendingL1("EMP001"));
-            expected.getFirst().setStatus(PendingChange.Status.APPROVED);
-            when(pendingChangeRepository.findByStatusForAdGroups("APPROVED", adGroups)).thenReturn(expected);
-
-            List<PendingChange> result = service.findByStatusForAdGroups(PendingChange.Status.APPROVED, adGroups);
-
-            assertEquals(expected, result);
-        }
     }
 
     // ========================================================================
