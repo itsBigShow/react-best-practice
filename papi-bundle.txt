@@ -1,7 +1,7 @@
 # CCaaS Entitlement PAPI - Source Bundle
-# Generated: 2026-02-09 21:08:11
-# Total files: 258
-# Categories: 1 pom.xml, 1 CLAUDE.md, 4 docs, 3 resources, 119 YAML specs, 78 main Java, 50 test Java, 2 other
+# Generated: 2026-02-09 22:45:23
+# Total files: 260
+# Categories: 1 pom.xml, 1 CLAUDE.md, 4 docs, 3 resources, 119 YAML specs, 81 main Java, 49 test Java, 2 other
 # Note: target/generated-sources NOT included - run 'mvn generate-sources' after extraction
 ===FILE: ./AGENTS.md
 # AGENTS.md - ccaas-entitlement-papi
@@ -7427,7 +7427,6 @@ package com.hsbc.ccaas.papi.application;
 import com.hsbc.ccaas.papi.controller.model.AdminNoticeRequest;
 import com.hsbc.ccaas.papi.controller.model.AdminNoticeResponse;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 public interface AdminNoticeFacade {
@@ -7435,8 +7434,6 @@ public interface AdminNoticeFacade {
     AdminNoticeResponse createNotice(AdminNoticeRequest request);
 
     List<AdminNoticeResponse> listNotices(String status);
-
-    Optional<AdminNoticeResponse> getNotice(UUID noticeId);
 
     AdminNoticeResponse updateNotice(UUID noticeId, AdminNoticeRequest request);
 
@@ -7488,7 +7485,6 @@ import com.hsbc.ccaas.papi.controller.model.AdminNoticeRequest;
 import com.hsbc.ccaas.papi.controller.model.AdminNoticeResponse;
 import com.hsbc.ccaas.papi.service.AdminNoticeService;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
 
@@ -7509,11 +7505,6 @@ public class DefaultAdminNoticeFacade implements AdminNoticeFacade {
     @Override
     public List<AdminNoticeResponse> listNotices(String status) {
         return adminNoticeService.listNotices(status);
-    }
-
-    @Override
-    public Optional<AdminNoticeResponse> getNotice(UUID noticeId) {
-        return adminNoticeService.getNotice(noticeId);
     }
 
     @Override
@@ -7867,14 +7858,14 @@ public class SapiAdGroupClient {
 
         return SapiExceptionHandler.executeWithExceptionHandling(
             () -> {
-                Map<String, Object> requestData = buildAdGroupRequestData(adminAdGroups, criteria);
+                AdGroupPayloads.AdGroupListData requestData = buildAdGroupListData(adminAdGroups, criteria);
                 Map<String, Object> body = Map.of("data", requestData);
 
-                SapiDataMetaResponse<SapiPayloads.AdGroupsPayload> sapiResponse = sapiRestClient.post()
+                SapiDataMetaResponse<AdGroupPayloads.AdGroupsPayload> sapiResponse = sapiRestClient.post()
                     .uri(SapiApiPaths.AD_GROUPS_LIST)
                     .body(body)
                     .retrieve()
-                    .body(new ParameterizedTypeReference<SapiDataMetaResponse<SapiPayloads.AdGroupsPayload>>() {});
+                    .body(new ParameterizedTypeReference<SapiDataMetaResponse<AdGroupPayloads.AdGroupsPayload>>() {});
 
                 if (sapiResponse == null || sapiResponse.getData() == null) {
                     return PaginatedResult.empty(criteria.getOffset(), criteria.getLimit());
@@ -7916,13 +7907,11 @@ public class SapiAdGroupClient {
 
         return SapiExceptionHandler.executeWithExceptionHandling(
             () -> {
-                Map<String, Object> body = Map.of(
-                    "data", Map.of("groupIdentifier", groupIdentifier)
-                );
+                AdGroupPayloads.GroupIdentifierData data = new AdGroupPayloads.GroupIdentifierData(groupIdentifier);
 
                 SapiDataResponse<AdGroupLayoutResponse> response = sapiRestClient.post()
                     .uri(SapiApiPaths.AD_GROUPS_BY_IDENTIFIER)
-                    .body(body)
+                    .body(Map.of("data", data))
                     .retrieve()
                     .body(new ParameterizedTypeReference<SapiDataResponse<AdGroupLayoutResponse>>(){});
 
@@ -7956,14 +7945,14 @@ public class SapiAdGroupClient {
 
         return SapiExceptionHandler.executeWithExceptionHandling(
             () -> {
-                SapiPayloads.SapiCopyOptions sapiCopyOptions = new SapiPayloads.SapiCopyOptions(
+                AdGroupPayloads.SapiCopyOptions sapiCopyOptions = new AdGroupPayloads.SapiCopyOptions(
                     copyOptions == null || copyOptions.getCopyRoleAndPermissionsFlag(),
                     copyOptions == null || copyOptions.getCopyBusinessInfoFlag(),
                     true,
                     copyOptions != null && copyOptions.getOverwriteExistingFlag()
                 );
 
-                SapiPayloads.SapiCopyRequest request = new SapiPayloads.SapiCopyRequest(
+                AdGroupPayloads.SapiCopyRequest request = new AdGroupPayloads.SapiCopyRequest(
                     sourceGroupIdentifier,
                     targetGroupIdentifier,
                     sapiCopyOptions,
@@ -7986,15 +7975,13 @@ public class SapiAdGroupClient {
 
         return SapiExceptionHandler.executeWithExceptionHandling(
             () -> {
-                Map<String, Object> body = Map.of(
-                    "data", Map.of("adGroupValues", adGroups)
-                );
+                AdGroupPayloads.ResolveRolesData data = new AdGroupPayloads.ResolveRolesData(adGroups);
 
-                SapiDataResponse<SapiPayloads.RolesPayload> response = sapiRestClient.post()
+                SapiDataResponse<AdGroupPayloads.RolesPayload> response = sapiRestClient.post()
                     .uri(SapiApiPaths.RESOLVE_ROLES)
-                    .body(body)
+                    .body(Map.of("data", data))
                     .retrieve()
-                    .body(new ParameterizedTypeReference<SapiDataResponse<SapiPayloads.RolesPayload>>() {});
+                    .body(new ParameterizedTypeReference<SapiDataResponse<AdGroupPayloads.RolesPayload>>() {});
 
                 List<String> result = response != null && response.getData() != null
                         && response.getData().roleValues() != null
@@ -8006,32 +7993,22 @@ public class SapiAdGroupClient {
         );
     }
 
-    private Map<String, Object> buildAdGroupRequestData(List<String> adminAdGroups, AdGroupFilterCriteria criteria) {
-        java.util.HashMap<String, Object> data = new java.util.HashMap<>();
-        data.put("adminAdGroupValues", adminAdGroups);
-        data.put("offsetNumber", criteria.getOffset());
-        data.put("limitNumber", criteria.getLimit());
+    private AdGroupPayloads.AdGroupListData buildAdGroupListData(List<String> adminAdGroups, AdGroupFilterCriteria criteria) {
+        String search = criteria.getSearch() != null && !criteria.getSearch().isBlank() ? criteria.getSearch() : null;
+        String role = criteria.getRole() != null && !criteria.getRole().isBlank() ? criteria.getRole() : null;
+        String status = criteria.getStatus() != null && !criteria.getStatus().isBlank() ? criteria.getStatus() : null;
 
-        if (criteria.getSearch() != null && !criteria.getSearch().isBlank()) {
-            data.put("groupIdentifier", criteria.getSearch());
-        }
-        if (criteria.getRole() != null && !criteria.getRole().isBlank()) {
-            data.put("roleName", criteria.getRole());
-        }
-        if (criteria.getStatus() != null && !criteria.getStatus().isBlank()) {
-            data.put("userAccessCode", criteria.getStatus());
-        }
-
-        return data;
+        return new AdGroupPayloads.AdGroupListData(
+                adminAdGroups, criteria.getOffset(), criteria.getLimit(), search, role, status);
     }
 
-    private AdGroupCopyResponse executeCopyRequest(SapiPayloads.SapiCopyRequest request) {
+    private AdGroupCopyResponse executeCopyRequest(AdGroupPayloads.SapiCopyRequest request) {
         try {
-            SapiDataResponse<SapiPayloads.CopyResultPayload> response = sapiRestClient.post()
+            SapiDataResponse<AdGroupPayloads.CopyResultPayload> response = sapiRestClient.post()
                 .uri(SapiApiPaths.AD_GROUPS_COPY)
                 .body(request)
                 .retrieve()
-                .body(new ParameterizedTypeReference<SapiDataResponse<SapiPayloads.CopyResultPayload>>(){});
+                .body(new ParameterizedTypeReference<SapiDataResponse<AdGroupPayloads.CopyResultPayload>>(){});
 
             AdGroupCopyResponse result = response != null && response.getData() != null
                 ? response.getData().copyResult() : null;
@@ -8155,21 +8132,6 @@ public class SapiAdminNoticeClient {
         );
     }
 
-    public AdminNoticeResponse getNotice(UUID noticeId) {
-        if (noticeId == null) {
-            logger.warn(INVALID_NOTICE_ID_NULL);
-            throw new IllegalArgumentException(NOTICE_ID_CANNOT_BE_NULL);
-        }
-
-        logger.debug("Getting admin notice with ID: {}", noticeId);
-
-        List<AdminNoticeResponse> allNotices = listNotices(null);
-        return allNotices.stream()
-            .filter(n -> noticeId.equals(n.getIdentifier()))
-            .findFirst()
-            .orElse(null);
-    }
-
     public AdminNoticeResponse updateNotice(UUID noticeId, AdminNoticeRequest request) {
         if (noticeId == null) {
             logger.warn(INVALID_NOTICE_ID_NULL);
@@ -8249,6 +8211,7 @@ public class SapiAdminNoticeClient {
 package com.hsbc.ccaas.papi.client;
 
 import com.hsbc.ccaas.papi.constants.SapiApiPaths;
+import com.hsbc.ccaas.papi.dto.sapi.LayoutPayloads;
 import com.hsbc.ccaas.papi.service.helper.SapiExceptionHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -8279,13 +8242,11 @@ public class SapiAdminOperationsClient {
         logger.debug("Fetching session layout for user: {} with AD groups", userIdentifier);
         return SapiExceptionHandler.executeWithExceptionHandling(
             () -> {
-                Map<String, Object> requestBody = Map.of("data", Map.of(
-                    "userIdentifier", userIdentifier,
-                    "adGroupValues", adGroups != null ? adGroups : Collections.emptyList()
-                ));
+                LayoutPayloads.SessionLayoutData data = new LayoutPayloads.SessionLayoutData(
+                        userIdentifier, adGroups != null ? adGroups : Collections.emptyList());
                 return sapiRestClient.post()
                     .uri(SapiApiPaths.SESSION_LAYOUTS)
-                    .body(requestBody)
+                    .body(Map.of("data", data))
                     .retrieve()
                     .body(new ParameterizedTypeReference<Object>(){});
             },
@@ -8297,12 +8258,12 @@ public class SapiAdminOperationsClient {
 ===FILE: ./src/main/java/com/hsbc/ccaas/papi/client/SapiApprovalClient.java
 package com.hsbc.ccaas.papi.client;
 
-import com.hsbc.ccaas.papi.constants.CommonConstants;
 import com.hsbc.ccaas.papi.constants.SapiApiPaths;
 import com.hsbc.ccaas.papi.dto.PaginatedResult;
 import com.hsbc.ccaas.papi.dto.sapi.*;
-import com.hsbc.ccaas.papi.dto.sapi.SapiPayloads.SapiPendingChange;
+import com.hsbc.ccaas.papi.dto.sapi.ApprovalPayloads.SapiPendingChange;
 import com.hsbc.ccaas.papi.service.helper.SapiExceptionHandler;
+import com.hsbc.ccaas.papi.util.ValidationUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -8323,11 +8284,6 @@ public class SapiApprovalClient {
 
     private static final Logger logger = LoggerFactory.getLogger(SapiApprovalClient.class);
 
-    private static final String PENDING_CHANGE_ID_REQUIRED = "Pending change ID cannot be null or blank";
-    private static final String APPROVER_ID_REQUIRED = "Approver ID cannot be null or blank";
-    private static final String PARAM_OFFSET = "offsetNumber";
-    private static final String PARAM_LIMIT = "limitNumber";
-
     private final RestClient sapiRestClient;
 
     public SapiApprovalClient(@Qualifier("sapiRestClient") RestClient sapiRestClient) {
@@ -8340,30 +8296,18 @@ public class SapiApprovalClient {
      */
     public SapiPendingChange submitChange(String targetGroupIdentifier, String changeDescription,
             Map<String, Object> proposedConfig, String submittedBy, Long configVersionNumber) {
-        if (targetGroupIdentifier == null || targetGroupIdentifier.isBlank()) {
-            throw new IllegalArgumentException("Target group identifier cannot be null or blank");
-        }
+        ValidationUtil.requireNotBlank(targetGroupIdentifier, "Target group identifier");
 
         logger.debug("Submitting change for approval: target={}", targetGroupIdentifier);
 
-        Map<String, Object> sapiData = new java.util.HashMap<>();
-        sapiData.put("targetGroupIdentifier", targetGroupIdentifier);
-        sapiData.put("submittedByText", submittedBy);
-        if (proposedConfig != null) {
-            sapiData.put("proposedConfig", proposedConfig);
-        }
-        if (changeDescription != null) {
-            sapiData.put("changeDescription", changeDescription);
-        }
-        if (configVersionNumber != null) {
-            sapiData.put("configVersionNumber", configVersionNumber);
-        }
+        ApprovalPayloads.SubmitChangeData data = new ApprovalPayloads.SubmitChangeData(
+                targetGroupIdentifier, submittedBy, proposedConfig, changeDescription, configVersionNumber);
 
         return SapiExceptionHandler.executeWithExceptionHandling(
             () -> {
                 SapiDataResponse<SapiPendingChange> response = sapiRestClient.post()
                         .uri(SapiApiPaths.PENDING_CHANGES)
-                        .body(Map.of("data", sapiData))
+                        .body(Map.of("data", data))
                         .retrieve()
                         .body(new ParameterizedTypeReference<SapiDataResponse<SapiPendingChange>>(){});
                 return response != null ? response.getData() : null;
@@ -8383,32 +8327,16 @@ public class SapiApprovalClient {
         logger.debug("Listing pending changes: filter={}, userId={}, targetGroup={}, adGroups={}",
                 filter, userId, targetGroupIdentifier, adGroups);
 
-        java.util.HashMap<String, Object> requestData = new java.util.HashMap<>();
-        requestData.put(PARAM_OFFSET, offset);
-        requestData.put(PARAM_LIMIT, limit);
-
-        if (adGroups != null) {
-            requestData.put("userAdGroupValues", adGroups);
-        }
-        if (userId != null && !userId.isBlank()) {
-            requestData.put("userIdentifier", userId);
-        }
-        if (filter != null && !filter.isBlank()) {
-            requestData.put("statusCode", filter);
-        }
-        if (targetGroupIdentifier != null && !targetGroupIdentifier.isBlank()) {
-            requestData.put("targetGroupIdentifier", targetGroupIdentifier);
-        }
-
-        Map<String, Object> body = Map.of("data", requestData);
+        ApprovalPayloads.ListChangesData data = new ApprovalPayloads.ListChangesData(
+                offset, limit, adGroups, userId, filter, targetGroupIdentifier);
 
         return SapiExceptionHandler.executeWithExceptionHandling(
             () -> {
-                SapiDataResponse<SapiPayloads.PendingChangesPayload> response = sapiRestClient.post()
+                SapiDataResponse<ApprovalPayloads.PendingChangesPayload> response = sapiRestClient.post()
                         .uri(SapiApiPaths.PENDING_CHANGES_LIST)
-                        .body(body)
+                        .body(Map.of("data", data))
                         .retrieve()
-                        .body(new ParameterizedTypeReference<SapiDataResponse<SapiPayloads.PendingChangesPayload>>() {});
+                        .body(new ParameterizedTypeReference<SapiDataResponse<ApprovalPayloads.PendingChangesPayload>>() {});
 
                 if (response == null || response.getData() == null) {
                     return PaginatedResult.<SapiPendingChange>empty(offset, limit);
@@ -8428,9 +8356,7 @@ public class SapiApprovalClient {
      * SAPI returns: {"data": {...pending change fields...}}
      */
     public SapiPendingChange getPendingChange(String id) {
-        if (id == null || id.isBlank()) {
-            throw new IllegalArgumentException(PENDING_CHANGE_ID_REQUIRED);
-        }
+        ValidationUtil.requireNotBlank(id, "Pending change ID");
 
         logger.debug("Getting pending change: id={}", id);
 
@@ -8451,9 +8377,24 @@ public class SapiApprovalClient {
      * SAPI expects: POST /sapi/v1/change-approvals with {"data": {...}} envelope.
      */
     public SapiPendingChange approve(String id, String approverId, String approverName, String comment, List<String> approverAdGroups) {
-        validateIdAndApprover(id, approverId);
+        ValidationUtil.requireNotBlank(id, "Pending change ID");
+        ValidationUtil.requireNotBlank(approverId, "Approver ID");
         logger.debug("Approve: id={}, approver={}", id, approverId);
-        return executeApproval(id, approverId, approverName, comment, approverAdGroups);
+
+        ApprovalPayloads.ApprovalData data = new ApprovalPayloads.ApprovalData(
+                id, approverId, comment != null ? comment : "", approverName, approverAdGroups);
+
+        return SapiExceptionHandler.executeWithExceptionHandling(
+            () -> {
+                SapiDataResponse<SapiPendingChange> response = sapiRestClient.post()
+                        .uri(SapiApiPaths.CHANGE_APPROVALS)
+                        .body(Map.of("data", data))
+                        .retrieve()
+                        .body(new ParameterizedTypeReference<SapiDataResponse<SapiPendingChange>>(){});
+                return response != null ? response.getData() : null;
+            },
+            "Approve pending change " + id
+        );
     }
 
     /**
@@ -8461,34 +8402,20 @@ public class SapiApprovalClient {
      * SAPI expects: POST /sapi/v1/change-rejections with {"data": {...}} envelope.
      */
     public SapiPendingChange reject(String id, String rejectorId, String rejectorName, String reason, List<String> rejecterAdGroups) {
-        if (id == null || id.isBlank()) {
-            throw new IllegalArgumentException(PENDING_CHANGE_ID_REQUIRED);
-        }
-        if (rejectorId == null || rejectorId.isBlank()) {
-            throw new IllegalArgumentException("Rejector ID cannot be null or blank");
-        }
-        if (reason == null || reason.isBlank()) {
-            throw new IllegalArgumentException("Rejection reason cannot be null or blank");
-        }
+        ValidationUtil.requireNotBlank(id, "Pending change ID");
+        ValidationUtil.requireNotBlank(rejectorId, "Rejector ID");
+        ValidationUtil.requireNotBlank(reason, "Rejection reason");
 
         logger.debug("Reject: id={}, rejector={}, reason={}", id, rejectorId, reason);
 
-        java.util.HashMap<String, Object> innerBody = new java.util.HashMap<>();
-        innerBody.put("changeIdentifier", id);
-        innerBody.put("rejecterIdText", rejectorId);
-        innerBody.put("reasonText", reason);
-        if (rejectorName != null) {
-            innerBody.put("rejecterNameText", rejectorName);
-        }
-        if (rejecterAdGroups != null) {
-            innerBody.put("rejecterAdGroupValues", rejecterAdGroups);
-        }
+        ApprovalPayloads.RejectionData data = new ApprovalPayloads.RejectionData(
+                id, rejectorId, reason, rejectorName, rejecterAdGroups);
 
         return SapiExceptionHandler.executeWithExceptionHandling(
             () -> {
                 SapiDataResponse<SapiPendingChange> response = sapiRestClient.post()
                         .uri(SapiApiPaths.CHANGE_REJECTIONS)
-                        .body(Map.of("data", innerBody))
+                        .body(Map.of("data", data))
                         .retrieve()
                         .body(new ParameterizedTypeReference<SapiDataResponse<SapiPendingChange>>(){});
                 return response != null ? response.getData() : null;
@@ -8502,12 +8429,8 @@ public class SapiApprovalClient {
      * SAPI expects: DELETE /sapi/v1/pending-changes/{changeIdentifier}?requesterId={userId}.
      */
     public SapiPendingChange cancel(String id, String userId) {
-        if (id == null || id.isBlank()) {
-            throw new IllegalArgumentException(PENDING_CHANGE_ID_REQUIRED);
-        }
-        if (userId == null || userId.isBlank()) {
-            throw new IllegalArgumentException(CommonConstants.ValidationMessages.USER_ID_NULL_OR_BLANK);
-        }
+        ValidationUtil.requireNotBlank(id, "Pending change ID");
+        ValidationUtil.requireNotBlank(userId, "User ID");
 
         logger.debug("Cancel: id={}, userId={}", id, userId);
 
@@ -8533,79 +8456,25 @@ public class SapiApprovalClient {
     public void directSave(String targetGroupIdentifier, Map<String, Object> currentState,
             Map<String, Object> proposedState, String superAdminId, String superAdminName,
             Long configVersion, List<String> superAdminAdGroups) {
-        if (targetGroupIdentifier == null || targetGroupIdentifier.isBlank()) {
-            throw new IllegalArgumentException("Target group identifier cannot be null or blank");
-        }
-        if (proposedState == null || proposedState.isEmpty()) {
-            throw new IllegalArgumentException("Proposed state cannot be null or empty");
-        }
-        if (superAdminId == null || superAdminId.isBlank()) {
-            throw new IllegalArgumentException("Super admin ID cannot be null or blank");
-        }
+        ValidationUtil.requireNotBlank(targetGroupIdentifier, "Target group identifier");
+        ValidationUtil.requireNotNull(proposedState, "Proposed state");
+        ValidationUtil.requireNotBlank(superAdminId, "Super admin ID");
 
         logger.debug("Direct save: target={}, superAdmin={}", targetGroupIdentifier, superAdminId);
 
-        Map<String, Object> sapiData = new java.util.HashMap<>();
-        sapiData.put("targetGroupIdentifier", targetGroupIdentifier);
-        sapiData.put("proposedState", proposedState);
-        sapiData.put("superAdminIdText", superAdminId);
-        if (currentState != null) {
-            sapiData.put("currentState", currentState);
-        }
-        if (superAdminName != null) {
-            sapiData.put("superAdminNameText", superAdminName);
-        }
-        if (configVersion != null) {
-            sapiData.put("configVersionNumber", configVersion);
-        }
-        if (superAdminAdGroups != null) {
-            sapiData.put("superAdminAdGroupValues", superAdminAdGroups);
-        }
+        ApprovalPayloads.DirectSaveData data = new ApprovalPayloads.DirectSaveData(
+                targetGroupIdentifier, proposedState, superAdminId,
+                currentState, superAdminName, configVersion, superAdminAdGroups);
 
         SapiExceptionHandler.executeWithExceptionHandling(
             () -> sapiRestClient.post()
                     .uri(SapiApiPaths.DIRECT_SAVES)
-                    .body(Map.of("data", sapiData))
+                    .body(Map.of("data", data))
                     .retrieve()
-                    .body(new ParameterizedTypeReference<SapiDataResponse<Map<String, Object>>>(){}),
+                    .toBodilessEntity(),
             "Direct save for group: " + targetGroupIdentifier
         );
     }
-
-    private void validateIdAndApprover(String id, String approverId) {
-        if (id == null || id.isBlank()) {
-            throw new IllegalArgumentException(PENDING_CHANGE_ID_REQUIRED);
-        }
-        if (approverId == null || approverId.isBlank()) {
-            throw new IllegalArgumentException(APPROVER_ID_REQUIRED);
-        }
-    }
-
-    private SapiPendingChange executeApproval(String id, String approverId, String approverName, String comment, List<String> approverAdGroups) {
-        java.util.HashMap<String, Object> innerBody = new java.util.HashMap<>();
-        innerBody.put("changeIdentifier", id);
-        innerBody.put("approverIdText", approverId);
-        innerBody.put("commentText", comment != null ? comment : "");
-        if (approverName != null) {
-            innerBody.put("approverNameText", approverName);
-        }
-        if (approverAdGroups != null) {
-            innerBody.put("approverAdGroupValues", approverAdGroups);
-        }
-
-        return SapiExceptionHandler.executeWithExceptionHandling(
-            () -> {
-                SapiDataResponse<SapiPendingChange> response = sapiRestClient.post()
-                        .uri(SapiApiPaths.CHANGE_APPROVALS)
-                        .body(Map.of("data", innerBody))
-                        .retrieve()
-                        .body(new ParameterizedTypeReference<SapiDataResponse<SapiPendingChange>>(){});
-                return response != null ? response.getData() : null;
-            },
-            "Approve pending change " + id
-        );
-    }
-
 }
 ===ENDFILE
 ===FILE: ./src/main/java/com/hsbc/ccaas/papi/client/SapiEmbeddedAppClient.java
@@ -8615,7 +8484,7 @@ import com.hsbc.ccaas.papi.controller.model.AppAdGroupConfigResponse;
 import com.hsbc.ccaas.papi.controller.model.EmbeddedAppResponse;
 import com.hsbc.ccaas.papi.dto.sapi.SapiDataResponse;
 import com.hsbc.ccaas.papi.dto.sapi.SapiEmbeddedAppAdGroupRequest;
-import com.hsbc.ccaas.papi.dto.sapi.SapiPayloads;
+import com.hsbc.ccaas.papi.dto.sapi.EmbeddedAppPayloads;
 import com.hsbc.ccaas.papi.service.helper.SapiExceptionHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -8640,10 +8509,10 @@ public class SapiEmbeddedAppClient {
     public List<EmbeddedAppResponse> fetchAllEmbeddedApps() {
         return SapiExceptionHandler.executeWithExceptionHandling(
             () -> {
-                SapiDataResponse<SapiPayloads.EmbeddedAppsPayload> wrapper = sapiRestClient.get()
+                SapiDataResponse<EmbeddedAppPayloads.EmbeddedAppsPayload> wrapper = sapiRestClient.get()
                     .uri("/sapi/v1/embedded-apps")
                     .retrieve()
-                    .body(new ParameterizedTypeReference<SapiDataResponse<SapiPayloads.EmbeddedAppsPayload>>() {});
+                    .body(new ParameterizedTypeReference<SapiDataResponse<EmbeddedAppPayloads.EmbeddedAppsPayload>>() {});
                 return wrapper != null && wrapper.getData() != null
                     ? new ArrayList<>(wrapper.getData().appValues()) : new ArrayList<>();
             },
@@ -8706,11 +8575,11 @@ public class SapiEmbeddedAppClient {
     public List<EmbeddedAppResponse> fetchAppsForAdGroup(String groupIdentifier) {
         return SapiExceptionHandler.executeWithExceptionHandling(
             () -> {
-                SapiDataResponse<SapiPayloads.EmbeddedAppsConfigPayload> wrapper = sapiRestClient.post()
+                SapiDataResponse<EmbeddedAppPayloads.EmbeddedAppsConfigPayload> wrapper = sapiRestClient.post()
                     .uri("/sapi/v1/embedded-apps-ad-groups")
                     .body(Map.of("data", Map.of("groupIdentifier", groupIdentifier)))
                     .retrieve()
-                    .body(new ParameterizedTypeReference<SapiDataResponse<SapiPayloads.EmbeddedAppsConfigPayload>>() {});
+                    .body(new ParameterizedTypeReference<SapiDataResponse<EmbeddedAppPayloads.EmbeddedAppsConfigPayload>>() {});
                 return wrapper != null && wrapper.getData() != null
                         && wrapper.getData().configValues() != null
                     ? new ArrayList<>(wrapper.getData().configValues()) : new ArrayList<>();
@@ -8768,10 +8637,11 @@ public class SapiLayoutCacheClient {
 ===FILE: ./src/main/java/com/hsbc/ccaas/papi/client/SapiLayoutClient.java
 package com.hsbc.ccaas.papi.client;
 
-import com.hsbc.ccaas.papi.constants.CommonConstants;
 import com.hsbc.ccaas.papi.controller.model.AddEntitlementResponse;
 import com.hsbc.ccaas.papi.controller.model.EntitlementStateValue;
+import com.hsbc.ccaas.papi.dto.sapi.LayoutPayloads;
 import com.hsbc.ccaas.papi.dto.sapi.SapiDataResponse;
+import com.hsbc.ccaas.papi.util.ValidationUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -8801,28 +8671,18 @@ public class SapiLayoutClient {
      * Sends request with SAPI field names: userIdentifier, noticeCode, stateCode.
      */
     public void updateNoticeState(String userId, String noticeCode, String stateCode) {
-        if (userId == null || userId.isBlank()) {
-            logger.warn("User ID is null or blank in notice acknowledgment");
-            throw new IllegalArgumentException(CommonConstants.ValidationMessages.USER_ID_NULL_OR_BLANK);
-        }
-
-        if (noticeCode == null || noticeCode.isBlank()) {
-            logger.warn("Notice code is null or blank");
-            throw new IllegalArgumentException("Notice code cannot be null or blank");
-        }
+        ValidationUtil.requireNotBlank(userId, "User ID");
+        ValidationUtil.requireNotBlank(noticeCode, "Notice code");
 
         logger.debug("Updating notice state for user: {}, code: {}, state: {}",
             userId, noticeCode, stateCode);
 
-        Map<String, Object> requestBody = Map.of("data", Map.of(
-            "userIdentifier", userId,
-            "noticeCode", noticeCode,
-            "stateCode", stateCode != null ? stateCode : "ACKNOWLEDGED"
-        ));
+        LayoutPayloads.NoticeAcknowledgmentData data = new LayoutPayloads.NoticeAcknowledgmentData(
+                userId, noticeCode, stateCode != null ? stateCode : "ACKNOWLEDGED");
 
         sapiRestClient.post()
             .uri("/sapi/v1/notice-acknowledgments")
-            .body(requestBody)
+            .body(Map.of("data", data))
             .retrieve()
             .toBodilessEntity();
     }
@@ -8835,42 +8695,27 @@ public class SapiLayoutClient {
             String entitlementType, String key, EntitlementStateValue value,
             List<String> targetRoles, Boolean allowOverwrite) {
 
-        if (entitlementType == null || entitlementType.isBlank()) {
-            logger.warn("Add entitlement request has null/blank entitlement type");
-            throw new IllegalArgumentException("Entitlement type cannot be null or blank");
-        }
+        ValidationUtil.requireNotBlank(entitlementType, "Entitlement type");
 
         if (targetRoles != null && targetRoles.size() > 50) {
             logger.warn("Target roles list too large: {} items", targetRoles.size());
             throw new IllegalArgumentException("Target roles list cannot exceed 50 items");
         }
 
-        // Build SAPI request with correct field names
-        Map<String, Object> valueMap = new LinkedHashMap<>();
-        if (value != null && value.getStateText() != null) {
-            valueMap.put("stateText", value.getStateText().getValue());
-        }
-        if (value != null && value.getReasonText() != null) {
-            valueMap.put("reasonText", value.getReasonText());
+        LayoutPayloads.EntitlementValueData valueData = null;
+        if (value != null) {
+            valueData = new LayoutPayloads.EntitlementValueData(
+                    value.getStateText() != null ? value.getStateText().getValue() : null,
+                    value.getReasonText());
         }
 
-        Map<String, Object> requestData = new LinkedHashMap<>();
-        requestData.put("entitlementTypeCode", entitlementType);
-        requestData.put("keyCode", key);
-        requestData.put("stateValue", valueMap);
-        if (targetRoles != null) {
-            requestData.put("targetRoleValues", targetRoles);
-        }
-        if (allowOverwrite != null) {
-            requestData.put("allowOverwriteIndicator", allowOverwrite);
-        }
-
-        Map<String, Object> requestBody = Map.of("data", requestData);
+        LayoutPayloads.AddEntitlementData data = new LayoutPayloads.AddEntitlementData(
+                entitlementType, key, valueData, targetRoles, allowOverwrite);
 
         logger.debug("Adding entitlement to templates");
         SapiDataResponse<AddEntitlementResponse> response = sapiRestClient.post()
             .uri("/sapi/v1/entitlements")
-            .body(requestBody)
+            .body(Map.of("data", data))
             .retrieve()
             .body(new ParameterizedTypeReference<SapiDataResponse<AddEntitlementResponse>>(){});
 
@@ -8883,7 +8728,7 @@ package com.hsbc.ccaas.papi.client;
 
 import com.hsbc.ccaas.papi.controller.model.*;
 import com.hsbc.ccaas.papi.dto.sapi.SapiDataResponse;
-import com.hsbc.ccaas.papi.dto.sapi.SapiPayloads;
+import com.hsbc.ccaas.papi.dto.sapi.ReferenceDataPayloads;
 import com.hsbc.ccaas.papi.service.helper.SapiExceptionHandler;
 import java.util.Collections;
 import java.util.List;
@@ -8910,10 +8755,10 @@ public class SapiReferenceDataClient {
         logger.debug("Fetching all regions from SAPI");
         return SapiExceptionHandler.executeWithExceptionHandling(
             () -> {
-                SapiDataResponse<SapiPayloads.RegionsPayload> response = sapiRestClient.get()
+                SapiDataResponse<ReferenceDataPayloads.RegionsPayload> response = sapiRestClient.get()
                     .uri("/sapi/v1/regions")
                     .retrieve()
-                    .body(new ParameterizedTypeReference<SapiDataResponse<SapiPayloads.RegionsPayload>>(){});
+                    .body(new ParameterizedTypeReference<SapiDataResponse<ReferenceDataPayloads.RegionsPayload>>(){});
                 return response != null && response.getData() != null ? response.getData().regions() : Collections.emptyList();
             },
             "Fetch all regions"
@@ -8924,10 +8769,10 @@ public class SapiReferenceDataClient {
         logger.debug("Fetching all business units from SAPI");
         return SapiExceptionHandler.executeWithExceptionHandling(
             () -> {
-                SapiDataResponse<SapiPayloads.BusinessUnitsPayload> response = sapiRestClient.get()
+                SapiDataResponse<ReferenceDataPayloads.BusinessUnitsPayload> response = sapiRestClient.get()
                     .uri("/sapi/v1/business-units")
                     .retrieve()
-                    .body(new ParameterizedTypeReference<SapiDataResponse<SapiPayloads.BusinessUnitsPayload>>(){});
+                    .body(new ParameterizedTypeReference<SapiDataResponse<ReferenceDataPayloads.BusinessUnitsPayload>>(){});
                 return response != null && response.getData() != null ? response.getData().businessUnits() : Collections.emptyList();
             },
             "Fetch all business units"
@@ -8938,10 +8783,10 @@ public class SapiReferenceDataClient {
         logger.debug("Fetching all countries from SAPI");
         return SapiExceptionHandler.executeWithExceptionHandling(
             () -> {
-                SapiDataResponse<SapiPayloads.CountriesPayload> response = sapiRestClient.get()
+                SapiDataResponse<ReferenceDataPayloads.CountriesPayload> response = sapiRestClient.get()
                     .uri("/sapi/v1/countries")
                     .retrieve()
-                    .body(new ParameterizedTypeReference<SapiDataResponse<SapiPayloads.CountriesPayload>>(){});
+                    .body(new ParameterizedTypeReference<SapiDataResponse<ReferenceDataPayloads.CountriesPayload>>(){});
                 return response != null && response.getData() != null ? response.getData().countries() : Collections.emptyList();
             },
             "Fetch all countries"
@@ -8953,10 +8798,10 @@ public class SapiReferenceDataClient {
         logger.debug("Fetching countries for region: {}", regionCode);
         return SapiExceptionHandler.executeWithExceptionHandling(
             () -> {
-                SapiDataResponse<SapiPayloads.CountriesPayload> response = sapiRestClient.get()
+                SapiDataResponse<ReferenceDataPayloads.CountriesPayload> response = sapiRestClient.get()
                     .uri("/sapi/v1/regions-countries/{regionCode}", regionCode)
                     .retrieve()
-                    .body(new ParameterizedTypeReference<SapiDataResponse<SapiPayloads.CountriesPayload>>(){});
+                    .body(new ParameterizedTypeReference<SapiDataResponse<ReferenceDataPayloads.CountriesPayload>>(){});
                 return response != null && response.getData() != null ? response.getData().countries() : Collections.emptyList();
             },
             "Fetch countries by region"
@@ -8967,10 +8812,10 @@ public class SapiReferenceDataClient {
         logger.debug("Fetching all markets from SAPI");
         return SapiExceptionHandler.executeWithExceptionHandling(
             () -> {
-                SapiDataResponse<SapiPayloads.MarketsPayload> response = sapiRestClient.get()
+                SapiDataResponse<ReferenceDataPayloads.MarketsPayload> response = sapiRestClient.get()
                     .uri("/sapi/v1/markets")
                     .retrieve()
-                    .body(new ParameterizedTypeReference<SapiDataResponse<SapiPayloads.MarketsPayload>>(){});
+                    .body(new ParameterizedTypeReference<SapiDataResponse<ReferenceDataPayloads.MarketsPayload>>(){});
                 return response != null && response.getData() != null ? response.getData().markets() : Collections.emptyList();
             },
             "Fetch all markets"
@@ -8982,10 +8827,10 @@ public class SapiReferenceDataClient {
         logger.debug("Fetching markets for region: {}", regionCode);
         return SapiExceptionHandler.executeWithExceptionHandling(
             () -> {
-                SapiDataResponse<SapiPayloads.MarketsPayload> response = sapiRestClient.get()
+                SapiDataResponse<ReferenceDataPayloads.MarketsPayload> response = sapiRestClient.get()
                     .uri("/sapi/v1/regions-markets/{regionCode}", regionCode)
                     .retrieve()
-                    .body(new ParameterizedTypeReference<SapiDataResponse<SapiPayloads.MarketsPayload>>(){});
+                    .body(new ParameterizedTypeReference<SapiDataResponse<ReferenceDataPayloads.MarketsPayload>>(){});
                 return response != null && response.getData() != null ? response.getData().markets() : Collections.emptyList();
             },
             "Fetch markets by region"
@@ -9115,8 +8960,8 @@ package com.hsbc.ccaas.papi.config;
 
 import com.hsbc.ccaas.papi.constants.CommonConstants;
 import jakarta.servlet.http.HttpServletRequest;
-import java.util.HashMap;
 import java.util.Map;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -9187,10 +9032,11 @@ public class GlobalExceptionHandler {
             CommonConstants.ErrorMessages.USER_MESSAGE_INVALID_REQUEST,
             "validation", request);
 
-        Map<String, String> fieldErrors = new HashMap<>();
-        ex.getBindingResult().getFieldErrors().forEach(error ->
-            fieldErrors.put(error.getField(), error.getDefaultMessage())
-        );
+        Map<String, String> fieldErrors = ex.getBindingResult().getFieldErrors().stream()
+            .collect(Collectors.toMap(
+                org.springframework.validation.FieldError::getField,
+                error -> error.getDefaultMessage() != null ? error.getDefaultMessage() : "invalid",
+                (first, second) -> first));
         problem.setProperty("fieldErrors", fieldErrors);
 
         LOGGER.warn("Validation failed: {}", fieldErrors);
@@ -10052,54 +9898,6 @@ public final class CommonConstants {
     }
 }
 ===ENDFILE
-===FILE: ./src/main/java/com/hsbc/ccaas/papi/constants/ErrorIds.java
-package com.hsbc.ccaas.papi.constants;
-
-public final class ErrorIds {
-
-    private ErrorIds() {}
-
-    // Cache errors
-    public static final String CACHE_INVALIDATION_FAILED = "ERR_CACHE_001";
-    public static final String CACHE_INVALIDATION_FALLBACK_FAILED = "ERR_CACHE_002";
-    public static final String CACHE_INVALIDATION_PARTIAL = "ERR_CACHE_003";
-
-    // Role resolution errors
-    public static final String ROLE_RESOLUTION_FAILED = "ERR_ROLE_001";
-    public static final String ROLE_RESOLUTION_TIMEOUT = "ERR_ROLE_002";
-
-    // SAPI communication errors
-    public static final String SAPI_HTTP_ERROR = "ERR_SAPI_001";
-    public static final String SAPI_TIMEOUT = "ERR_SAPI_002";
-    public static final String SAPI_EMPTY_RESPONSE = "ERR_SAPI_003";
-    public static final String SAPI_LAYOUT_COMPUTE_FAILED = "ERR_SAPI_004";
-
-    // User provider errors
-    public static final String AD_API_UNAVAILABLE = "ERR_AD_001";
-    public static final String AD_API_TIMEOUT = "ERR_AD_002";
-
-    // Bulk operation errors
-    public static final String BULK_OPERATION_PARTIAL_FAILURE = "ERR_BULK_001";
-    public static final String BULK_OPERATION_ITEM_FAILED = "ERR_BULK_002";
-
-    // Authentication errors
-    public static final String AUTH_TOKEN_INVALID = "ERR_AUTH_001";
-    public static final String AUTH_USER_NOT_FOUND = "ERR_AUTH_002";
-    public static final String AUTH_INSUFFICIENT_PERMISSIONS = "ERR_AUTH_003";
-
-    // Configuration errors
-    public static final String CONFIG_LOAD_FAILED = "ERR_CONFIG_001";
-    public static final String CONFIG_MISSING_USERS = "ERR_CONFIG_002";
-    public static final String CONFIG_INVALID_FORMAT = "ERR_CONFIG_003";
-
-    // Validation errors
-    public static final String VALIDATION_ERROR = "ERR_VAL_001";
-    public static final String VALIDATION_MISSING_FIELD = "ERR_VAL_002";
-
-    // Unexpected errors
-    public static final String UNEXPECTED_ERROR = "ERR_UNEXPECTED_001";
-}
-===ENDFILE
 ===FILE: ./src/main/java/com/hsbc/ccaas/papi/constants/SapiApiPaths.java
 package com.hsbc.ccaas.papi.constants;
 
@@ -10396,7 +10194,7 @@ import com.hsbc.ccaas.papi.controller.helper.ApprovalResponseAssembler;
 import com.hsbc.ccaas.papi.controller.model.*;
 import com.hsbc.ccaas.papi.client.SapiApprovalClient;
 import com.hsbc.ccaas.papi.dto.PaginatedResult;
-import com.hsbc.ccaas.papi.dto.sapi.SapiPayloads.SapiPendingChange;
+import com.hsbc.ccaas.papi.dto.sapi.ApprovalPayloads.SapiPendingChange;
 import com.hsbc.ccaas.identity.service.helper.IdentityContextAccessor;
 import com.hsbc.ccaas.papi.mapper.GeneratedModelMapper;
 import com.hsbc.wpb.ef.ports.RequestContext;
@@ -10509,7 +10307,7 @@ public class ApprovalWorkflowController implements PendingChangesApi, ChangeAppr
         log.info("Approve change: id={}", changeId);
 
         String approverId = requireEmployeeId();
-        // TODO: restore identity.displayName() once enterprise ccaas-identity-mock library supports it
+        // displayName() not yet available in enterprise identity mock library
         String approverName = "";
         String comment = approveChangeRequest.getCommentText();
         List<String> adGroups = identity.adGroups();
@@ -10536,7 +10334,7 @@ public class ApprovalWorkflowController implements PendingChangesApi, ChangeAppr
         }
 
         String rejectorId = requireEmployeeId();
-        // TODO: restore identity.displayName() once enterprise ccaas-identity-mock library supports it
+        // displayName() not yet available in enterprise identity mock library
         String rejectorName = "";
         List<String> adGroups = identity.adGroups();
         SapiPendingChange sapiResult = sapiApprovalClient.reject(
@@ -10688,7 +10486,7 @@ public class DirectSaveController implements AdGroupConfigsApi {
         log.info("Direct save: groupIdentifier={}", groupIdentifier);
 
         String superAdminId = requireEmployeeId();
-        // TODO: restore identity.displayName() once enterprise ccaas-identity-mock library supports it
+        // displayName() not yet available in enterprise identity mock library
         String superAdminName = "";
         java.util.List<String> adGroups = identity.adGroups();
 
@@ -11166,7 +10964,7 @@ package com.hsbc.ccaas.papi.controller.helper;
 
 import com.hsbc.ccaas.papi.controller.model.*;
 import com.hsbc.ccaas.papi.dto.PaginatedResult;
-import com.hsbc.ccaas.papi.dto.sapi.SapiPayloads.SapiPendingChange;
+import com.hsbc.ccaas.papi.dto.sapi.ApprovalPayloads.SapiPendingChange;
 import java.net.URI;
 import java.util.Collections;
 import java.util.List;
@@ -11259,7 +11057,7 @@ package com.hsbc.ccaas.papi.controller.helper;
 
 import com.hsbc.ccaas.papi.controller.model.ApprovalResultResponse;
 import com.hsbc.ccaas.papi.controller.model.PendingChangeResponse;
-import com.hsbc.ccaas.papi.dto.sapi.SapiPayloads.SapiPendingChange;
+import com.hsbc.ccaas.papi.dto.sapi.ApprovalPayloads.SapiPendingChange;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -11909,6 +11707,233 @@ public record PaginatedResult<T>(
     }
 }
 ===ENDFILE
+===FILE: ./src/main/java/com/hsbc/ccaas/papi/dto/sapi/AdGroupPayloads.java
+package com.hsbc.ccaas.papi.dto.sapi;
+
+import java.util.List;
+
+/**
+ * Payload records for AD group SAPI responses.
+ * Used by SapiAdGroupClient to deserialize SAPI response data.
+ */
+public final class AdGroupPayloads {
+
+    private AdGroupPayloads() {
+        throw new UnsupportedOperationException("Payload container - do not instantiate");
+    }
+
+    public record RolesPayload(List<String> roleValues) {}
+
+    public record AdGroupPayload(com.hsbc.ccaas.papi.controller.model.AdGroupLayoutResponse adGroup) {}
+
+    public record AdGroupsPayload(
+            @com.fasterxml.jackson.annotation.JsonProperty("items")
+            List<com.hsbc.ccaas.papi.controller.model.AdGroupLayoutResponse> adGroups) {}
+
+    public record CopyResultPayload(com.hsbc.ccaas.papi.controller.model.AdGroupCopyResponse copyResult) {}
+
+    public record SapiCopyRequest(
+        String sourceGroupIdentifier,
+        String targetGroupIdentifier,
+        SapiCopyOptions copyOptions,
+        SapiRequestContext initiator
+    ) {}
+
+    public record SapiCopyOptions(
+        Boolean copyRoleAndPermissionsFlag,
+        Boolean copyLocationMetaFlag,
+        Boolean copyEmbeddedFlag,
+        Boolean overwriteExistingFlag
+    ) {}
+
+    // SAPI request records (typed replacements for Map<String, Object>)
+
+    public record ResolveRolesData(List<String> adGroupValues) {}
+
+    public record GroupIdentifierData(String groupIdentifier) {}
+
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    public record AdGroupListData(
+            java.util.List<String> adminAdGroupValues,
+            int offsetNumber,
+            int limitNumber,
+            String groupIdentifier,
+            String roleName,
+            String userAccessCode) {}
+}
+===ENDFILE
+===FILE: ./src/main/java/com/hsbc/ccaas/papi/dto/sapi/ApprovalPayloads.java
+package com.hsbc.ccaas.papi.dto.sapi;
+
+import com.fasterxml.jackson.annotation.JsonInclude;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Payload records for approval workflow SAPI responses.
+ * Used by SapiApprovalClient to deserialize SAPI response data.
+ */
+public final class ApprovalPayloads {
+
+    private ApprovalPayloads() {
+        throw new UnsupportedOperationException("Payload container - do not instantiate");
+    }
+
+    public record SapiPendingChange(
+            String changeIdentifier,
+            String targetGroupIdentifier,
+            String targetGroupName,
+            String changeType,
+            Map<String, Object> currentConfig,
+            Map<String, Object> proposedConfig,
+            Boolean isCriticalIndicator,
+            List<Map<String, Object>> matchedRules,
+            String statusCode,
+            String approvedByText,
+            LocalDateTime approvedAtDatetime,
+            String commentText,
+            String rejectedByText,
+            LocalDateTime rejectedAt,
+            String rejectionReasonText,
+            String createdByText,
+            LocalDateTime createdAtDatetime,
+            String updatedByText,
+            LocalDateTime updatedAtDatetime) {}
+
+    public record PendingChangesPayload(
+            List<SapiPendingChange> items,
+            long totalCount,
+            int offsetNumber,
+            int limitNumber) {}
+
+    // SAPI request records (typed replacements for Map<String, Object>)
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record SubmitChangeData(
+            String targetGroupIdentifier,
+            String submittedByText,
+            Map<String, Object> proposedConfig,
+            String changeDescription,
+            Long configVersionNumber) {}
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record ListChangesData(
+            int offsetNumber,
+            int limitNumber,
+            List<String> userAdGroupValues,
+            String userIdentifier,
+            String statusCode,
+            String targetGroupIdentifier) {}
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record ApprovalData(
+            String changeIdentifier,
+            String approverIdText,
+            String commentText,
+            String approverNameText,
+            List<String> approverAdGroupValues) {}
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record RejectionData(
+            String changeIdentifier,
+            String rejecterIdText,
+            String reasonText,
+            String rejecterNameText,
+            List<String> rejecterAdGroupValues) {}
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record DirectSaveData(
+            String targetGroupIdentifier,
+            Map<String, Object> proposedState,
+            String superAdminIdText,
+            Map<String, Object> currentState,
+            String superAdminNameText,
+            Long configVersionNumber,
+            List<String> superAdminAdGroupValues) {}
+}
+===ENDFILE
+===FILE: ./src/main/java/com/hsbc/ccaas/papi/dto/sapi/EmbeddedAppPayloads.java
+package com.hsbc.ccaas.papi.dto.sapi;
+
+import java.util.List;
+
+/**
+ * Payload records for embedded app SAPI responses.
+ * Used by SapiEmbeddedAppClient to deserialize SAPI response data.
+ */
+public final class EmbeddedAppPayloads {
+
+    private EmbeddedAppPayloads() {
+        throw new UnsupportedOperationException("Payload container - do not instantiate");
+    }
+
+    public record EmbeddedAppsPayload(List<com.hsbc.ccaas.papi.controller.model.EmbeddedAppResponse> appValues) {}
+
+    public record EmbeddedAppsConfigPayload(List<com.hsbc.ccaas.papi.controller.model.EmbeddedAppResponse> configValues) {}
+}
+===ENDFILE
+===FILE: ./src/main/java/com/hsbc/ccaas/papi/dto/sapi/LayoutPayloads.java
+package com.hsbc.ccaas.papi.dto.sapi;
+
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Payload records for layout and entitlement SAPI requests.
+ * Used by SapiLayoutClient and SapiAdminOperationsClient.
+ */
+public final class LayoutPayloads {
+
+    private LayoutPayloads() {
+        throw new UnsupportedOperationException("Payload container - do not instantiate");
+    }
+
+    public record NoticeAcknowledgmentData(
+            String userIdentifier,
+            String noticeCode,
+            String stateCode) {}
+
+    public record EntitlementValueData(
+            String stateText,
+            String reasonText) {}
+
+    public record AddEntitlementData(
+            String entitlementTypeCode,
+            String keyCode,
+            EntitlementValueData stateValue,
+            List<String> targetRoleValues,
+            Boolean allowOverwriteIndicator) {}
+
+    public record SessionLayoutData(
+            String userIdentifier,
+            List<String> adGroupValues) {}
+}
+===ENDFILE
+===FILE: ./src/main/java/com/hsbc/ccaas/papi/dto/sapi/ReferenceDataPayloads.java
+package com.hsbc.ccaas.papi.dto.sapi;
+
+import java.util.List;
+
+/**
+ * Payload records for reference data SAPI responses.
+ * Used by SapiReferenceDataClient to deserialize SAPI response data.
+ */
+public final class ReferenceDataPayloads {
+
+    private ReferenceDataPayloads() {
+        throw new UnsupportedOperationException("Payload container - do not instantiate");
+    }
+
+    public record RegionsPayload(List<com.hsbc.ccaas.papi.controller.model.Region> regions) {}
+
+    public record CountriesPayload(List<com.hsbc.ccaas.papi.controller.model.Country> countries) {}
+
+    public record BusinessUnitsPayload(List<com.hsbc.ccaas.papi.controller.model.BusinessUnit> businessUnits) {}
+
+    public record MarketsPayload(List<com.hsbc.ccaas.papi.controller.model.Market> markets) {}
+}
+===ENDFILE
 ===FILE: ./src/main/java/com/hsbc/ccaas/papi/dto/sapi/SapiDataMetaResponse.java
 package com.hsbc.ccaas.papi.dto.sapi;
 
@@ -11977,87 +12002,6 @@ public class SapiEmbeddedAppAdGroupRequest {
     private SapiRequestContext initiator;
 }
 ===ENDFILE
-===FILE: ./src/main/java/com/hsbc/ccaas/papi/dto/sapi/SapiPayloads.java
-package com.hsbc.ccaas.papi.dto.sapi;
-
-import com.fasterxml.jackson.annotation.JsonProperty;
-import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Map;
-
-/**
- * Named payload records matching SAPI's DataWrappers structure.
- * Used by PAPI clients to deserialize the "data" field of SAPI responses.
- *
- * SAPI returns: {"data": {"regions": [...]}} - the inner object matches these records.
- */
-public interface SapiPayloads {
-
-    // Roles payload (used by SapiAdGroupClient.resolveRoleFromAdGroups)
-    public record RolesPayload(List<String> roleValues) {}
-
-    // AdGroup payloads (using generated OpenAPI models directly)
-    public record AdGroupPayload(com.hsbc.ccaas.papi.controller.model.AdGroupLayoutResponse adGroup) {}
-    public record AdGroupsPayload(@JsonProperty("items") List<com.hsbc.ccaas.papi.controller.model.AdGroupLayoutResponse> adGroups) {}
-    public record CopyResultPayload(com.hsbc.ccaas.papi.controller.model.AdGroupCopyResponse copyResult) {}
-
-    // EmbeddedApp payloads (using generated OpenAPI models directly)
-    public record EmbeddedAppsPayload(List<com.hsbc.ccaas.papi.controller.model.EmbeddedAppResponse> appValues) {}
-    public record EmbeddedAppsConfigPayload(List<com.hsbc.ccaas.papi.controller.model.EmbeddedAppResponse> configValues) {}
-
-    // Approval payloads - SapiPendingChange uses SAPI's exact field names
-    public record SapiPendingChange(
-            String changeIdentifier,
-            String targetGroupIdentifier,
-            String targetGroupName,
-            String changeType,
-            Map<String, Object> currentConfig,
-            Map<String, Object> proposedConfig,
-            Boolean isCriticalIndicator,
-            List<Map<String, Object>> matchedRules,
-            String statusCode,
-            String approvedByText,
-            LocalDateTime approvedAtDatetime,
-            String commentText,
-            String rejectedByText,
-            LocalDateTime rejectedAt,
-            String rejectionReasonText,
-            String createdByText,
-            LocalDateTime createdAtDatetime,
-            String updatedByText,
-            LocalDateTime updatedAtDatetime) {}
-
-    public record PendingChangesPayload(
-            List<SapiPendingChange> items,
-            long totalCount,
-            int offsetNumber,
-            int limitNumber) {}
-
-    // Primary assignment response from SAPI
-    public record SapiPrimaryAssignment(Boolean success, String message) {}
-
-    // Reference data payloads (used by SapiReferenceDataClient)
-    public record RegionsPayload(List<com.hsbc.ccaas.papi.controller.model.Region> regions) {}
-    public record CountriesPayload(List<com.hsbc.ccaas.papi.controller.model.Country> countries) {}
-    public record BusinessUnitsPayload(List<com.hsbc.ccaas.papi.controller.model.BusinessUnit> businessUnits) {}
-    public record MarketsPayload(List<com.hsbc.ccaas.papi.controller.model.Market> markets) {}
-
-    // Copy request payloads (used by SapiAdGroupClient)
-    public record SapiCopyRequest(
-        String sourceGroupIdentifier,
-        String targetGroupIdentifier,
-        SapiCopyOptions copyOptions,
-        SapiRequestContext initiator
-    ) {}
-
-    public record SapiCopyOptions(
-        Boolean copyRoleAndPermissionsFlag,
-        Boolean copyLocationMetaFlag,
-        Boolean copyEmbeddedFlag,
-        Boolean overwriteExistingFlag
-    ) {}
-}
-===ENDFILE
 ===FILE: ./src/main/java/com/hsbc/ccaas/papi/dto/sapi/SapiRequestContext.java
 package com.hsbc.ccaas.papi.dto.sapi;
 
@@ -12067,6 +12011,22 @@ public record SapiRequestContext(
     @JsonProperty("userIdentifier") String userIdentifier,
     @JsonProperty("emailText") String emailText
 ) {}
+===ENDFILE
+===FILE: ./src/main/java/com/hsbc/ccaas/papi/dto/sapi/UserRolePayloads.java
+package com.hsbc.ccaas.papi.dto.sapi;
+
+/**
+ * Payload records for user role SAPI responses.
+ * Used by DefaultUserRoleManagementService to deserialize SAPI response data.
+ */
+public final class UserRolePayloads {
+
+    private UserRolePayloads() {
+        throw new UnsupportedOperationException("Payload container - do not instantiate");
+    }
+
+    public record SapiPrimaryAssignment(Boolean success, String message) {}
+}
 ===ENDFILE
 ===FILE: ./src/main/java/com/hsbc/ccaas/papi/mapper/GeneratedModelMapper.java
 package com.hsbc.ccaas.papi.mapper;
@@ -12186,7 +12146,6 @@ package com.hsbc.ccaas.papi.service;
 import com.hsbc.ccaas.papi.controller.model.AdminNoticeRequest;
 import com.hsbc.ccaas.papi.controller.model.AdminNoticeResponse;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 public interface AdminNoticeService {
@@ -12194,8 +12153,6 @@ public interface AdminNoticeService {
     AdminNoticeResponse createNotice(AdminNoticeRequest request);
 
     List<AdminNoticeResponse> listNotices(String status);
-
-    Optional<AdminNoticeResponse> getNotice(UUID noticeId);
 
     AdminNoticeResponse updateNotice(UUID noticeId, AdminNoticeRequest request);
 
@@ -12388,9 +12345,9 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import com.hsbc.ccaas.papi.constants.CommonConstants;
 import com.hsbc.ccaas.papi.constants.SapiApiPaths;
 import com.hsbc.ccaas.papi.dto.sapi.SapiDataResponse;
+import com.hsbc.ccaas.papi.dto.sapi.AdGroupPayloads;
 import java.time.Duration;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -12428,6 +12385,7 @@ public class RoleResolutionService {
     /**
      * Resolve roles from AD groups via SAPI.
      * Called by IdentityContextFilter after identity is resolved.
+     * Results are cached by AD groups hash for 5 minutes.
      */
     public List<String> resolveRolesFromAdGroups(List<String> adGroups) {
         if (!isValidAdGroups(adGroups)) {
@@ -12435,8 +12393,18 @@ public class RoleResolutionService {
             return Collections.emptyList();
         }
 
+        String cacheKey = buildCacheKey(adGroups);
+        String cachedRole = roleCache.getIfPresent(cacheKey);
+        if (cachedRole != null) {
+            logger.debug("Cache hit for AD groups hash: {}", cacheKey);
+            return List.of(cachedRole.split(","));
+        }
+
         try {
             List<String> roles = callResolveRolesEndpoint(adGroups);
+            if (!roles.isEmpty()) {
+                roleCache.put(cacheKey, String.join(",", roles));
+            }
             logger.debug("Resolved {} roles from {} AD groups", roles.size(), adGroups.size());
             return roles;
         } catch (ResourceAccessException e) {
@@ -12478,26 +12446,25 @@ public class RoleResolutionService {
         return roleCache.stats().toString();
     }
 
-    @SuppressWarnings("unchecked")
     private List<String> callResolveRolesEndpoint(List<String> adGroups) {
-        java.util.Map<String, Object> body = java.util.Map.of(
-            "data", java.util.Map.of("adGroupValues", adGroups)
-        );
+        AdGroupPayloads.ResolveRolesData data = new AdGroupPayloads.ResolveRolesData(adGroups);
 
-        // SAPI returns {"data":{"roleValues":["admin",...]}} — data is an object, not a list
-        SapiDataResponse<java.util.Map<String, Object>> response = sapiRestClient.post()
+        SapiDataResponse<AdGroupPayloads.RolesPayload> response = sapiRestClient.post()
             .uri(SapiApiPaths.RESOLVE_ROLES)
-            .body(body)
+            .body(java.util.Map.of("data", data))
             .retrieve()
-            .body(new ParameterizedTypeReference<SapiDataResponse<java.util.Map<String, Object>>>() {});
+            .body(new ParameterizedTypeReference<SapiDataResponse<AdGroupPayloads.RolesPayload>>() {});
 
-        if (response != null && response.getData() != null) {
-            Object roleValues = response.getData().get("roleValues");
-            if (roleValues instanceof List<?>) {
-                return (List<String>) roleValues;
-            }
+        if (response != null && response.getData() != null && response.getData().roleValues() != null) {
+            return response.getData().roleValues();
         }
         return Collections.emptyList();
+    }
+
+    private String buildCacheKey(List<String> adGroups) {
+        List<String> sorted = new ArrayList<>(adGroups);
+        Collections.sort(sorted);
+        return String.join("|", sorted);
     }
 
     private boolean isValidAdGroups(List<String> adGroups) {
@@ -12687,76 +12654,6 @@ public class BulkAssignmentProcessor {
             logger.error("Validation error updating primary assignment for user {} (role: {}, adGroup: {}): {}",
                     userId, request.getRoleNameText(), request.getAdGroupIdentifier(), ex.getMessage());
             return RequestOutcome.failure(userId, reason);
-        }
-    }
-}
-===ENDFILE
-===FILE: ./src/main/java/com/hsbc/ccaas/papi/service/helper/QueryStringBuilder.java
-package com.hsbc.ccaas.papi.service.helper;
-
-import org.springframework.util.StringUtils;
-
-import java.util.HashMap;
-import java.util.Map;
-
-/**
- * Helper class for building query strings with optional parameters.
- * Eliminates nested if statements for query parameter construction.
- */
-public class QueryStringBuilder {
-
-    private QueryStringBuilder() {
-        throw new UnsupportedOperationException("Utility class - do not instantiate");
-    }
-
-    /**
-     * Build query string from base path and parameters.
-     * Only includes parameters with non-null, non-blank, and non-"all" values.
-     *
-     * @param basePath Base URI path with required params (e.g., "/api/resource?page=0&size=20")
-     * @param params Map of optional query parameters
-     * @return Complete query string
-     */
-    public static String build(String basePath, Map<String, String> params) {
-        StringBuilder uri = new StringBuilder(basePath);
-
-        params.forEach((key, value) -> {
-            if (shouldIncludeParam(value)) {
-                uri.append("&").append(key).append("=").append(value.trim());
-            }
-        });
-
-        return uri.toString();
-    }
-
-    /**
-     * Check if parameter should be included in query string.
-     * Excludes null, blank, and "all" values.
-     */
-    private static boolean shouldIncludeParam(String value) {
-        return StringUtils.hasText(value) && !"all".equals(value);
-    }
-
-    /**
-     * Create parameter map builder for fluent API.
-     */
-    public static ParamBuilder params() {
-        return new ParamBuilder();
-    }
-
-    /**
-     * Fluent builder for query parameters.
-     */
-    public static class ParamBuilder {
-        private final Map<String, String> params = new HashMap<>();
-
-        public ParamBuilder add(String key, String value) {
-            params.put(key, value);
-            return this;
-        }
-
-        public Map<String, String> build() {
-            return params;
         }
     }
 }
@@ -13197,7 +13094,6 @@ import com.hsbc.ccaas.identity.service.helper.IdentityContextAccessor;
 import com.hsbc.ccaas.papi.service.helper.SapiExceptionHandler;
 import java.util.Collections;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13291,31 +13187,6 @@ public class DefaultAdminNoticeService implements AdminNoticeService {
                 return responses;
             },
             "List admin notices"
-        );
-    }
-
-    @Override
-    public Optional<AdminNoticeResponse> getNotice(UUID noticeId) {
-        if (noticeId == null) {
-            LOG.warn(INVALID_NOTICE_ID_NULL);
-            throw new IllegalArgumentException(NOTICE_ID_CANNOT_BE_NULL);
-        }
-
-        authorizationService.requireAdminRole();
-
-        return SapiExceptionHandler.executeWithExceptionHandling(
-            () -> {
-                AdminNoticeResponse response = sapiAdminNoticeClient.getNotice(noticeId);
-
-                if (response == null) {
-                    LOG.debug("Admin notice not found with ID: {}", noticeId);
-                    return Optional.empty();
-                }
-
-                LOG.debug("Successfully retrieved admin notice with ID: {}", noticeId);
-                return Optional.of(response);
-            },
-            "Get admin notice ID: " + noticeId
         );
     }
 
@@ -13555,7 +13426,7 @@ import com.hsbc.ccaas.papi.constants.CommonConstants;
 import com.hsbc.ccaas.papi.constants.SecurityConstants;
 import com.hsbc.ccaas.papi.controller.model.BulkPrimaryAssignmentResponse;
 import com.hsbc.ccaas.papi.controller.model.SetPrimaryAssignmentResponse;
-import com.hsbc.ccaas.papi.dto.sapi.SapiPayloads;
+import com.hsbc.ccaas.papi.dto.sapi.UserRolePayloads;
 import com.hsbc.ccaas.papi.controller.model.BulkPrimaryAssignmentRequest;
 import com.hsbc.ccaas.identity.service.helper.IdentityContextAccessor;
 import com.hsbc.ccaas.papi.service.AdminAuthorizationService;
@@ -13648,11 +13519,11 @@ public class DefaultUserRoleManagementService implements UserRoleManagementServi
 
         Map<String, String> requestBody = buildRequestBody(adGroupIdentifier, updatedBy);
 
-        SapiPayloads.SapiPrimaryAssignment sapiResponse = sapiRestClient.post()
+        UserRolePayloads.SapiPrimaryAssignment sapiResponse = sapiRestClient.post()
             .uri(CommonConstants.ApiPaths.SAPI_SET_PRIMARY_ROLE, userId, roleName)
             .body(Map.of("data", requestBody))
             .retrieve()
-            .body(SapiPayloads.SapiPrimaryAssignment.class);
+            .body(UserRolePayloads.SapiPrimaryAssignment.class);
 
         if (sapiResponse == null) {
             LOG.error("Received null response from SAPI when setting primary assignment for user: {}", userId);
@@ -13666,17 +13537,12 @@ public class DefaultUserRoleManagementService implements UserRoleManagementServi
     }
 
     private Map<String, String> buildRequestBody(String adGroupIdentifier, String updatedBy) {
-        if (adGroupIdentifier == null || adGroupIdentifier.isBlank()) {
-            LOG.warn("Cannot build request body with null or blank AD group identifier");
-            throw new IllegalArgumentException("AD group identifier cannot be null or blank");
-        }
+        ValidationUtil.requireNotBlank(adGroupIdentifier, "AD group identifier");
 
-        Map<String, String> requestBody = new HashMap<>();
-        requestBody.put("adGroupIdentifier", adGroupIdentifier);
         if (updatedBy != null && !updatedBy.isEmpty()) {
-            requestBody.put("updatedBy", updatedBy);
+            return Map.of("adGroupIdentifier", adGroupIdentifier, "updatedBy", updatedBy);
         }
-        return requestBody;
+        return Map.of("adGroupIdentifier", adGroupIdentifier);
     }
 
     private void invalidateCache(String adGroupIdentifier) {
@@ -13692,7 +13558,7 @@ public class DefaultUserRoleManagementService implements UserRoleManagementServi
     }
 
     private SetPrimaryAssignmentResponse createSetPrimaryAssignmentResponse(
-            SapiPayloads.SapiPrimaryAssignment sapiResponse, String userId, String roleName, String adGroupIdentifier) {
+            UserRolePayloads.SapiPrimaryAssignment sapiResponse, String userId, String roleName, String adGroupIdentifier) {
         return new SetPrimaryAssignmentResponse()
             .successIndicator(sapiResponse.success())
             .messageText(sapiResponse.message() != null
@@ -13797,21 +13663,6 @@ public final class ValidationUtil {
     }
 
     /**
-     * Validates that a string list has no null or blank entries.
-     *
-     * @param list the list to validate
-     * @param fieldName the field name for error messages
-     * @param maxSize maximum allowed size
-     * @throws IllegalArgumentException if validation fails
-     */
-    public static void requireAllNotBlank(List<String> list, String fieldName, int maxSize) {
-        requireNotEmpty(list, fieldName, maxSize);
-        if (list.stream().anyMatch(item -> item == null || item.isBlank())) {
-            throw new IllegalArgumentException(fieldName + " items cannot be null or blank");
-        }
-    }
-
-    /**
      * Validates that a list contains no null values.
      *
      * @param list the list to validate
@@ -13836,49 +13687,6 @@ public final class ValidationUtil {
     public static <T> void requireNotNull(T value, String fieldName) {
         if (value == null) {
             throw new IllegalArgumentException(fieldName + " cannot be null");
-        }
-    }
-
-    /**
-     * Validates that a number is within range (inclusive).
-     *
-     * @param value the number to validate
-     * @param fieldName the field name for error messages
-     * @param min minimum allowed value
-     * @param max maximum allowed value
-     * @throws IllegalArgumentException if validation fails
-     */
-    public static void requireInRange(int value, String fieldName, int min, int max) {
-        if (value < min || value > max) {
-            throw new IllegalArgumentException(fieldName + " must be between " + min + " and " + max);
-        }
-    }
-
-    /**
-     * Validates that a number is at least a minimum value.
-     *
-     * @param value the number to validate
-     * @param fieldName the field name for error messages
-     * @param min minimum allowed value
-     * @throws IllegalArgumentException if validation fails
-     */
-    public static void requireAtLeast(int value, String fieldName, int min) {
-        if (value < min) {
-            throw new IllegalArgumentException(fieldName + " must be at least " + min);
-        }
-    }
-
-    /**
-     * Validates that a number does not exceed a maximum value.
-     *
-     * @param value the number to validate
-     * @param fieldName the field name for error messages
-     * @param max maximum allowed value
-     * @throws IllegalArgumentException if validation fails
-     */
-    public static void requireAtMost(int value, String fieldName, int max) {
-        if (value > max) {
-            throw new IllegalArgumentException(fieldName + CommonConstants.ValidationMessages.CANNOT_EXCEED + max);
         }
     }
 }
@@ -14318,7 +14126,6 @@ import com.hsbc.ccaas.papi.controller.model.AdminNoticeRequest;
 import com.hsbc.ccaas.papi.controller.model.AdminNoticeResponse;
 import com.hsbc.ccaas.papi.service.AdminNoticeService;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -14354,16 +14161,6 @@ class DefaultAdminNoticeFacadeTest {
         when(adminNoticeService.listNotices("ACTIVE")).thenReturn(expected);
 
         assertThat(facade.listNotices("ACTIVE")).isEqualTo(expected);
-    }
-
-    @Test
-    @DisplayName("should delegate getNotice")
-    void shouldDelegateGetNotice() {
-        UUID noticeId = UUID.randomUUID();
-        Optional<AdminNoticeResponse> expected = Optional.of(new AdminNoticeResponse());
-        when(adminNoticeService.getNotice(noticeId)).thenReturn(expected);
-
-        assertThat(facade.getNotice(noticeId)).isEqualTo(expected);
     }
 
     @Test
@@ -14833,7 +14630,7 @@ import com.hsbc.ccaas.papi.dto.AdGroupFilterCriteria;
 import com.hsbc.ccaas.papi.dto.PaginatedResult;
 import com.hsbc.ccaas.papi.dto.sapi.SapiDataMetaResponse;
 import com.hsbc.ccaas.papi.dto.sapi.SapiDataResponse;
-import com.hsbc.ccaas.papi.dto.sapi.SapiPayloads;
+import com.hsbc.ccaas.papi.dto.sapi.AdGroupPayloads;
 import com.hsbc.ccaas.papi.dto.sapi.SapiRequestContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -14897,8 +14694,8 @@ class SapiAdGroupClientTest {
         criteria.setOffset(0);
         criteria.setLimit(10);
 
-        SapiDataMetaResponse<SapiPayloads.AdGroupsPayload> sapiResponse = new SapiDataMetaResponse<>();
-        sapiResponse.setData(new SapiPayloads.AdGroupsPayload(List.of(new AdGroupLayoutResponse())));
+        SapiDataMetaResponse<AdGroupPayloads.AdGroupsPayload> sapiResponse = new SapiDataMetaResponse<>();
+        sapiResponse.setData(new AdGroupPayloads.AdGroupsPayload(List.of(new AdGroupLayoutResponse())));
         SapiDataMetaResponse.SapiMeta meta = new SapiDataMetaResponse.SapiMeta();
         SapiDataMetaResponse.SapiPagination pagination = new SapiDataMetaResponse.SapiPagination();
         pagination.setOffset(0);
@@ -14912,7 +14709,7 @@ class SapiAdGroupClientTest {
         when(requestBodyUriSpec.uri(anyString())).thenReturn(requestBodySpec);
         when(requestBodySpec.body((Object) any())).thenReturn(requestBodySpec);
         when(requestBodySpec.retrieve()).thenReturn(responseSpec);
-        when(responseSpec.body(ArgumentMatchers.<ParameterizedTypeReference<SapiDataMetaResponse<SapiPayloads.AdGroupsPayload>>>any()))
+        when(responseSpec.body(ArgumentMatchers.<ParameterizedTypeReference<SapiDataMetaResponse<AdGroupPayloads.AdGroupsPayload>>>any()))
             .thenReturn(sapiResponse);
 
         PaginatedResult<AdGroupLayoutResponse> result = client.getAllAdGroups(
@@ -14934,13 +14731,13 @@ class SapiAdGroupClientTest {
 
         List<String> adminGroups = List.of("CN=Admin1", "CN=Admin2");
 
-        SapiDataMetaResponse<SapiPayloads.AdGroupsPayload> sapiResponse = new SapiDataMetaResponse<>();
+        SapiDataMetaResponse<AdGroupPayloads.AdGroupsPayload> sapiResponse = new SapiDataMetaResponse<>();
 
         when(sapiRestClient.post()).thenReturn(requestBodyUriSpec);
         when(requestBodyUriSpec.uri(anyString())).thenReturn(requestBodySpec);
         when(requestBodySpec.body((Object) any())).thenReturn(requestBodySpec);
         when(requestBodySpec.retrieve()).thenReturn(responseSpec);
-        when(responseSpec.body(ArgumentMatchers.<ParameterizedTypeReference<SapiDataMetaResponse<SapiPayloads.AdGroupsPayload>>>any()))
+        when(responseSpec.body(ArgumentMatchers.<ParameterizedTypeReference<SapiDataMetaResponse<AdGroupPayloads.AdGroupsPayload>>>any()))
             .thenReturn(sapiResponse);
 
         client.getAllAdGroups(adminGroups, criteria);
@@ -14985,14 +14782,14 @@ class SapiAdGroupClientTest {
         AdGroupCopyResponse expectedResponse = new AdGroupCopyResponse();
         expectedResponse.setSuccessFlag(true);
 
-        SapiDataResponse<SapiPayloads.CopyResultPayload> sapiResponse = new SapiDataResponse<>();
-        sapiResponse.setData(new SapiPayloads.CopyResultPayload(expectedResponse));
+        SapiDataResponse<AdGroupPayloads.CopyResultPayload> sapiResponse = new SapiDataResponse<>();
+        sapiResponse.setData(new AdGroupPayloads.CopyResultPayload(expectedResponse));
 
         when(sapiRestClient.post()).thenReturn(requestBodyUriSpec);
         when(requestBodyUriSpec.uri(anyString())).thenReturn(requestBodySpec);
         when(requestBodySpec.body((Object) any())).thenReturn(requestBodySpec);
         when(requestBodySpec.retrieve()).thenReturn(responseSpec);
-        when(responseSpec.body(ArgumentMatchers.<ParameterizedTypeReference<SapiDataResponse<SapiPayloads.CopyResultPayload>>>any()))
+        when(responseSpec.body(ArgumentMatchers.<ParameterizedTypeReference<SapiDataResponse<AdGroupPayloads.CopyResultPayload>>>any()))
             .thenReturn(sapiResponse);
 
         AdGroupCopyResponse result = client.copyAdGroupConfiguration(
@@ -15025,7 +14822,7 @@ class SapiAdGroupClientTest {
         when(requestBodyUriSpec.uri(anyString())).thenReturn(requestBodySpec);
         when(requestBodySpec.body((Object) any())).thenReturn(requestBodySpec);
         when(requestBodySpec.retrieve()).thenReturn(responseSpec);
-        when(responseSpec.body(ArgumentMatchers.<ParameterizedTypeReference<SapiDataResponse<SapiPayloads.CopyResultPayload>>>any()))
+        when(responseSpec.body(ArgumentMatchers.<ParameterizedTypeReference<SapiDataResponse<AdGroupPayloads.CopyResultPayload>>>any()))
             .thenThrow(exception);
         when(objectMapper.readValue(errorJson, AdGroupCopyResponse.class)).thenReturn(errorResponse);
 
@@ -15043,8 +14840,8 @@ class SapiAdGroupClientTest {
     void resolveRoleFromAdGroupsSuccess() {
         List<String> adGroups = List.of("CN=Admin,OU=Groups,DC=hsbc,DC=com");
 
-        SapiDataResponse<SapiPayloads.RolesPayload> sapiResponse = new SapiDataResponse<>();
-        sapiResponse.setData(new SapiPayloads.RolesPayload(List.of("admin")));
+        SapiDataResponse<AdGroupPayloads.RolesPayload> sapiResponse = new SapiDataResponse<>();
+        sapiResponse.setData(new AdGroupPayloads.RolesPayload(List.of("admin")));
 
         when(sapiRestClient.post()).thenReturn(requestBodyUriSpec);
         when(requestBodyUriSpec.uri(anyString())).thenReturn(requestBodySpec);
@@ -15388,6 +15185,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 
+import com.hsbc.ccaas.papi.dto.sapi.LayoutPayloads;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -15468,9 +15266,11 @@ class SapiAdminOperationsClientTest {
             assertThat(capturedBody).isInstanceOf(Map.class);
             Map<String, Object> bodyMap = (Map<String, Object>) capturedBody;
             assertThat(bodyMap).containsKey("data");
-            Map<String, Object> dataMap = (Map<String, Object>) bodyMap.get("data");
-            assertThat(dataMap).containsEntry("userIdentifier", "user-456")
-                .containsEntry("adGroupValues", List.of("CN=Test"));
+            Object dataObj = bodyMap.get("data");
+            assertThat(dataObj).isInstanceOf(LayoutPayloads.SessionLayoutData.class);
+            LayoutPayloads.SessionLayoutData data = (LayoutPayloads.SessionLayoutData) dataObj;
+            assertThat(data.userIdentifier()).isEqualTo("user-456");
+            assertThat(data.adGroupValues()).isEqualTo(List.of("CN=Test"));
         }
 
         @Test
@@ -15485,8 +15285,10 @@ class SapiAdminOperationsClientTest {
             verify(requestBodySpec).body(bodyCaptor.capture());
 
             Map<String, Object> bodyMap = (Map<String, Object>) bodyCaptor.getValue();
-            Map<String, Object> dataMap = (Map<String, Object>) bodyMap.get("data");
-            assertThat(dataMap).containsEntry("adGroupValues", Collections.emptyList());
+            Object dataObj = bodyMap.get("data");
+            assertThat(dataObj).isInstanceOf(LayoutPayloads.SessionLayoutData.class);
+            LayoutPayloads.SessionLayoutData data = (LayoutPayloads.SessionLayoutData) dataObj;
+            assertThat(data.adGroupValues()).isEqualTo(Collections.emptyList());
         }
 
         @Test
@@ -15525,7 +15327,7 @@ class SapiAdminOperationsClientTest {
 package com.hsbc.ccaas.papi.client;
 
 import com.hsbc.ccaas.papi.dto.PaginatedResult;
-import com.hsbc.ccaas.papi.dto.sapi.SapiPayloads.SapiPendingChange;
+import com.hsbc.ccaas.papi.dto.sapi.ApprovalPayloads.SapiPendingChange;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -19206,7 +19008,7 @@ import com.hsbc.ccaas.papi.client.SapiApprovalClient;
 import com.hsbc.ccaas.papi.controller.helper.ApprovalResponseAssembler;
 import com.hsbc.ccaas.papi.controller.helper.ApprovalResponseMapper;
 import com.hsbc.ccaas.papi.dto.PaginatedResult;
-import com.hsbc.ccaas.papi.dto.sapi.SapiPayloads.SapiPendingChange;
+import com.hsbc.ccaas.papi.dto.sapi.ApprovalPayloads.SapiPendingChange;
 import com.hsbc.ccaas.identity.service.helper.IdentityContextAccessor;
 import com.hsbc.wpb.ef.ports.RequestContext;
 
@@ -21501,7 +21303,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.hsbc.ccaas.papi.controller.model.ApprovalResultResponse;
 import com.hsbc.ccaas.papi.controller.model.PendingChangeResponse;
-import com.hsbc.ccaas.papi.dto.sapi.SapiPayloads.SapiPendingChange;
+import com.hsbc.ccaas.papi.dto.sapi.ApprovalPayloads.SapiPendingChange;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -22821,7 +22623,7 @@ import com.hsbc.ccaas.papi.controller.model.AdGroupAccess;
 import com.hsbc.ccaas.papi.controller.model.AppAdGroupConfigResponse;
 import com.hsbc.ccaas.papi.controller.model.EmbeddedAppResponse;
 import com.hsbc.ccaas.papi.dto.sapi.SapiDataResponse;
-import com.hsbc.ccaas.papi.dto.sapi.SapiPayloads;
+import com.hsbc.ccaas.papi.dto.sapi.EmbeddedAppPayloads;
 import com.hsbc.ccaas.identity.service.helper.IdentityContextAccessor;
 import com.hsbc.ccaas.papi.service.helper.UserAccessEnricher;
 import okhttp3.mockwebserver.MockResponse;
@@ -23254,8 +23056,8 @@ class EmbeddedAppAdminServiceTest {
                 createEmbeddedApp("banking_app", "Banking App")
             );
 
-            SapiDataResponse<SapiPayloads.EmbeddedAppsConfigPayload> wrapper = new SapiDataResponse<>();
-            wrapper.setData(new SapiPayloads.EmbeddedAppsConfigPayload(apps));
+            SapiDataResponse<EmbeddedAppPayloads.EmbeddedAppsConfigPayload> wrapper = new SapiDataResponse<>();
+            wrapper.setData(new EmbeddedAppPayloads.EmbeddedAppsConfigPayload(apps));
 
             mockWebServer.enqueue(new MockResponse()
                 .setHeader("Content-Type", "application/json")
@@ -23284,8 +23086,8 @@ class EmbeddedAppAdminServiceTest {
             access.setFunctionValues(List.of("function1", "function2"));
             app.setAdGroupAccess(Map.of("CN=Voice_Agent", access));
 
-            SapiDataResponse<SapiPayloads.EmbeddedAppsConfigPayload> wrapper = new SapiDataResponse<>();
-            wrapper.setData(new SapiPayloads.EmbeddedAppsConfigPayload(List.of(app)));
+            SapiDataResponse<EmbeddedAppPayloads.EmbeddedAppsConfigPayload> wrapper = new SapiDataResponse<>();
+            wrapper.setData(new EmbeddedAppPayloads.EmbeddedAppsConfigPayload(List.of(app)));
 
             mockWebServer.enqueue(new MockResponse()
                 .setHeader("Content-Type", "application/json")
@@ -23461,9 +23263,9 @@ class EmbeddedAppAdminServiceTest {
         return app;
     }
 
-    private SapiDataResponse<SapiPayloads.EmbeddedAppsPayload> wrapEmbeddedApps(List<EmbeddedAppResponse> apps) {
-        SapiDataResponse<SapiPayloads.EmbeddedAppsPayload> wrapper = new SapiDataResponse<>();
-        wrapper.setData(new SapiPayloads.EmbeddedAppsPayload(apps));
+    private SapiDataResponse<EmbeddedAppPayloads.EmbeddedAppsPayload> wrapEmbeddedApps(List<EmbeddedAppResponse> apps) {
+        SapiDataResponse<EmbeddedAppPayloads.EmbeddedAppsPayload> wrapper = new SapiDataResponse<>();
+        wrapper.setData(new EmbeddedAppPayloads.EmbeddedAppsPayload(apps));
         return wrapper;
     }
 
@@ -23493,6 +23295,7 @@ class EmbeddedAppAdminServiceTest {
 ===FILE: ./src/test/java/com/hsbc/ccaas/papi/service/RoleResolutionServiceTest.java
 package com.hsbc.ccaas.papi.service;
 
+import com.hsbc.ccaas.papi.dto.sapi.AdGroupPayloads;
 import com.hsbc.ccaas.papi.dto.sapi.SapiDataResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -23513,7 +23316,6 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -23552,6 +23354,13 @@ class RoleResolutionServiceTest {
         doReturn(responseSpec).when(requestBodySpec).retrieve();
     }
 
+    private void mockRolesResponse(List<String> roles) {
+        setupMockChain();
+        SapiDataResponse<AdGroupPayloads.RolesPayload> sapiResponse = new SapiDataResponse<>();
+        sapiResponse.setData(new AdGroupPayloads.RolesPayload(roles));
+        doReturn(sapiResponse).when(responseSpec).body(ArgumentMatchers.<ParameterizedTypeReference<SapiDataResponse<AdGroupPayloads.RolesPayload>>>any());
+    }
+
     @Nested
     @DisplayName("resolveRolesFromAdGroups tests")
     class ResolveRolesFromAdGroupsTests {
@@ -23574,10 +23383,7 @@ class RoleResolutionServiceTest {
         @DisplayName("should resolve roles from SAPI successfully")
         void shouldResolveRolesFromSapi() {
             List<String> adGroups = List.of("CN=Admin_Group,OU=Groups,DC=hsbc,DC=com");
-            setupMockChain();
-            SapiDataResponse<Map<String, Object>> sapiResponse = new SapiDataResponse<>();
-            sapiResponse.setData(Map.of("roleValues", List.of("admin")));
-            doReturn(sapiResponse).when(responseSpec).body(ArgumentMatchers.<ParameterizedTypeReference<SapiDataResponse<Map<String, Object>>>>any());
+            mockRolesResponse(List.of("admin"));
 
             List<String> result = roleResolutionService.resolveRolesFromAdGroups(adGroups);
 
@@ -23589,10 +23395,7 @@ class RoleResolutionServiceTest {
         void shouldResolveMultipleRolesFromSapi() {
             List<String> adGroups = List.of("CN=Admin_Group,OU=Groups,DC=hsbc,DC=com");
             List<String> expectedRoles = List.of("admin", "supervisor");
-            setupMockChain();
-            SapiDataResponse<Map<String, Object>> sapiResponse = new SapiDataResponse<>();
-            sapiResponse.setData(Map.of("roleValues", expectedRoles));
-            doReturn(sapiResponse).when(responseSpec).body(ArgumentMatchers.<ParameterizedTypeReference<SapiDataResponse<Map<String, Object>>>>any());
+            mockRolesResponse(expectedRoles);
 
             List<String> result = roleResolutionService.resolveRolesFromAdGroups(adGroups);
 
@@ -23604,7 +23407,7 @@ class RoleResolutionServiceTest {
         void shouldReturnEmptyListWhenSapiReturnsNull() {
             List<String> adGroups = List.of("CN=Admin_Group,OU=Groups,DC=hsbc,DC=com");
             setupMockChain();
-            doReturn(null).when(responseSpec).body(ArgumentMatchers.<ParameterizedTypeReference<SapiDataResponse<Map<String, Object>>>>any());
+            doReturn(null).when(responseSpec).body(ArgumentMatchers.<ParameterizedTypeReference<SapiDataResponse<AdGroupPayloads.RolesPayload>>>any());
 
             List<String> result = roleResolutionService.resolveRolesFromAdGroups(adGroups);
 
@@ -23648,11 +23451,7 @@ class RoleResolutionServiceTest {
         @DisplayName("should throw 403 when user has no admin role")
         void shouldThrow403WhenNoAdminRole() {
             List<String> adGroups = List.of("CN=Voice_Agent,OU=Groups,DC=hsbc,DC=com");
-            List<String> roles = List.of("voice_agent");
-            setupMockChain();
-            SapiDataResponse<Map<String, Object>> sapiResponse = new SapiDataResponse<>();
-            sapiResponse.setData(Map.of("roleValues", roles));
-            doReturn(sapiResponse).when(responseSpec).body(ArgumentMatchers.<ParameterizedTypeReference<SapiDataResponse<Map<String, Object>>>>any());
+            mockRolesResponse(List.of("voice_agent"));
 
             ResponseStatusException exception = assertThrows(ResponseStatusException.class,
                 () -> roleResolutionService.requireAdmin("userToken", adGroups));
@@ -23665,11 +23464,7 @@ class RoleResolutionServiceTest {
         @DisplayName("should not throw when user has admin role")
         void shouldNotThrowWhenHasAdminRole() {
             List<String> adGroups = List.of("CN=Admin_Group,OU=Groups,DC=hsbc,DC=com");
-            List<String> roles = List.of("admin", "supervisor");
-            setupMockChain();
-            SapiDataResponse<Map<String, Object>> sapiResponse = new SapiDataResponse<>();
-            sapiResponse.setData(Map.of("roleValues", roles));
-            doReturn(sapiResponse).when(responseSpec).body(ArgumentMatchers.<ParameterizedTypeReference<SapiDataResponse<Map<String, Object>>>>any());
+            mockRolesResponse(List.of("admin", "supervisor"));
 
             assertDoesNotThrow(() -> roleResolutionService.requireAdmin("adminToken", adGroups));
         }
@@ -23693,11 +23488,7 @@ class RoleResolutionServiceTest {
         @DisplayName("should return true when user has admin role")
         void shouldReturnTrueWhenAdmin() {
             List<String> adGroups = List.of("CN=Admin_Group,OU=Groups,DC=hsbc,DC=com");
-            List<String> roles = List.of("admin");
-            setupMockChain();
-            SapiDataResponse<Map<String, Object>> sapiResponse = new SapiDataResponse<>();
-            sapiResponse.setData(Map.of("roleValues", roles));
-            doReturn(sapiResponse).when(responseSpec).body(ArgumentMatchers.<ParameterizedTypeReference<SapiDataResponse<Map<String, Object>>>>any());
+            mockRolesResponse(List.of("admin"));
 
             assertTrue(roleResolutionService.isAdmin(adGroups));
         }
@@ -23706,11 +23497,7 @@ class RoleResolutionServiceTest {
         @DisplayName("should return false when user has no admin role")
         void shouldReturnFalseWhenNotAdmin() {
             List<String> adGroups = List.of("CN=Voice_Agent,OU=Groups,DC=hsbc,DC=com");
-            List<String> roles = List.of("voice_agent");
-            setupMockChain();
-            SapiDataResponse<Map<String, Object>> sapiResponse = new SapiDataResponse<>();
-            sapiResponse.setData(Map.of("roleValues", roles));
-            doReturn(sapiResponse).when(responseSpec).body(ArgumentMatchers.<ParameterizedTypeReference<SapiDataResponse<Map<String, Object>>>>any());
+            mockRolesResponse(List.of("voice_agent"));
 
             assertFalse(roleResolutionService.isAdmin(adGroups));
         }
@@ -23746,10 +23533,7 @@ class RoleResolutionServiceTest {
                 .mapToObj(i -> "CN=Group_" + i + ",OU=Groups,DC=hsbc,DC=com")
                 .toList();
 
-            setupMockChain();
-            SapiDataResponse<Map<String, Object>> sapiResponse = new SapiDataResponse<>();
-            sapiResponse.setData(Map.of("roleValues", List.of("admin")));
-            doReturn(sapiResponse).when(responseSpec).body(ArgumentMatchers.<ParameterizedTypeReference<SapiDataResponse<Map<String, Object>>>>any());
+            mockRolesResponse(List.of("admin"));
 
             List<String> result = roleResolutionService.resolveRolesFromAdGroups(manyAdGroups);
             assertFalse(result.isEmpty());
@@ -24085,135 +23869,6 @@ class BulkAssignmentProcessorTest {
         request.setRoleNameText(roleName);
         request.setAdGroupIdentifier(adGroupIdentifier);
         return request;
-    }
-}
-===ENDFILE
-===FILE: ./src/test/java/com/hsbc/ccaas/papi/service/helper/QueryStringBuilderTest.java
-package com.hsbc.ccaas.papi.service.helper;
-
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
-import org.junit.jupiter.api.Test;
-
-import java.util.Map;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
-@DisplayName("QueryStringBuilder Tests")
-class QueryStringBuilderTest {
-
-    @Test
-    @DisplayName("should not be instantiable")
-    void shouldNotBeInstantiable() {
-        assertThatThrownBy(() -> {
-            var constructor = QueryStringBuilder.class.getDeclaredConstructor();
-            constructor.setAccessible(true);
-            constructor.newInstance();
-        }).hasCauseInstanceOf(UnsupportedOperationException.class);
-    }
-
-    @Nested
-    @DisplayName("build tests")
-    class BuildTests {
-
-        @Test
-        @DisplayName("should build query string with valid params")
-        void shouldBuildQueryStringWithValidParams() {
-            String result = QueryStringBuilder.build(
-                "/api/test?page=0&size=20",
-                Map.of("region", "APAC", "market", "HK")
-            );
-
-            assertThat(result).contains("/api/test?page=0&size=20")
-                .contains("region=APAC")
-                .contains("market=HK");
-        }
-
-        @Test
-        @DisplayName("should exclude null value params")
-        void shouldExcludeNullValueParams() {
-            Map<String, String> params = new java.util.HashMap<>();
-            params.put("region", null);
-            params.put("market", "HK");
-
-            String result = QueryStringBuilder.build("/api/test?page=0", params);
-
-            assertThat(result).doesNotContain("region")
-                .contains("market=HK");
-        }
-
-        @Test
-        @DisplayName("should exclude blank value params")
-        void shouldExcludeBlankValueParams() {
-            String result = QueryStringBuilder.build(
-                "/api/test",
-                Map.of("region", "   ", "market", "HK")
-            );
-
-            assertThat(result).doesNotContain("region")
-                .contains("market=HK");
-        }
-
-        @Test
-        @DisplayName("should exclude 'all' value params")
-        void shouldExcludeAllValueParams() {
-            String result = QueryStringBuilder.build(
-                "/api/test",
-                Map.of("region", "all", "market", "HK")
-            );
-
-            assertThat(result).doesNotContain("region=all")
-                .contains("market=HK");
-        }
-
-        @Test
-        @DisplayName("should trim param values")
-        void shouldTrimParamValues() {
-            String result = QueryStringBuilder.build(
-                "/api/test",
-                Map.of("region", "  APAC  ")
-            );
-
-            assertThat(result).contains("region=APAC");
-        }
-
-        @Test
-        @DisplayName("should return base path when no valid params")
-        void shouldReturnBasePathWhenNoValidParams() {
-            String result = QueryStringBuilder.build(
-                "/api/test",
-                Map.of("region", "all", "market", "  ")
-            );
-
-            assertThat(result).isEqualTo("/api/test");
-        }
-    }
-
-    @Nested
-    @DisplayName("ParamBuilder tests")
-    class ParamBuilderTests {
-
-        @Test
-        @DisplayName("should build param map")
-        void shouldBuildParamMap() {
-            Map<String, String> params = QueryStringBuilder.params()
-                .add("region", "APAC")
-                .add("market", "HK")
-                .build();
-
-            assertThat(params).hasSize(2)
-                .containsEntry("region", "APAC")
-                .containsEntry("market", "HK");
-        }
-
-        @Test
-        @DisplayName("should build empty param map")
-        void shouldBuildEmptyParamMap() {
-            Map<String, String> params = QueryStringBuilder.params().build();
-
-            assertThat(params).isEmpty();
-        }
     }
 }
 ===ENDFILE
@@ -25571,7 +25226,7 @@ import static org.mockito.Mockito.*;
 
 import com.hsbc.ccaas.papi.client.SapiLayoutCacheClient;
 import com.hsbc.ccaas.papi.controller.model.BulkPrimaryAssignmentRequest;
-import com.hsbc.ccaas.papi.dto.sapi.SapiPayloads;
+import com.hsbc.ccaas.papi.dto.sapi.UserRolePayloads;
 import com.hsbc.ccaas.identity.model.IdentityContext;
 import com.hsbc.ccaas.identity.service.helper.IdentityContextAccessor;
 import com.hsbc.ccaas.identity.model.IdentityRequestContext;
@@ -25786,14 +25441,14 @@ class DefaultUserRoleManagementServiceTest {
         @Test
         @DisplayName("should set primary assignment successfully")
         void shouldSetPrimaryAssignmentSuccessfully() {
-            SapiPayloads.SapiPrimaryAssignment sapiResponse =
-                new SapiPayloads.SapiPrimaryAssignment(true, "Primary assignment updated");
+            UserRolePayloads.SapiPrimaryAssignment sapiResponse =
+                new UserRolePayloads.SapiPrimaryAssignment(true, "Primary assignment updated");
 
             when(sapiRestClient.post()).thenReturn(requestBodyUriSpec);
             when(requestBodyUriSpec.uri(anyString(), anyString(), anyString())).thenReturn(requestBodySpec);
             when(requestBodySpec.body(anyMap())).thenReturn(requestBodySpec);
             when(requestBodySpec.retrieve()).thenReturn(responseSpec);
-            when(responseSpec.body(SapiPayloads.SapiPrimaryAssignment.class)).thenReturn(sapiResponse);
+            when(responseSpec.body(UserRolePayloads.SapiPrimaryAssignment.class)).thenReturn(sapiResponse);
             when(layoutCacheClient.invalidateAdGroup(anyString())).thenReturn(true);
 
             var result = service.setPrimaryAssignment("600001", "voice_agent", "CN=Voice,DC=hsbc,DC=com");
@@ -25812,7 +25467,7 @@ class DefaultUserRoleManagementServiceTest {
             when(requestBodyUriSpec.uri(anyString(), anyString(), anyString())).thenReturn(requestBodySpec);
             when(requestBodySpec.body(anyMap())).thenReturn(requestBodySpec);
             when(requestBodySpec.retrieve()).thenReturn(responseSpec);
-            when(responseSpec.body(SapiPayloads.SapiPrimaryAssignment.class)).thenReturn(null);
+            when(responseSpec.body(UserRolePayloads.SapiPrimaryAssignment.class)).thenReturn(null);
 
             assertThatThrownBy(() -> service.setPrimaryAssignment("600001", "voice_agent", "CN=Voice,DC=hsbc,DC=com"))
                 .isInstanceOf(ResponseStatusException.class)
@@ -25825,14 +25480,14 @@ class DefaultUserRoleManagementServiceTest {
         @Test
         @DisplayName("should use default message when SAPI message is null")
         void shouldUseDefaultMessageWhenSapiMessageIsNull() {
-            SapiPayloads.SapiPrimaryAssignment sapiResponse =
-                new SapiPayloads.SapiPrimaryAssignment(true, null);
+            UserRolePayloads.SapiPrimaryAssignment sapiResponse =
+                new UserRolePayloads.SapiPrimaryAssignment(true, null);
 
             when(sapiRestClient.post()).thenReturn(requestBodyUriSpec);
             when(requestBodyUriSpec.uri(anyString(), anyString(), anyString())).thenReturn(requestBodySpec);
             when(requestBodySpec.body(anyMap())).thenReturn(requestBodySpec);
             when(requestBodySpec.retrieve()).thenReturn(responseSpec);
-            when(responseSpec.body(SapiPayloads.SapiPrimaryAssignment.class)).thenReturn(sapiResponse);
+            when(responseSpec.body(UserRolePayloads.SapiPrimaryAssignment.class)).thenReturn(sapiResponse);
             when(layoutCacheClient.invalidateAdGroup(anyString())).thenReturn(true);
 
             var result = service.setPrimaryAssignment("600001", "voice_agent", "CN=Voice,DC=hsbc,DC=com");
@@ -25845,14 +25500,14 @@ class DefaultUserRoleManagementServiceTest {
         void shouldAllowAdminUserToPerformOperations() {
             when(roleResolutionService.resolveRolesFromAdGroups(anyList())).thenReturn(List.of("admin"));
 
-            SapiPayloads.SapiPrimaryAssignment sapiResponse =
-                new SapiPayloads.SapiPrimaryAssignment(true, null);
+            UserRolePayloads.SapiPrimaryAssignment sapiResponse =
+                new UserRolePayloads.SapiPrimaryAssignment(true, null);
 
             when(sapiRestClient.post()).thenReturn(requestBodyUriSpec);
             when(requestBodyUriSpec.uri(anyString(), anyString(), anyString())).thenReturn(requestBodySpec);
             when(requestBodySpec.body(anyMap())).thenReturn(requestBodySpec);
             when(requestBodySpec.retrieve()).thenReturn(responseSpec);
-            when(responseSpec.body(SapiPayloads.SapiPrimaryAssignment.class)).thenReturn(sapiResponse);
+            when(responseSpec.body(UserRolePayloads.SapiPrimaryAssignment.class)).thenReturn(sapiResponse);
             when(layoutCacheClient.invalidateAdGroup(anyString())).thenReturn(true);
 
             var result = service.setPrimaryAssignment("600001", "voice_agent", "CN=Voice,DC=hsbc,DC=com");
@@ -25883,14 +25538,14 @@ class DefaultUserRoleManagementServiceTest {
         @Test
         @DisplayName("should process bulk assignments successfully")
         void shouldProcessBulkAssignmentsSuccessfully() {
-            SapiPayloads.SapiPrimaryAssignment sapiResponse =
-                new SapiPayloads.SapiPrimaryAssignment(true, "Success");
+            UserRolePayloads.SapiPrimaryAssignment sapiResponse =
+                new UserRolePayloads.SapiPrimaryAssignment(true, "Success");
 
             when(sapiRestClient.post()).thenReturn(requestBodyUriSpec);
             when(requestBodyUriSpec.uri(anyString(), anyString(), anyString())).thenReturn(requestBodySpec);
             when(requestBodySpec.body(anyMap())).thenReturn(requestBodySpec);
             when(requestBodySpec.retrieve()).thenReturn(responseSpec);
-            when(responseSpec.body(SapiPayloads.SapiPrimaryAssignment.class)).thenReturn(sapiResponse);
+            when(responseSpec.body(UserRolePayloads.SapiPrimaryAssignment.class)).thenReturn(sapiResponse);
             when(layoutCacheClient.invalidateAdGroup(anyString())).thenReturn(true);
 
             List<BulkPrimaryAssignmentRequest> requests = List.of(
@@ -25909,14 +25564,14 @@ class DefaultUserRoleManagementServiceTest {
         @Test
         @DisplayName("should handle partial failures in bulk operations")
         void shouldHandlePartialFailuresInBulkOperations() {
-            SapiPayloads.SapiPrimaryAssignment successResponse =
-                new SapiPayloads.SapiPrimaryAssignment(true, null);
+            UserRolePayloads.SapiPrimaryAssignment successResponse =
+                new UserRolePayloads.SapiPrimaryAssignment(true, null);
 
             when(sapiRestClient.post()).thenReturn(requestBodyUriSpec);
             when(requestBodyUriSpec.uri(anyString(), anyString(), anyString())).thenReturn(requestBodySpec);
             when(requestBodySpec.body(anyMap())).thenReturn(requestBodySpec);
             when(requestBodySpec.retrieve()).thenReturn(responseSpec);
-            when(responseSpec.body(SapiPayloads.SapiPrimaryAssignment.class))
+            when(responseSpec.body(UserRolePayloads.SapiPrimaryAssignment.class))
                 .thenReturn(successResponse)
                 .thenThrow(new IllegalStateException("SAPI error"));
             when(layoutCacheClient.invalidateAdGroup(anyString())).thenReturn(true);
@@ -26083,52 +25738,6 @@ class ValidationUtilTest {
     }
 
     @Nested
-    @DisplayName("requireAllNotBlank")
-    @SuppressWarnings("java:S5976")
-    class RequireAllNotBlank {
-
-        @Test
-        @DisplayName("should pass for list with all valid strings")
-        void shouldPassForValidStrings() {
-            List<String> list = Arrays.asList("item1", "item2", "item3");
-            assertDoesNotThrow(() -> ValidationUtil.requireAllNotBlank(list, "User IDs", 10));
-        }
-
-        @Test
-        @DisplayName("should throw when list contains null")
-        void shouldThrowWhenContainsNull() {
-            List<String> list = Arrays.asList("item1", null, "item3");
-            IllegalArgumentException ex = assertThrows(
-                IllegalArgumentException.class,
-                () -> ValidationUtil.requireAllNotBlank(list, "User IDs", 10)
-            );
-            assertEquals("User IDs items cannot be null or blank", ex.getMessage());
-        }
-
-        @Test
-        @DisplayName("should throw when list contains blank string")
-        void shouldThrowWhenContainsBlank() {
-            List<String> list = Arrays.asList("item1", "   ", "item3");
-            IllegalArgumentException ex = assertThrows(
-                IllegalArgumentException.class,
-                () -> ValidationUtil.requireAllNotBlank(list, "User IDs", 10)
-            );
-            assertEquals("User IDs items cannot be null or blank", ex.getMessage());
-        }
-
-        @Test
-        @DisplayName("should throw when list contains empty string")
-        void shouldThrowWhenContainsEmpty() {
-            List<String> list = Arrays.asList("item1", "", "item3");
-            IllegalArgumentException ex = assertThrows(
-                IllegalArgumentException.class,
-                () -> ValidationUtil.requireAllNotBlank(list, "User IDs", 10)
-            );
-            assertEquals("User IDs items cannot be null or blank", ex.getMessage());
-        }
-    }
-
-    @Nested
     @DisplayName("requireNoNulls")
     class RequireNoNulls {
 
@@ -26172,102 +25781,6 @@ class ValidationUtilTest {
         }
     }
 
-    @Nested
-    @DisplayName("requireInRange")
-    class RequireInRange {
-
-        @Test
-        @DisplayName("should pass for value within range")
-        void shouldPassForValueInRange() {
-            assertDoesNotThrow(() -> ValidationUtil.requireInRange(50, "Limit", 1, 100));
-        }
-
-        @Test
-        @DisplayName("should pass for value at minimum")
-        void shouldPassForMinimum() {
-            assertDoesNotThrow(() -> ValidationUtil.requireInRange(1, "Limit", 1, 100));
-        }
-
-        @Test
-        @DisplayName("should pass for value at maximum")
-        void shouldPassForMaximum() {
-            assertDoesNotThrow(() -> ValidationUtil.requireInRange(100, "Limit", 1, 100));
-        }
-
-        @Test
-        @DisplayName("should throw for value below minimum")
-        void shouldThrowForBelowMinimum() {
-            IllegalArgumentException ex = assertThrows(
-                IllegalArgumentException.class,
-                () -> ValidationUtil.requireInRange(0, "Limit", 1, 100)
-            );
-            assertEquals("Limit must be between 1 and 100", ex.getMessage());
-        }
-
-        @Test
-        @DisplayName("should throw for value above maximum")
-        void shouldThrowForAboveMaximum() {
-            IllegalArgumentException ex = assertThrows(
-                IllegalArgumentException.class,
-                () -> ValidationUtil.requireInRange(101, "Limit", 1, 100)
-            );
-            assertEquals("Limit must be between 1 and 100", ex.getMessage());
-        }
-    }
-
-    @Nested
-    @DisplayName("requireAtLeast")
-    class RequireAtLeast {
-
-        @Test
-        @DisplayName("should pass for value at minimum")
-        void shouldPassForMinimum() {
-            assertDoesNotThrow(() -> ValidationUtil.requireAtLeast(1, "Page", 1));
-        }
-
-        @Test
-        @DisplayName("should pass for value above minimum")
-        void shouldPassForAboveMinimum() {
-            assertDoesNotThrow(() -> ValidationUtil.requireAtLeast(10, "Page", 1));
-        }
-
-        @Test
-        @DisplayName("should throw for value below minimum")
-        void shouldThrowForBelowMinimum() {
-            IllegalArgumentException ex = assertThrows(
-                IllegalArgumentException.class,
-                () -> ValidationUtil.requireAtLeast(0, "Page", 1)
-            );
-            assertEquals("Page must be at least 1", ex.getMessage());
-        }
-    }
-
-    @Nested
-    @DisplayName("requireAtMost")
-    class RequireAtMost {
-
-        @Test
-        @DisplayName("should pass for value at maximum")
-        void shouldPassForMaximum() {
-            assertDoesNotThrow(() -> ValidationUtil.requireAtMost(100, "Size", 100));
-        }
-
-        @Test
-        @DisplayName("should pass for value below maximum")
-        void shouldPassForBelowMaximum() {
-            assertDoesNotThrow(() -> ValidationUtil.requireAtMost(50, "Size", 100));
-        }
-
-        @Test
-        @DisplayName("should throw for value above maximum")
-        void shouldThrowForAboveMaximum() {
-            IllegalArgumentException ex = assertThrows(
-                IllegalArgumentException.class,
-                () -> ValidationUtil.requireAtMost(101, "Size", 100)
-            );
-            assertEquals("Size cannot exceed 100", ex.getMessage());
-        }
-    }
 }
 ===ENDFILE
 ===FILE: ./tools/integration/test-papi-all-apis-v2.sh
