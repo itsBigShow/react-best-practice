@@ -1,7 +1,7 @@
 # CCaaS Entitlement PAPI - Source Bundle
-# Generated: 2026-02-09 11:35:06
-# Total files: 264
-# Categories: 1 pom.xml, 1 CLAUDE.md, 4 docs, 3 resources, 119 YAML specs, 81 main Java, 53 test Java, 2 other
+# Generated: 2026-02-09 15:43:31
+# Total files: 261
+# Categories: 1 pom.xml, 1 CLAUDE.md, 4 docs, 3 resources, 119 YAML specs, 79 main Java, 52 test Java, 2 other
 # Note: target/generated-sources NOT included - run 'mvn generate-sources' after extraction
 ===FILE: ./AGENTS.md
 # AGENTS.md - ccaas-entitlement-papi
@@ -3071,7 +3071,7 @@ paths:
     $ref: 'paths/approval-workflow/change-approvals.yaml'
   /change-rejections:
     $ref: 'paths/approval-workflow/change-rejections.yaml'
-  /ad-group-configs/{groupIdentifier}:
+  /ad-group-configs:
     $ref: 'paths/approval-workflow/direct-save.yaml'
 
   # Embedded Apps
@@ -4123,6 +4123,11 @@ properties:
 type: object
 description: Request data for Super Admin direct configuration save.
 properties:
+  targetGroupIdentifier:
+    type: string
+    description: AD group distinguished name (DN) to apply changes to.
+    minLength: 1
+    maxLength: 500
   currentState:
     type: object
     description: Current configuration state before changes.
@@ -4152,6 +4157,7 @@ properties:
     description: Optimistic locking version.
     nullable: true
 required:
+  - targetGroupIdentifier
   - proposedState
 additionalProperties: false
 ===ENDFILE
@@ -6683,21 +6689,12 @@ post:
       $ref: '../../components/responses/common-responses.yaml#/default'
 ===ENDFILE
 ===FILE: ./src/main/api/paths/approval-workflow/direct-save.yaml
-put:
+post:
   tags:
     - ad-group-configs
   operationId: direct-save-config
   summary: Direct save AD group configuration (Super Admin).
   description: Bypasses approval workflow. Applies configuration change immediately. Requires Super Admin role.
-  parameters:
-    - name: groupIdentifier
-      in: path
-      required: true
-      description: URL-encoded AD group distinguished name (DN).
-      schema:
-        type: string
-        minLength: 1
-        maxLength: 500
   requestBody:
     required: true
     content:
@@ -8453,17 +8450,17 @@ public class SapiApprovalClient {
      * Approve a pending change. SAPI determines the approval level internally.
      * SAPI expects: POST /sapi/v1/change-approvals with {"data": {...}} envelope.
      */
-    public SapiPendingChange approve(String id, String approverId, String approverName, String comment) {
+    public SapiPendingChange approve(String id, String approverId, String approverName, String comment, List<String> approverAdGroups) {
         validateIdAndApprover(id, approverId);
         logger.debug("Approve: id={}, approver={}", id, approverId);
-        return executeApproval(id, approverId, approverName, comment);
+        return executeApproval(id, approverId, approverName, comment, approverAdGroups);
     }
 
     /**
      * Reject a pending change.
      * SAPI expects: POST /sapi/v1/change-rejections with {"data": {...}} envelope.
      */
-    public SapiPendingChange reject(String id, String rejectorId, String rejectorName, String reason) {
+    public SapiPendingChange reject(String id, String rejectorId, String rejectorName, String reason, List<String> rejecterAdGroups) {
         if (id == null || id.isBlank()) {
             throw new IllegalArgumentException(PENDING_CHANGE_ID_REQUIRED);
         }
@@ -8476,12 +8473,15 @@ public class SapiApprovalClient {
 
         logger.debug("Reject: id={}, rejector={}, reason={}", id, rejectorId, reason);
 
-        java.util.HashMap<String, String> innerBody = new java.util.HashMap<>();
+        java.util.HashMap<String, Object> innerBody = new java.util.HashMap<>();
         innerBody.put("changeIdentifier", id);
         innerBody.put("rejecterIdText", rejectorId);
         innerBody.put("reasonText", reason);
         if (rejectorName != null) {
             innerBody.put("rejecterNameText", rejectorName);
+        }
+        if (rejecterAdGroups != null) {
+            innerBody.put("rejecterAdGroupValues", rejecterAdGroups);
         }
 
         return SapiExceptionHandler.executeWithExceptionHandling(
@@ -8532,7 +8532,7 @@ public class SapiApprovalClient {
      */
     public void directSave(String targetGroupIdentifier, Map<String, Object> currentState,
             Map<String, Object> proposedState, String superAdminId, String superAdminName,
-            Long configVersion) {
+            Long configVersion, List<String> superAdminAdGroups) {
         if (targetGroupIdentifier == null || targetGroupIdentifier.isBlank()) {
             throw new IllegalArgumentException("Target group identifier cannot be null or blank");
         }
@@ -8558,6 +8558,9 @@ public class SapiApprovalClient {
         if (configVersion != null) {
             sapiData.put("configVersionNumber", configVersion);
         }
+        if (superAdminAdGroups != null) {
+            sapiData.put("superAdminAdGroupValues", superAdminAdGroups);
+        }
 
         SapiExceptionHandler.executeWithExceptionHandling(
             () -> sapiRestClient.post()
@@ -8578,13 +8581,16 @@ public class SapiApprovalClient {
         }
     }
 
-    private SapiPendingChange executeApproval(String id, String approverId, String approverName, String comment) {
-        java.util.HashMap<String, String> innerBody = new java.util.HashMap<>();
+    private SapiPendingChange executeApproval(String id, String approverId, String approverName, String comment, List<String> approverAdGroups) {
+        java.util.HashMap<String, Object> innerBody = new java.util.HashMap<>();
         innerBody.put("changeIdentifier", id);
         innerBody.put("approverIdText", approverId);
         innerBody.put("commentText", comment != null ? comment : "");
         if (approverName != null) {
             innerBody.put("approverNameText", approverName);
+        }
+        if (approverAdGroups != null) {
+            innerBody.put("approverAdGroupValues", approverAdGroups);
         }
 
         return SapiExceptionHandler.executeWithExceptionHandling(
@@ -10664,8 +10670,9 @@ public class ApprovalWorkflowController implements PendingChangesApi, ChangeAppr
         String approverId = requireEmployeeId();
         String approverName = identity.displayName();
         String comment = approveChangeRequest.getCommentText();
+        List<String> adGroups = identity.adGroups();
 
-        SapiPendingChange result = sapiApprovalClient.approve(changeId, approverId, approverName, comment);
+        SapiPendingChange result = sapiApprovalClient.approve(changeId, approverId, approverName, comment, adGroups);
 
         return responseAssembler.buildApprovalResponse(changeId, approverName, comment, result);
     }
@@ -10688,8 +10695,9 @@ public class ApprovalWorkflowController implements PendingChangesApi, ChangeAppr
 
         String rejectorId = requireEmployeeId();
         String rejectorName = identity.displayName();
+        List<String> adGroups = identity.adGroups();
         SapiPendingChange sapiResult = sapiApprovalClient.reject(
-                changeId, rejectorId, rejectorName, rejectChangeRequest.getReasonText());
+                changeId, rejectorId, rejectorName, rejectChangeRequest.getReasonText(), adGroups);
 
         return responseAssembler.buildRejectionResponse(changeId, rejectorName, rejectChangeRequest.getReasonText(), sapiResult);
     }
@@ -10748,7 +10756,7 @@ import org.springframework.web.client.RestClient;
  * Hidden from Swagger documentation.
  */
 @RestController
-@RequestMapping(path = "/papi/v1/debug", produces = MediaType.APPLICATION_JSON_VALUE)
+@RequestMapping(path = "/debug", produces = MediaType.APPLICATION_JSON_VALUE)
 @ConditionalOnProperty(name = "papi.debug.enabled", havingValue = "true", matchIfMissing = false)
 @Tag(name = "Debug Utilities (PAPI)", description = "Local demo helpers proxied to SAPI")
 @Hidden
@@ -10823,19 +10831,22 @@ public class DirectSaveController implements AdGroupConfigsApi {
             RequestContext<DirectSaveRequestEnvelope> requestContext) throws Exception {
 
         var envelope = requestContext.getBody().orElseThrow(
-            () -> new IllegalArgumentException(CommonConstants.REQUEST_BODY_REQUIRED));
+            () -> new ResponseStatusException(HttpStatus.BAD_REQUEST, CommonConstants.REQUEST_BODY_REQUIRED));
         if (envelope.getData() == null) {
-            throw new IllegalArgumentException(CommonConstants.REQUEST_BODY_DATA_REQUIRED);
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, CommonConstants.REQUEST_BODY_DATA_REQUIRED);
         }
 
-        String groupIdentifier = requestContext.getPathVariable("groupIdentifier").orElseThrow(
-            () -> new IllegalArgumentException("Group identifier path variable is required"));
-
         var request = envelope.getData();
+        String groupIdentifier = request.getTargetGroupIdentifier();
+        if (groupIdentifier == null || groupIdentifier.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "targetGroupIdentifier is required");
+        }
+
         log.info("Direct save: groupIdentifier={}", groupIdentifier);
 
         String superAdminId = requireEmployeeId();
         String superAdminName = identity.displayName();
+        java.util.List<String> adGroups = identity.adGroups();
 
         sapiApprovalClient.directSave(
                 groupIdentifier,
@@ -10843,7 +10854,8 @@ public class DirectSaveController implements AdGroupConfigsApi {
                 request.getProposedState(),
                 superAdminId,
                 superAdminName,
-                request.getConfigVersionNumber());
+                request.getConfigVersionNumber(),
+                adGroups);
 
         DirectSaveResponseData data = new DirectSaveResponseData(true);
         data.setMessageText("Configuration saved successfully");
@@ -10946,7 +10958,12 @@ public class EmbeddedAppAdminController implements EmbeddedAppsApi, EmbeddedApps
     public ResponseEntity<DataResponseAppConfigData> updateAppAdGroupConfiguration(
             RequestContext<UpdateAdGroupConfigRequestEnvelope> requestContext) throws Exception {
         String appKey = requestContext.getPathVariable(APP_KEY).orElseThrow();
-        var updateAdGroupConfigRequest = requestContext.getBody().orElseThrow().getData();
+        var envelope = requestContext.getBody().orElseThrow(
+            () -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Request body is required"));
+        if (envelope.getData() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Request body data is required");
+        }
+        var updateAdGroupConfigRequest = envelope.getData();
         AppAdGroupConfigResponse result = embeddedAppFacade.updateAppAdGroupConfiguration(
             appKey,
             updateAdGroupConfigRequest.getGroupIdentifier(),
@@ -11089,10 +11106,12 @@ public class SessionLayoutController implements SessionsApi, EntitlementsApi {
     @Override
     public ResponseEntity<AcknowledgeNotice200Response> acknowledgeNotice(
             RequestContext<NoticeAcknowledgmentRequestEnvelope> requestContext) throws Exception {
-        var envelope = requestContext.getBody().orElseThrow();
+        var envelope = requestContext.getBody().orElseThrow(
+            () -> new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.BAD_REQUEST, CommonConstants.REQUEST_BODY_REQUIRED));
         if (envelope.getData() == null) {
             throw new org.springframework.web.server.ResponseStatusException(
-                org.springframework.http.HttpStatus.BAD_REQUEST, "Request data is required");
+                org.springframework.http.HttpStatus.BAD_REQUEST, CommonConstants.REQUEST_BODY_DATA_REQUIRED);
         }
         sessionLayoutFacade.updateNoticeState(envelope.getData());
         var responseData = new AcknowledgeNotice200ResponseData()
@@ -11103,10 +11122,12 @@ public class SessionLayoutController implements SessionsApi, EntitlementsApi {
     @Override
     public ResponseEntity<DataResponseEntitlementResultData> addEntitlements(
             RequestContext<AddEntitlementRequestEnvelope> requestContext) throws Exception {
-        var envelope = requestContext.getBody().orElseThrow();
+        var envelope = requestContext.getBody().orElseThrow(
+            () -> new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.BAD_REQUEST, CommonConstants.REQUEST_BODY_REQUIRED));
         if (envelope.getData() == null) {
             throw new org.springframework.web.server.ResponseStatusException(
-                org.springframework.http.HttpStatus.BAD_REQUEST, "Request data is required");
+                org.springframework.http.HttpStatus.BAD_REQUEST, CommonConstants.REQUEST_BODY_DATA_REQUIRED);
         }
         AddEntitlementResponse result = sessionLayoutFacade.addEntitlementToRoleTemplates(envelope.getData());
         return ResponseEntity.ok(GeneratedModelMapper.toEntitlementResultResponse(result));
@@ -11158,7 +11179,12 @@ public class UserRoleManagementController implements UsersApi {
             RequestContext<SetPrimaryAssignmentRequestEnvelope> requestContext) throws Exception {
         String userId = requestContext.getPathVariable("userIdentifier").orElseThrow();
         String roleName = requestContext.getPathVariable("roleName").orElseThrow();
-        var body = requestContext.getBody().orElseThrow().getData();
+        var envelope = requestContext.getBody().orElseThrow(
+            () -> new ResponseStatusException(HttpStatus.BAD_REQUEST, CommonConstants.REQUEST_BODY_REQUIRED));
+        if (envelope.getData() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, CommonConstants.REQUEST_BODY_DATA_REQUIRED);
+        }
+        var body = envelope.getData();
 
         RequestValidationHelper.validateUserId(userId, logger);
         RequestValidationHelper.validateRequestNotNull(body, logger);
@@ -12237,37 +12263,6 @@ public final class GeneratedModelMapper {
     }
 }
 ===ENDFILE
-===FILE: ./src/main/java/com/hsbc/ccaas/papi/model/UserAccessLevel.java
-package com.hsbc.ccaas.papi.model;
-
-/**
- * User access level for the approval workflow.
- * Determines what actions a user can perform on AD group configurations.
- */
-public enum UserAccessLevel {
-    /**
-     * Can only view AD group configurations. No edit permissions.
-     */
-    VIEWER,
-
-    /**
-     * Can submit changes for approval but cannot approve their own changes.
-     */
-    MAKER,
-
-    /**
-     * Can approve Level 1 changes submitted by Makers.
-     * Cannot approve their own submissions.
-     */
-    CHECKER,
-
-    /**
-     * Can approve Level 2 critical changes.
-     * Can also directly save without approval workflow.
-     */
-    SUPER_ADMIN
-}
-===ENDFILE
 ===FILE: ./src/main/java/com/hsbc/ccaas/papi/service/AdGroupLayoutAssignmentService.java
 package com.hsbc.ccaas.papi.service;
 
@@ -12683,97 +12678,6 @@ public interface SessionLayoutService {
     void updateNoticeState(NoticeAcknowledgmentRequest request);
 
     AddEntitlementResponse addEntitlementToRoleTemplates(AddEntitlementRequest request);
-}
-===ENDFILE
-===FILE: ./src/main/java/com/hsbc/ccaas/papi/service/UserAccessLevelService.java
-package com.hsbc.ccaas.papi.service;
-
-import com.hsbc.ccaas.identity.service.helper.IdentityContextAccessor;
-import com.hsbc.ccaas.papi.model.UserAccessLevel;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Service;
-
-import java.util.List;
-
-/**
- * Service to determine user's access level for the approval workflow.
- * Access levels are determined based on AD group memberships.
- */
-@Service
-public class UserAccessLevelService {
-
-    private static final Logger LOG = LoggerFactory.getLogger(UserAccessLevelService.class);
-
-    private final IdentityContextAccessor identity;
-
-    public UserAccessLevelService(IdentityContextAccessor identity) {
-        this.identity = identity;
-    }
-
-    /**
-     * Determine the current user's access level based on their AD groups.
-     * Priority order: SUPER_ADMIN > CHECKER > MAKER > VIEWER
-     *
-     * @return the user's highest access level
-     */
-    public UserAccessLevel getCurrentUserAccessLevel() {
-        List<String> adGroups = identity.adGroups();
-        return determineAccessLevel(adGroups);
-    }
-
-    /**
-     * Determine access level from a list of AD groups.
-     *
-     * @param adGroups list of AD group identifiers
-     * @return the highest access level based on group memberships
-     */
-    public UserAccessLevel determineAccessLevel(List<String> adGroups) {
-        if (adGroups == null || adGroups.isEmpty()) {
-            LOG.debug("No AD groups found, returning VIEWER access level");
-            return UserAccessLevel.VIEWER;
-        }
-
-        boolean hasSuperAdmin = false;
-        boolean hasChecker = false;
-        boolean hasMaker = false;
-
-        for (String group : adGroups) {
-            String upperGroup = group.toUpperCase();
-
-            // Check for Super Admin (highest priority)
-            if (upperGroup.contains("SUPER_ADMIN") || upperGroup.contains("SUPERADMIN")) {
-                hasSuperAdmin = true;
-            }
-
-            // Check for Checker
-            if (upperGroup.contains("CHECKER") || upperGroup.contains("ADMIN_CHECKER")) {
-                hasChecker = true;
-            }
-
-            // Check for Maker (any Platform Admin group implies maker)
-            if (upperGroup.contains("PLATFORM_ADMIN") || upperGroup.contains("ADMIN_")) {
-                hasMaker = true;
-            }
-        }
-
-        // Return highest access level (priority order)
-        if (hasSuperAdmin) {
-            LOG.debug("User has SUPER_ADMIN access level");
-            return UserAccessLevel.SUPER_ADMIN;
-        }
-        if (hasChecker) {
-            LOG.debug("User has CHECKER access level");
-            return UserAccessLevel.CHECKER;
-        }
-        if (hasMaker) {
-            LOG.debug("User has MAKER access level");
-            return UserAccessLevel.MAKER;
-        }
-
-        LOG.debug("User has VIEWER access level (default)");
-        return UserAccessLevel.VIEWER;
-    }
 }
 ===ENDFILE
 ===FILE: ./src/main/java/com/hsbc/ccaas/papi/service/UserRoleManagementService.java
@@ -14230,7 +14134,7 @@ ccaas:
 
 papi:
   debug:
-    enabled: true
+    enabled: false
 
 logging:
   pattern:
@@ -16102,7 +16006,7 @@ class SapiApprovalClientTest {
                     }
                     """));
 
-            SapiPendingChange response = client.approve("pc-001", "checker1", "Checker One", "Approved");
+            SapiPendingChange response = client.approve("pc-001", "checker1", "Checker One", "Approved", null);
 
             assertThat(response).isNotNull();
             assertThat(response.statusCode()).isEqualTo("APPROVED");
@@ -16124,7 +16028,7 @@ class SapiApprovalClientTest {
                     {"data": {"changeIdentifier": "pc-001", "statusCode": "APPROVED"}}
                     """));
 
-            SapiPendingChange response = client.approve("pc-001", "checker1", "Checker One", null);
+            SapiPendingChange response = client.approve("pc-001", "checker1", "Checker One", null, null);
 
             assertThat(response).isNotNull();
         }
@@ -16132,7 +16036,7 @@ class SapiApprovalClientTest {
         @Test
         @DisplayName("should throw when ID is null")
         void shouldThrowWhenIdNull() {
-            assertThatThrownBy(() -> client.approve(null, "checker1", "Checker One", "ok"))
+            assertThatThrownBy(() -> client.approve(null, "checker1", "Checker One", "ok", null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("cannot be null or blank");
         }
@@ -16140,7 +16044,7 @@ class SapiApprovalClientTest {
         @Test
         @DisplayName("should throw when approver ID is blank")
         void shouldThrowWhenApproverIdBlank() {
-            assertThatThrownBy(() -> client.approve("pc-001", "", "Checker One", "ok"))
+            assertThatThrownBy(() -> client.approve("pc-001", "", "Checker One", "ok", null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Approver ID cannot be null or blank");
         }
@@ -16164,7 +16068,7 @@ class SapiApprovalClientTest {
                     }
                     """));
 
-            SapiPendingChange response = client.approve("pc-001", "superadmin1", "Super Admin", "Approved");
+            SapiPendingChange response = client.approve("pc-001", "superadmin1", "Super Admin", "Approved", null);
 
             assertThat(response).isNotNull();
 
@@ -16184,7 +16088,7 @@ class SapiApprovalClientTest {
                     {"data": {"changeIdentifier": "pc-001", "statusCode": "APPROVED"}}
                     """));
 
-            SapiPendingChange response = client.approve("pc-001", "superadmin1", "Super Admin", null);
+            SapiPendingChange response = client.approve("pc-001", "superadmin1", "Super Admin", null, null);
 
             assertThat(response).isNotNull();
         }
@@ -16192,14 +16096,14 @@ class SapiApprovalClientTest {
         @Test
         @DisplayName("should throw when ID is blank")
         void shouldThrowWhenIdBlank() {
-            assertThatThrownBy(() -> client.approve("  ", "superadmin1", "Super Admin", "ok"))
+            assertThatThrownBy(() -> client.approve("  ", "superadmin1", "Super Admin", "ok", null))
                 .isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test
         @DisplayName("should throw when approver ID is null")
         void shouldThrowWhenApproverIdNull() {
-            assertThatThrownBy(() -> client.approve("pc-001", null, "Super Admin", "ok"))
+            assertThatThrownBy(() -> client.approve("pc-001", null, "Super Admin", "ok", null))
                 .isInstanceOf(IllegalArgumentException.class);
         }
     }
@@ -16222,7 +16126,7 @@ class SapiApprovalClientTest {
                     }
                     """));
 
-            SapiPendingChange response = client.reject("pc-001", "checker1", "Checker One", "Policy violation");
+            SapiPendingChange response = client.reject("pc-001", "checker1", "Checker One", "Policy violation", null);
 
             assertThat(response).isNotNull();
             assertThat(response.statusCode()).isEqualTo("REJECTED");
@@ -16238,14 +16142,14 @@ class SapiApprovalClientTest {
         @Test
         @DisplayName("should throw when ID is null")
         void shouldThrowWhenIdNull() {
-            assertThatThrownBy(() -> client.reject(null, "checker1", "Checker One", "reason"))
+            assertThatThrownBy(() -> client.reject(null, "checker1", "Checker One", "reason", null))
                 .isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test
         @DisplayName("should throw when rejector ID is blank")
         void shouldThrowWhenRejectorIdBlank() {
-            assertThatThrownBy(() -> client.reject("pc-001", "", "Checker One", "reason"))
+            assertThatThrownBy(() -> client.reject("pc-001", "", "Checker One", "reason", null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Rejector ID cannot be null or blank");
         }
@@ -16253,7 +16157,7 @@ class SapiApprovalClientTest {
         @Test
         @DisplayName("should throw when reason is null")
         void shouldThrowWhenReasonNull() {
-            assertThatThrownBy(() -> client.reject("pc-001", "checker1", "Checker One", null))
+            assertThatThrownBy(() -> client.reject("pc-001", "checker1", "Checker One", null, null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Rejection reason cannot be null or blank");
         }
@@ -16261,7 +16165,7 @@ class SapiApprovalClientTest {
         @Test
         @DisplayName("should throw when reason is blank")
         void shouldThrowWhenReasonBlank() {
-            assertThatThrownBy(() -> client.reject("pc-001", "checker1", "Checker One", "   "))
+            assertThatThrownBy(() -> client.reject("pc-001", "checker1", "Checker One", "   ", null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Rejection reason cannot be null or blank");
         }
@@ -16322,7 +16226,7 @@ class SapiApprovalClientTest {
                 .setHeader("Content-Type", "application/json")
                 .setBody("{\"error\": \"Change is already approved\"}"));
 
-            assertThatThrownBy(() -> client.approve("pc-001", "checker1", "Checker One", "ok"))
+            assertThatThrownBy(() -> client.approve("pc-001", "checker1", "Checker One", "ok", null))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(ex -> {
                     ResponseStatusException rse = (ResponseStatusException) ex;
@@ -16340,7 +16244,7 @@ class SapiApprovalClientTest {
                 .setHeader("Content-Type", "application/json")
                 .setBody("{\"error\": \"Pending change not found\"}"));
 
-            assertThatThrownBy(() -> client.approve("non-existent", "checker1", "Checker One", "ok"))
+            assertThatThrownBy(() -> client.approve("non-existent", "checker1", "Checker One", "ok", null))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(ex -> {
                     ResponseStatusException rse = (ResponseStatusException) ex;
@@ -16357,7 +16261,7 @@ class SapiApprovalClientTest {
                 .setHeader("Content-Type", "application/json")
                 .setBody("{\"error\": \"Cannot reject an already approved change\"}"));
 
-            assertThatThrownBy(() -> client.reject("pc-001", "checker1", "Checker One", "Too late"))
+            assertThatThrownBy(() -> client.reject("pc-001", "checker1", "Checker One", "Too late", null))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(ex -> {
                     ResponseStatusException rse = (ResponseStatusException) ex;
@@ -16411,7 +16315,7 @@ class SapiApprovalClientTest {
                 .setHeader("Content-Type", "application/json")
                 .setBody("{\"error\": \"Change is already approved\"}"));
 
-            assertThatThrownBy(() -> client.approve("pc-001", "superadmin1", "Super Admin", "ok"))
+            assertThatThrownBy(() -> client.approve("pc-001", "superadmin1", "Super Admin", "ok", null))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(ex -> {
                     ResponseStatusException rse = (ResponseStatusException) ex;
@@ -19686,6 +19590,7 @@ class ApprovalWorkflowControllerTest {
     void setUp() {
         ApprovalResponseAssembler responseAssembler = new ApprovalResponseAssembler(approvalResponseMapper);
         controller = new ApprovalWorkflowController(identity, sapiApprovalClient, responseAssembler);
+        lenient().when(identity.adGroups()).thenReturn(Collections.emptyList());
     }
 
     // ========================================================================
@@ -19961,7 +19866,7 @@ class ApprovalWorkflowControllerTest {
             SapiPendingChange approvedResult = buildSapiPendingChange(
                 CHANGE_ID, GROUP_ID, "APPROVED", false);
 
-            when(sapiApprovalClient.approve(eq(CHANGE_ID), eq(USER_ID), eq(DISPLAY_NAME), any()))
+            when(sapiApprovalClient.approve(eq(CHANGE_ID), eq(USER_ID), eq(DISPLAY_NAME), any(), any()))
                 .thenReturn(approvedResult);
 
             ApproveChangeRequest approveRequest = new ApproveChangeRequest(CHANGE_ID);
@@ -19975,7 +19880,7 @@ class ApprovalWorkflowControllerTest {
                 controller.approveChange(requestContext);
 
             assertThat(result.getStatusCode().value()).isEqualTo(200);
-            verify(sapiApprovalClient).approve(CHANGE_ID, USER_ID, DISPLAY_NAME, "Looks good");
+            verify(sapiApprovalClient).approve(eq(CHANGE_ID), eq(USER_ID), eq(DISPLAY_NAME), eq("Looks good"), any());
         }
 
         @Test
@@ -19987,7 +19892,7 @@ class ApprovalWorkflowControllerTest {
             SapiPendingChange approvedResult = buildSapiPendingChange(
                 CHANGE_ID, GROUP_ID, "APPROVED", true);
 
-            when(sapiApprovalClient.approve(eq(CHANGE_ID), eq(USER_ID), eq(DISPLAY_NAME), any()))
+            when(sapiApprovalClient.approve(eq(CHANGE_ID), eq(USER_ID), eq(DISPLAY_NAME), any(), any()))
                 .thenReturn(approvedResult);
 
             ApproveChangeRequest approveRequest = new ApproveChangeRequest(CHANGE_ID);
@@ -20000,7 +19905,31 @@ class ApprovalWorkflowControllerTest {
                 controller.approveChange(requestContext);
 
             assertThat(result.getStatusCode().value()).isEqualTo(200);
-            verify(sapiApprovalClient).approve(eq(CHANGE_ID), eq(USER_ID), eq(DISPLAY_NAME), any());
+            verify(sapiApprovalClient).approve(eq(CHANGE_ID), eq(USER_ID), eq(DISPLAY_NAME), any(), any());
+        }
+
+        @Test
+        @DisplayName("should forward AD groups to SAPI when approving")
+        void approveChange_forwardsAdGroups() throws Exception {
+            List<String> adGroups = List.of("CN=Admin_Checker_EMEA,OU=Groups,DC=hsbc,DC=com");
+            when(identity.employeeId()).thenReturn(USER_ID);
+            when(identity.displayName()).thenReturn(DISPLAY_NAME);
+            when(identity.adGroups()).thenReturn(adGroups);
+
+            SapiPendingChange approvedResult = buildSapiPendingChange(CHANGE_ID, GROUP_ID, "APPROVED", false);
+            when(sapiApprovalClient.approve(eq(CHANGE_ID), eq(USER_ID), eq(DISPLAY_NAME), any(), eq(adGroups)))
+                .thenReturn(approvedResult);
+
+            ApproveChangeRequest approveRequest = new ApproveChangeRequest(CHANGE_ID);
+            approveRequest.setCommentText("Approved");
+            ApproveChangeRequestEnvelope envelope = new ApproveChangeRequestEnvelope(approveRequest);
+
+            RequestContext<ApproveChangeRequestEnvelope> requestContext =
+                TestContextFactory.withBody(envelope);
+
+            controller.approveChange(requestContext);
+
+            verify(sapiApprovalClient).approve(eq(CHANGE_ID), eq(USER_ID), eq(DISPLAY_NAME), any(), eq(adGroups));
         }
 
         @Test
@@ -20012,7 +19941,7 @@ class ApprovalWorkflowControllerTest {
             SapiPendingChange escalatedResult = buildSapiPendingChange(
                 CHANGE_ID, GROUP_ID, "PENDING_LEVEL_TWO", true);
 
-            when(sapiApprovalClient.approve(eq(CHANGE_ID), eq(USER_ID), eq(DISPLAY_NAME), any()))
+            when(sapiApprovalClient.approve(eq(CHANGE_ID), eq(USER_ID), eq(DISPLAY_NAME), any(), any()))
                 .thenReturn(escalatedResult);
 
             ApproveChangeRequest approveRequest = new ApproveChangeRequest(CHANGE_ID);
@@ -20044,7 +19973,7 @@ class ApprovalWorkflowControllerTest {
 
             SapiPendingChange sapiResult = buildSapiPendingChange(
                 CHANGE_ID, GROUP_ID, "REJECTED", false);
-            when(sapiApprovalClient.reject(CHANGE_ID, USER_ID, DISPLAY_NAME, "Policy violation"))
+            when(sapiApprovalClient.reject(eq(CHANGE_ID), eq(USER_ID), eq(DISPLAY_NAME), eq("Policy violation"), any()))
                 .thenReturn(sapiResult);
 
             RejectChangeRequest rejectRequest = new RejectChangeRequest(CHANGE_ID, "Policy violation");
@@ -20057,7 +19986,7 @@ class ApprovalWorkflowControllerTest {
                 controller.rejectChange(requestContext);
 
             assertThat(result.getStatusCode().value()).isEqualTo(200);
-            verify(sapiApprovalClient).reject(CHANGE_ID, USER_ID, DISPLAY_NAME, "Policy violation");
+            verify(sapiApprovalClient).reject(eq(CHANGE_ID), eq(USER_ID), eq(DISPLAY_NAME), eq("Policy violation"), any());
         }
 
         @Test
@@ -20227,7 +20156,7 @@ class ApprovalWorkflowControllerTest {
             when(identity.employeeId()).thenReturn(USER_ID);
             when(identity.displayName()).thenReturn(DISPLAY_NAME);
 
-            when(sapiApprovalClient.approve(eq(CHANGE_ID), eq(USER_ID), eq(DISPLAY_NAME), any()))
+            when(sapiApprovalClient.approve(eq(CHANGE_ID), eq(USER_ID), eq(DISPLAY_NAME), any(), any()))
                 .thenThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Approve pending change - SAPI error: Change is already approved"));
 
@@ -20251,7 +20180,7 @@ class ApprovalWorkflowControllerTest {
             when(identity.employeeId()).thenReturn(USER_ID);
             when(identity.displayName()).thenReturn(DISPLAY_NAME);
 
-            when(sapiApprovalClient.approve(eq(CHANGE_ID), eq(USER_ID), eq(DISPLAY_NAME), any()))
+            when(sapiApprovalClient.approve(eq(CHANGE_ID), eq(USER_ID), eq(DISPLAY_NAME), any(), any()))
                 .thenThrow(new ResponseStatusException(HttpStatus.NOT_FOUND,
                     "Approve pending change - SAPI error: Pending change not found"));
 
@@ -20274,7 +20203,7 @@ class ApprovalWorkflowControllerTest {
             when(identity.employeeId()).thenReturn(USER_ID);
             when(identity.displayName()).thenReturn(DISPLAY_NAME);
 
-            when(sapiApprovalClient.reject(eq(CHANGE_ID), eq(USER_ID), eq(DISPLAY_NAME), anyString()))
+            when(sapiApprovalClient.reject(eq(CHANGE_ID), eq(USER_ID), eq(DISPLAY_NAME), anyString(), any()))
                 .thenThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Reject pending change - SAPI error: Cannot reject an already approved change"));
 
@@ -20573,6 +20502,7 @@ class DirectSaveControllerTest {
     @BeforeEach
     void setUp() {
         controller = new DirectSaveController(identity, sapiApprovalClient);
+        lenient().when(identity.adGroups()).thenReturn(java.util.Collections.emptyList());
     }
 
     @Nested
@@ -20585,13 +20515,13 @@ class DirectSaveControllerTest {
             when(identity.employeeId()).thenReturn(SUPER_ADMIN_ID);
             when(identity.displayName()).thenReturn(SUPER_ADMIN_NAME);
 
-            DirectSaveRequest request = new DirectSaveRequest(Map.of("roleName", "chat_agent"));
+            DirectSaveRequest request = new DirectSaveRequest(GROUP_ID, Map.of("roleName", "chat_agent"));
             request.setCurrentState(Map.of("roleName", "voice_agent"));
             request.setConfigVersionNumber(5L);
             DirectSaveRequestEnvelope envelope = new DirectSaveRequestEnvelope(request);
 
             RequestContext<DirectSaveRequestEnvelope> requestContext =
-                TestContextFactory.withBodyAndPath(envelope, Map.of("groupIdentifier", GROUP_ID));
+                TestContextFactory.withBody(envelope);
 
             ResponseEntity<DirectSaveResponse> result = controller.directSaveConfig(requestContext);
 
@@ -20606,7 +20536,8 @@ class DirectSaveControllerTest {
                 eq(Map.of("roleName", "chat_agent")),
                 eq(SUPER_ADMIN_ID),
                 eq(SUPER_ADMIN_NAME),
-                eq(5L));
+                eq(5L),
+                any());
         }
 
         @Test
@@ -20615,11 +20546,11 @@ class DirectSaveControllerTest {
             when(identity.employeeId()).thenReturn(SUPER_ADMIN_ID);
             when(identity.displayName()).thenReturn(SUPER_ADMIN_NAME);
 
-            DirectSaveRequest request = new DirectSaveRequest(Map.of("roleName", "chat_agent"));
+            DirectSaveRequest request = new DirectSaveRequest(GROUP_ID, Map.of("roleName", "chat_agent"));
             DirectSaveRequestEnvelope envelope = new DirectSaveRequestEnvelope(request);
 
             RequestContext<DirectSaveRequestEnvelope> requestContext =
-                TestContextFactory.withBodyAndPath(envelope, Map.of("groupIdentifier", GROUP_ID));
+                TestContextFactory.withBody(envelope);
 
             ResponseEntity<DirectSaveResponse> result = controller.directSaveConfig(requestContext);
 
@@ -20631,7 +20562,8 @@ class DirectSaveControllerTest {
                 eq(Map.of("roleName", "chat_agent")),
                 eq(SUPER_ADMIN_ID),
                 eq(SUPER_ADMIN_NAME),
-                isNull());
+                isNull(),
+                any());
         }
     }
 
@@ -20644,11 +20576,11 @@ class DirectSaveControllerTest {
         void directSave_nullEmployeeId_throws401() {
             when(identity.employeeId()).thenReturn(null);
 
-            DirectSaveRequest request = new DirectSaveRequest(Map.of("roleName", "chat_agent"));
+            DirectSaveRequest request = new DirectSaveRequest(GROUP_ID, Map.of("roleName", "chat_agent"));
             DirectSaveRequestEnvelope envelope = new DirectSaveRequestEnvelope(request);
 
             RequestContext<DirectSaveRequestEnvelope> requestContext =
-                TestContextFactory.withBodyAndPath(envelope, Map.of("groupIdentifier", GROUP_ID));
+                TestContextFactory.withBody(envelope);
 
             assertThatThrownBy(() -> controller.directSaveConfig(requestContext))
                 .isInstanceOf(ResponseStatusException.class)
@@ -20663,11 +20595,11 @@ class DirectSaveControllerTest {
         void directSave_blankEmployeeId_throws401() {
             when(identity.employeeId()).thenReturn("  ");
 
-            DirectSaveRequest request = new DirectSaveRequest(Map.of("roleName", "chat_agent"));
+            DirectSaveRequest request = new DirectSaveRequest(GROUP_ID, Map.of("roleName", "chat_agent"));
             DirectSaveRequestEnvelope envelope = new DirectSaveRequestEnvelope(request);
 
             RequestContext<DirectSaveRequestEnvelope> requestContext =
-                TestContextFactory.withBodyAndPath(envelope, Map.of("groupIdentifier", GROUP_ID));
+                TestContextFactory.withBody(envelope);
 
             assertThatThrownBy(() -> controller.directSaveConfig(requestContext))
                 .isInstanceOf(ResponseStatusException.class)
@@ -20678,25 +20610,50 @@ class DirectSaveControllerTest {
         }
 
         @Test
-        @DisplayName("should throw when request body is missing")
-        void directSave_noBody_throwsIllegalArgument() {
-            RequestContext<DirectSaveRequestEnvelope> requestContext =
-                TestContextFactory.<DirectSaveRequestEnvelope>withPath(Map.of("groupIdentifier", GROUP_ID));
+        @DisplayName("should throw 400 when request body is missing")
+        void directSave_noBody_throws400() {
+            RequestContext<DirectSaveRequestEnvelope> requestContext = TestContextFactory.create();
 
             assertThatThrownBy(() -> controller.directSaveConfig(requestContext))
-                .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> {
+                    ResponseStatusException rse = (ResponseStatusException) ex;
+                    assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                });
         }
 
         @Test
-        @DisplayName("should throw when request data is null")
-        void directSave_nullData_throwsIllegalArgument() {
+        @DisplayName("should throw 400 when request data is null")
+        void directSave_nullData_throws400() {
             DirectSaveRequestEnvelope envelope = new DirectSaveRequestEnvelope();
 
             RequestContext<DirectSaveRequestEnvelope> requestContext =
-                TestContextFactory.withBodyAndPath(envelope, Map.of("groupIdentifier", GROUP_ID));
+                TestContextFactory.withBody(envelope);
 
             assertThatThrownBy(() -> controller.directSaveConfig(requestContext))
-                .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> {
+                    ResponseStatusException rse = (ResponseStatusException) ex;
+                    assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                });
+        }
+
+        @Test
+        @DisplayName("should throw 400 when targetGroupIdentifier is missing")
+        void directSave_missingGroupId_throws400() {
+            DirectSaveRequest request = new DirectSaveRequest(null, Map.of("roleName", "chat_agent"));
+            DirectSaveRequestEnvelope envelope = new DirectSaveRequestEnvelope(request);
+
+            RequestContext<DirectSaveRequestEnvelope> requestContext =
+                TestContextFactory.withBody(envelope);
+
+            assertThatThrownBy(() -> controller.directSaveConfig(requestContext))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> {
+                    ResponseStatusException rse = (ResponseStatusException) ex;
+                    assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                    assertThat(rse.getReason()).contains("targetGroupIdentifier");
+                });
         }
     }
 
@@ -20712,13 +20669,13 @@ class DirectSaveControllerTest {
 
             doThrow(new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Direct save - SAPI error: AD group not found"))
-                .when(sapiApprovalClient).directSave(anyString(), any(), any(), anyString(), anyString(), any());
+                .when(sapiApprovalClient).directSave(anyString(), any(), any(), anyString(), anyString(), any(), any());
 
-            DirectSaveRequest request = new DirectSaveRequest(Map.of("roleName", "chat_agent"));
+            DirectSaveRequest request = new DirectSaveRequest(GROUP_ID, Map.of("roleName", "chat_agent"));
             DirectSaveRequestEnvelope envelope = new DirectSaveRequestEnvelope(request);
 
             RequestContext<DirectSaveRequestEnvelope> requestContext =
-                TestContextFactory.withBodyAndPath(envelope, Map.of("groupIdentifier", GROUP_ID));
+                TestContextFactory.withBody(envelope);
 
             assertThatThrownBy(() -> controller.directSaveConfig(requestContext))
                 .isInstanceOf(ResponseStatusException.class)
@@ -20736,14 +20693,14 @@ class DirectSaveControllerTest {
 
             doThrow(new ResponseStatusException(HttpStatus.CONFLICT,
                 "Direct save - SAPI error: Optimistic locking conflict"))
-                .when(sapiApprovalClient).directSave(anyString(), any(), any(), anyString(), anyString(), any());
+                .when(sapiApprovalClient).directSave(anyString(), any(), any(), anyString(), anyString(), any(), any());
 
-            DirectSaveRequest request = new DirectSaveRequest(Map.of("roleName", "chat_agent"));
+            DirectSaveRequest request = new DirectSaveRequest(GROUP_ID, Map.of("roleName", "chat_agent"));
             request.setConfigVersionNumber(1L);
             DirectSaveRequestEnvelope envelope = new DirectSaveRequestEnvelope(request);
 
             RequestContext<DirectSaveRequestEnvelope> requestContext =
-                TestContextFactory.withBodyAndPath(envelope, Map.of("groupIdentifier", GROUP_ID));
+                TestContextFactory.withBody(envelope);
 
             assertThatThrownBy(() -> controller.directSaveConfig(requestContext))
                 .isInstanceOf(ResponseStatusException.class)
@@ -20951,14 +20908,16 @@ class EmbeddedAppAdminControllerTest {
     }
 
     @Test
-    @DisplayName("PUT /papi/v1/embedded-apps-ad-groups/{appKey} returns 500 when envelope has null data")
+    @DisplayName("PUT /papi/v1/embedded-apps-ad-groups/{appKey} returns 400 when envelope has null data")
     void getAppAdGroupConfigurationValidationFailure() throws Exception {
         var envelope = new UpdateAdGroupConfigRequestEnvelope();
 
         var requestContext = TestContextFactory.withBodyAndPath(envelope, Map.of("appKey", "wealth"));
 
         assertThatThrownBy(() -> controller.updateAppAdGroupConfiguration(requestContext))
-            .isInstanceOf(NullPointerException.class);
+            .isInstanceOf(ResponseStatusException.class)
+            .extracting(e -> ((ResponseStatusException) e).getStatusCode())
+            .isEqualTo(HttpStatus.BAD_REQUEST);
 
         verifyNoInteractions(embeddedAppFacade);
     }
@@ -21008,14 +20967,16 @@ class EmbeddedAppAdminControllerTest {
     }
 
     @Test
-    @DisplayName("PUT /papi/v1/embedded-apps-ad-groups/{appKey} returns 500 when envelope has null data")
+    @DisplayName("PUT /papi/v1/embedded-apps-ad-groups/{appKey} returns 400 when envelope has null data")
     void updateAppAdGroupConfigurationValidationFailure() throws Exception {
         var envelope = new UpdateAdGroupConfigRequestEnvelope();
 
         var requestContext = TestContextFactory.withBodyAndPath(envelope, Map.of("appKey", "wealth"));
 
         assertThatThrownBy(() -> controller.updateAppAdGroupConfiguration(requestContext))
-            .isInstanceOf(NullPointerException.class);
+            .isInstanceOf(ResponseStatusException.class)
+            .extracting(e -> ((ResponseStatusException) e).getStatusCode())
+            .isEqualTo(HttpStatus.BAD_REQUEST);
 
         verifyNoInteractions(embeddedAppFacade);
     }
@@ -23919,180 +23880,6 @@ class RoleResolutionServiceTest {
 
             List<String> result = roleResolutionService.resolveRolesFromAdGroups(manyAdGroups);
             assertFalse(result.isEmpty());
-        }
-    }
-}
-===ENDFILE
-===FILE: ./src/test/java/com/hsbc/ccaas/papi/service/UserAccessLevelServiceTest.java
-package com.hsbc.ccaas.papi.service;
-
-import com.hsbc.ccaas.identity.service.helper.IdentityContextAccessor;
-import com.hsbc.ccaas.papi.model.UserAccessLevel;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-
-import java.util.List;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.when;
-
-@ExtendWith(MockitoExtension.class)
-@DisplayName("UserAccessLevelService Tests")
-class UserAccessLevelServiceTest {
-
-    @Mock
-    private IdentityContextAccessor identity;
-
-    private UserAccessLevelService service;
-
-    @BeforeEach
-    void setUp() {
-        service = new UserAccessLevelService(identity);
-    }
-
-    @Nested
-    @DisplayName("getCurrentUserAccessLevel tests")
-    class GetCurrentUserAccessLevelTests {
-
-        @Test
-        @DisplayName("should return SUPER_ADMIN for super admin user")
-        void shouldReturnSuperAdminForSuperAdminUser() {
-            when(identity.adGroups()).thenReturn(List.of("CN=SUPER_ADMIN_GROUP,OU=Groups"));
-
-            UserAccessLevel level = service.getCurrentUserAccessLevel();
-
-            assertThat(level).isEqualTo(UserAccessLevel.SUPER_ADMIN);
-        }
-
-        @Test
-        @DisplayName("should return CHECKER for checker user")
-        void shouldReturnCheckerForCheckerUser() {
-            when(identity.adGroups()).thenReturn(List.of("CN=CHECKER_GROUP,OU=Groups"));
-
-            UserAccessLevel level = service.getCurrentUserAccessLevel();
-
-            assertThat(level).isEqualTo(UserAccessLevel.CHECKER);
-        }
-
-        @Test
-        @DisplayName("should return VIEWER when no groups")
-        void shouldReturnViewerWhenNoGroups() {
-            when(identity.adGroups()).thenReturn(List.of());
-
-            UserAccessLevel level = service.getCurrentUserAccessLevel();
-
-            assertThat(level).isEqualTo(UserAccessLevel.VIEWER);
-        }
-    }
-
-    @Nested
-    @DisplayName("determineAccessLevel tests")
-    @SuppressWarnings("java:S5976")
-    class DetermineAccessLevelTests {
-
-        @Test
-        @DisplayName("should return VIEWER when adGroups is null")
-        void shouldReturnViewerWhenNull() {
-            UserAccessLevel level = service.determineAccessLevel(null);
-
-            assertThat(level).isEqualTo(UserAccessLevel.VIEWER);
-        }
-
-        @Test
-        @DisplayName("should return VIEWER when adGroups is empty")
-        void shouldReturnViewerWhenEmpty() {
-            UserAccessLevel level = service.determineAccessLevel(List.of());
-
-            assertThat(level).isEqualTo(UserAccessLevel.VIEWER);
-        }
-
-        @Test
-        @DisplayName("should return SUPER_ADMIN for SUPER_ADMIN group")
-        void shouldReturnSuperAdminForSuperAdminGroup() {
-            UserAccessLevel level = service.determineAccessLevel(List.of("CN=SUPER_ADMIN_TEAM,OU=Groups"));
-
-            assertThat(level).isEqualTo(UserAccessLevel.SUPER_ADMIN);
-        }
-
-        @Test
-        @DisplayName("should return SUPER_ADMIN for SUPERADMIN group (no underscore)")
-        void shouldReturnSuperAdminForSuperAdminGroupNoUnderscore() {
-            UserAccessLevel level = service.determineAccessLevel(List.of("CN=SUPERADMIN_GROUP,OU=Groups"));
-
-            assertThat(level).isEqualTo(UserAccessLevel.SUPER_ADMIN);
-        }
-
-        @Test
-        @DisplayName("should return CHECKER for CHECKER group")
-        void shouldReturnCheckerForCheckerGroup() {
-            UserAccessLevel level = service.determineAccessLevel(List.of("CN=CHECKER_TEAM,OU=Groups"));
-
-            assertThat(level).isEqualTo(UserAccessLevel.CHECKER);
-        }
-
-        @Test
-        @DisplayName("should return CHECKER for ADMIN_CHECKER group")
-        void shouldReturnCheckerForAdminCheckerGroup() {
-            UserAccessLevel level = service.determineAccessLevel(List.of("CN=ADMIN_CHECKER,OU=Groups"));
-
-            assertThat(level).isEqualTo(UserAccessLevel.CHECKER);
-        }
-
-        @Test
-        @DisplayName("should return MAKER for PLATFORM_ADMIN group")
-        void shouldReturnMakerForPlatformAdminGroup() {
-            UserAccessLevel level = service.determineAccessLevel(List.of("CN=PLATFORM_ADMIN_GROUP,OU=Groups"));
-
-            assertThat(level).isEqualTo(UserAccessLevel.MAKER);
-        }
-
-        @Test
-        @DisplayName("should return MAKER for ADMIN_ prefixed group")
-        void shouldReturnMakerForAdminPrefixedGroup() {
-            UserAccessLevel level = service.determineAccessLevel(List.of("CN=ADMIN_TEAM,OU=Groups"));
-
-            assertThat(level).isEqualTo(UserAccessLevel.MAKER);
-        }
-
-        @Test
-        @DisplayName("should return SUPER_ADMIN as highest priority over CHECKER and MAKER")
-        void shouldReturnSuperAdminAsHighestPriority() {
-            UserAccessLevel level = service.determineAccessLevel(
-                List.of("CN=ADMIN_TEAM", "CN=CHECKER_TEAM", "CN=SUPER_ADMIN_TEAM"));
-
-            assertThat(level).isEqualTo(UserAccessLevel.SUPER_ADMIN);
-        }
-
-        @Test
-        @DisplayName("should return CHECKER over MAKER when both present")
-        void shouldReturnCheckerOverMaker() {
-            UserAccessLevel level = service.determineAccessLevel(
-                List.of("CN=ADMIN_TEAM", "CN=CHECKER_TEAM"));
-
-            assertThat(level).isEqualTo(UserAccessLevel.CHECKER);
-        }
-
-        @Test
-        @DisplayName("should return VIEWER for non-admin groups")
-        void shouldReturnViewerForNonAdminGroups() {
-            UserAccessLevel level = service.determineAccessLevel(
-                List.of("CN=Voice_Agent_Basic,OU=Groups", "CN=Chat_Agent,OU=Groups"));
-
-            assertThat(level).isEqualTo(UserAccessLevel.VIEWER);
-        }
-
-        @Test
-        @DisplayName("should handle case insensitive group names")
-        void shouldHandleCaseInsensitiveGroupNames() {
-            UserAccessLevel level = service.determineAccessLevel(
-                List.of("cn=super_admin_team,ou=groups"));
-
-            assertThat(level).isEqualTo(UserAccessLevel.SUPER_ADMIN);
         }
     }
 }
