@@ -1,5 +1,5 @@
 # CCaaS Entitlement PAPI - Source Bundle
-# Generated: 2026-02-09 16:52:25
+# Generated: 2026-02-09 17:30:30
 # Total files: 261
 # Categories: 1 pom.xml, 1 CLAUDE.md, 4 docs, 3 resources, 119 YAML specs, 79 main Java, 52 test Java, 2 other
 # Note: target/generated-sources NOT included - run 'mvn generate-sources' after extraction
@@ -2394,7 +2394,7 @@ mvn test                           # Run tests
 ```
 # Session Layouts
 GET  /papi/v1/sessions                      # Get session layout for current user
-POST /papi/v1/notice-acknowledgments                 # Acknowledge admin notice
+POST /papi/v1/sessions/notice-acknowledgments        # Acknowledge admin notice
 POST /papi/v1/entitlements                           # Add entitlement to role templates
 
 # AD Groups
@@ -2419,7 +2419,7 @@ PATCH  /papi/v1/notices/{noticeIdentifier}/status      # Update notice status
 # Embedded Apps
 GET  /papi/v1/embedded-apps                        # List embedded apps
 GET  /papi/v1/embedded-apps/{appKey}               # Get embedded app
-GET  /papi/v1/user-apps                             # Apps for current user
+GET  /papi/v1/embedded-apps/user-apps                # Apps for current user
 POST /papi/v1/embedded-apps-ad-groups/{appKey}     # App config for AD group (body)
 PUT  /papi/v1/embedded-apps-ad-groups/{appKey}     # Update app config
 POST /papi/v1/embedded-apps-ad-groups              # Get apps for AD group
@@ -2434,7 +2434,7 @@ GET  /papi/v1/regions-markets/{regionCode}         # Markets by region
 
 # User Roles (Supervisor)
 POST /papi/v1/users/{userIdentifier}/primaries/{roleName}  # Set primary role
-POST /papi/v1/primary-assignments                    # Bulk set primary roles
+POST /papi/v1/users/primary-assignments              # Bulk set primary roles
 ```
 
 ## Required Skills (use EVERY time you write or modify code)
@@ -3049,7 +3049,7 @@ paths:
   # Sessions
   /sessions:
     $ref: 'paths/sessions/get.yaml'
-  /notice-acknowledgments:
+  /sessions/notice-acknowledgments:
     $ref: 'paths/sessions/acknowledge-notice.yaml'
   /entitlements:
     $ref: 'paths/sessions/add-entitlements.yaml'
@@ -3077,7 +3077,7 @@ paths:
   # Embedded Apps
   /embedded-apps:
     $ref: 'paths/embedded-apps/list-embedded-apps.yaml'
-  /user-apps:
+  /embedded-apps/user-apps:
     $ref: 'paths/embedded-apps/get-user-apps.yaml'
   /embedded-apps/{appKey}:
     $ref: 'paths/embedded-apps/get-embedded-app.yaml'
@@ -3103,7 +3103,7 @@ paths:
   # User Roles
   /users/{userIdentifier}/primaries/{roleName}:
     $ref: 'paths/user-roles/set-primary-assignment.yaml'
-  /primary-assignments:
+  /users/primary-assignments:
     $ref: 'paths/user-roles/bulk-primary-assignments.yaml'
 
   # Admin Notices
@@ -9528,7 +9528,7 @@ public class OpenApiConfig {
             .group("sessions")
             .displayName("Sessions")
             .pathsToMatch("/papi/v1/sessions", "/papi/v1/sessions/**",
-                "/papi/v1/notice-acknowledgments", "/papi/v1/entitlements")
+                "/papi/v1/entitlements")
             .addOpenApiCustomizer(openApi -> openApi.addTagsItem(new Tag()
                 .name("Sessions")
                 .description(LAYOUT_TAG_DESCRIPTION)))
@@ -9548,7 +9548,7 @@ public class OpenApiConfig {
                 "/papi/v1/embedded-apps-ad-groups", "/papi/v1/embedded-apps-ad-groups/**",
                 "/papi/v1/pending-changes", "/papi/v1/pending-changes/**",
                 "/papi/v1/change-approvals", "/papi/v1/change-rejections",
-                "/papi/v1/users/*/primaries/**", "/papi/v1/primary-assignments"
+                "/papi/v1/users/*/primaries/**", "/papi/v1/users/primary-assignments"
             )
             .addOpenApiCustomizer(openApi -> openApi.addTagsItem(new Tag()
                 .name("Admin Operations")
@@ -9986,7 +9986,7 @@ public class SecurityConfig {
                 .requestMatchers("/actuator/**", "/health").permitAll()
                 .requestMatchers("/static/**").permitAll()
                 // User-facing endpoints (must be before admin matchers)
-                .requestMatchers("/user-apps").authenticated()
+                .requestMatchers("/embedded-apps/user-apps").authenticated()
                 // Admin endpoints
                 .requestMatchers("/ad-groups", "/ad-groups/**").hasRole(ROLE_ADMIN)
                 .requestMatchers("/ad-group-configuration-copies").hasRole(ROLE_ADMIN)
@@ -9998,13 +9998,13 @@ public class SecurityConfig {
                 .requestMatchers("/change-approvals", "/change-rejections").hasRole(ROLE_ADMIN)
                 // Supervisor endpoints
                 .requestMatchers("/users/*/primaries/**").hasRole(ROLE_SUPERVISOR)
-                .requestMatchers("/primary-assignments").hasRole(ROLE_SUPERVISOR)
+                .requestMatchers("/users/primary-assignments").hasRole(ROLE_SUPERVISOR)
                 // Authenticated endpoints
                 .requestMatchers("/regions", "/countries").authenticated()
                 .requestMatchers("/business-units", "/regions-countries/**").authenticated()
                 .requestMatchers("/markets", "/regions-markets/**").authenticated()
                 .requestMatchers("/sessions", "/sessions/**",
-                    "/notice-acknowledgments", "/entitlements").authenticated()
+                    "/entitlements").authenticated()
                 .anyRequest().authenticated()
             )
             .addFilterBefore(papiIdentityContextFilter, UsernamePasswordAuthenticationFilter.class);
@@ -21003,7 +21003,7 @@ class EmbeddedAppAdminControllerTest {
     }
 
     @Test
-    @DisplayName("GET /papi/v1/user-apps returns apps for user")
+    @DisplayName("GET /papi/v1/embedded-apps/user-apps returns apps for user")
     void getAppsForCurrentUserReturnsList() throws Exception {
         EmbeddedAppResponse app = new EmbeddedAppResponse();
         app.setAppKey("wealth");
