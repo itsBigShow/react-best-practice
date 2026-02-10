@@ -1,5 +1,5 @@
 # CCaaS Admin MFE - Source Bundle
-# Generated: 2026-02-10 22:19:24
+# Generated: 2026-02-11 02:46:51
 # Total files: 207
 # Categories: 93 TypeScript, 99 React (TSX), 1 CSS, 5 Config, 4 Docs, 5 Other
 # Note: node_modules and dist NOT included - run 'npm install && npm run build' after extraction
@@ -7959,6 +7959,8 @@ export function AdGroupConfigModal({
     setAppSearchTerm,
     handleAppSelect,
     handleSaveAppAssignment,
+    handleFunctionSelectionChange,
+    flushUnsavedFunctions,
     clearStagedAppChanges,
   } = useApplicationAssignment({
     groupIdentifier: group.groupIdentifier,
@@ -7995,6 +7997,7 @@ export function AdGroupConfigModal({
     updatePermissionOverrides,
     setPendingChanges,
     clearStagedAppChanges,
+    flushUnsavedFunctions,
     onSave,
     onClose
   })
@@ -8126,6 +8129,7 @@ export function AdGroupConfigModal({
                         onAppSearchTermChange={setAppSearchTerm}
                         onAppSelect={handleAppSelect}
                         onAppSave={handleSaveAppAssignment}
+                        onFunctionSelectionChange={handleFunctionSelectionChange}
                         isReadOnly={isReadOnly}
                       />
                     </div>
@@ -11360,7 +11364,7 @@ export function AdminLayout({ permissions, currentRole }: AdminLayoutProps) {
 
   return (
     <div className="flex h-full min-h-0 w-full overflow-hidden bg-background">
-      <div className="hidden lg:block">
+      <div className="hidden h-full lg:block">
         <AdminSidebar
           activeView={activeView}
           onViewChange={handleViewChange}
@@ -11737,7 +11741,7 @@ function AdminSidebarContent({
     <aside
       className={cn(
         'border-r bg-gradient-to-b from-background to-muted/10 transition-[width] duration-200',
-        mobile ? 'h-full w-full' : collapsed ? 'w-20' : 'w-72'
+        mobile ? 'h-full w-full' : collapsed ? 'h-full w-20' : 'h-full w-72'
       )}
       aria-label="Admin navigation"
     >
@@ -13337,7 +13341,7 @@ describe('FunctionAssignmentPanel', () => {
 })
 ===ENDFILE
 ===FILE: ./src/components/admin/function-assignment-panel.tsx
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useFunctionSelection } from '../../hooks/admin/use-function-selection'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card'
 import { Checkbox } from '../ui/checkbox'
@@ -13362,6 +13366,7 @@ interface FunctionAssignmentPanelProps {
   app: EmbeddedAppWithStatus
   groupName: string
   onSave: (functions: string[], defaultFunction?: string) => Promise<void>
+  onSelectionChange?: (functions: string[], defaultFunction?: string) => void
   isLoading?: boolean
   isReadOnly?: boolean
 }
@@ -13370,6 +13375,7 @@ export function FunctionAssignmentPanel({
   app,
   groupName,
   onSave,
+  onSelectionChange,
   isLoading = false,
   isReadOnly = false
 }: FunctionAssignmentPanelProps) {
@@ -13382,6 +13388,13 @@ export function FunctionAssignmentPanel({
     handleClearSelection,
     handleReset
   } = useFunctionSelection({ app })
+
+  // Report selection changes to parent so modal-level save can include them
+  useEffect(() => {
+    if (onSelectionChange && hasChanges()) {
+      onSelectionChange(selectedFunctions, defaultFunction)
+    }
+  }, [selectedFunctions, defaultFunction])
 
   const [permissionFilter, setPermissionFilter] = useState<'all' | 'write' | 'read'>('all')
   const [modalState, setModalState] = useState<{
@@ -13418,6 +13431,8 @@ export function FunctionAssignmentPanel({
 
     try {
       await onSave(pendingSave.functions, pendingSave.defaultFunction)
+      // Clear pending state after successful save
+      onSelectionChange?.([], undefined)
       closeModal()
     } catch {
       // onSave handles its own notifications; keep dialog open for retry
@@ -17758,6 +17773,7 @@ interface ApplicationsTabProps {
   onAppSearchTermChange: (term: string) => void
   onAppSelect: (app: EmbeddedAppWithStatus) => void
   onAppSave: (appKey: string, appTitle: string, functions: string[], defaultFunction?: string) => Promise<void>
+  onFunctionSelectionChange?: (appKey: string, appTitle: string, functions: string[], defaultFunction?: string) => void
   isReadOnly?: boolean
 }
 
@@ -17771,6 +17787,7 @@ export function ApplicationsTab({
   onAppSearchTermChange,
   onAppSelect,
   onAppSave,
+  onFunctionSelectionChange,
   isReadOnly = false
 }: ApplicationsTabProps) {
   // Filter states
@@ -17900,6 +17917,10 @@ export function ApplicationsTab({
             onSave={async (functions, defaultFunction) => {
               await onAppSave(selectedApp.appIdentifier, selectedApp.titleText, functions, defaultFunction)
             }}
+            onSelectionChange={onFunctionSelectionChange
+              ? (functions, defaultFunction) => onFunctionSelectionChange(selectedApp.appIdentifier, selectedApp.titleText, functions, defaultFunction)
+              : undefined
+            }
             isLoading={isSavingAppAssignment}
             isReadOnly={isReadOnly}
           />
@@ -23466,6 +23487,12 @@ export function useApplicationAssignment({
   const [appSearchTerm, setAppSearchTerm] = useState('')
   const [stagedAppChanges, setStagedAppChanges] = useState<StagedAppChange[]>([])
   const loadedForGroupRef = useRef<string | null>(null)
+  const [unsavedFunctionSelection, setUnsavedFunctionSelection] = useState<{
+    appKey: string
+    appTitle: string
+    functions: string[]
+    defaultFunction?: string
+  } | null>(null)
 
   const {
     isLoadingApps,
@@ -23572,6 +23599,31 @@ export function useApplicationAssignment({
     setStagedAppChanges([])
   }, [])
 
+  const handleFunctionSelectionChange = useCallback((
+    appKey: string,
+    appTitle: string,
+    functions: string[],
+    defaultFunction?: string
+  ) => {
+    // Empty functions array means the selection was saved/reset (no pending changes)
+    if (functions.length === 0 && !defaultFunction) {
+      setUnsavedFunctionSelection(null)
+      return
+    }
+    setUnsavedFunctionSelection({ appKey, appTitle, functions, defaultFunction })
+  }, [])
+
+  const flushUnsavedFunctions = async () => {
+    if (!unsavedFunctionSelection) return
+    const { appKey, appTitle, functions, defaultFunction } = unsavedFunctionSelection
+    if (canDirectSave) {
+      await saveAppAssignmentApi(appKey, appTitle, groupIdentifier, groupDisplayName, functions, defaultFunction)
+    } else {
+      stageAppChange(appKey, appTitle, functions)
+    }
+    setUnsavedFunctionSelection(null)
+  }
+
   const filteredApps = availableApps.filter(app =>
     !appSearchTerm ||
     app.titleText.toLowerCase().includes(appSearchTerm.toLowerCase()) ||
@@ -23587,10 +23639,13 @@ export function useApplicationAssignment({
     isLoadingApps,
     isSavingAppAssignment,
     stagedAppChanges,
+    unsavedFunctionSelection,
     setAppSearchTerm,
     handleAppSelect,
     handleAppCancel,
     handleSaveAppAssignment,
+    handleFunctionSelectionChange,
+    flushUnsavedFunctions,
     handleLoadEmbeddedAppsData,
     clearStagedAppChanges
   }
@@ -23880,6 +23935,7 @@ interface UseConfigSaveParams {
   updatePermissionOverrides: (overrides: PermissionOverrides) => void
   setPendingChanges: (changes: PendingChanges) => void
   clearStagedAppChanges?: () => void
+  flushUnsavedFunctions?: () => Promise<void>
   onSave: (group: AdGroup) => void
   onClose: () => void
 }
@@ -24072,6 +24128,7 @@ export function useConfigSave({
   updatePermissionOverrides,
   setPendingChanges,
   clearStagedAppChanges,
+  flushUnsavedFunctions,
   onSave,
   onClose
 }: UseConfigSaveParams) {
@@ -24093,6 +24150,11 @@ export function useConfigSave({
     setShowSaveDialog(false)
 
     try {
+      // Flush any unsaved function panel changes before saving
+      if (flushUnsavedFunctions) {
+        await flushUnsavedFunctions()
+      }
+
       const { mergedOverrides, currentState, proposedState, changeType, changedFields, appPayload } =
         buildSavePayload(group, formData, permissionOverrides, pendingChanges, stagedAppChanges)
 
