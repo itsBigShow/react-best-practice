@@ -1,16 +1,8 @@
 # CCaaS Entitlement SAPI - Source Bundle
-# Generated: 2026-02-10 01:37:47
-# Total files: 355
-# Categories: 1 pom.xml, 1 CLAUDE.md, 3 docs, 4 resources, 125 YAML specs, 139 main Java, 68 test Java, 14 other
+# Generated: 2026-02-10 12:52:22
+# Total files: 352
+# Categories: 1 pom.xml, 2 CLAUDE.md, 2 docs, 2 resources, 125 YAML specs, 139 main Java, 68 test Java, 13 other
 # Note: target/generated-sources NOT included - run 'mvn generate-sources' after extraction
-===FILE: ./.scannerwork/report-task.txt
-projectKey=ccaas-entitlement-sapi
-serverUrl=http://localhost:9000
-serverVersion=9.9.8.100196
-dashboardUrl=http://localhost:9000/dashboard?id=ccaas-entitlement-sapi
-ceTaskId=AZxDYQTiRKtcOTpWa0-W
-ceTaskUrl=http://localhost:9000/api/ce/task?id=AZxDYQTiRKtcOTpWa0-W
-===ENDFILE
 ===FILE: ./AGENTS.md
 # AGENTS.md - ccaas-entitlement-sapi
 
@@ -116,13 +108,15 @@ curl http://localhost:8093/actuator/health
 # Entitlement SAPI - API Reference
 
 **Version:** 1.0.0
-**Base URL:** `http://localhost:8093`
+**Base URL:** `http://localhost:8093/sapi/v1`
+**Port:** 8093
 **Service Type:** Internal SAPI (Service Access Point API)
 **Architecture:** Data access layer - called by PAPI for all entitlement operations
 
 ## Interactive Documentation
 
-**Swagger UI:** [http://localhost:8093/swagger-ui/index.html](http://localhost:8093/swagger-ui/index.html)
+**Swagger UI:** [http://localhost:8093/sapi/v1/swagger-ui.html](http://localhost:8093/sapi/v1/swagger-ui.html)
+**OpenAPI Spec:** [http://localhost:8093/sapi/v1/v3/api-docs](http://localhost:8093/sapi/v1/v3/api-docs)
 
 ## Overview
 
@@ -137,13 +131,50 @@ The CCaaS Entitlement SAPI provides authoritative APIs for:
 
 This is an **internal service-to-service API**. The PAPI layer (port 8094) calls this SAPI. Frontend clients never call SAPI directly.
 
+## Audit Snapshot (2026-02-10)
+
+The following runtime checks were executed via `curl` against local services on February 10, 2026.
+
+### Confirmed Gaps
+
+1. No inbound authentication enforcement is active on SAPI endpoints in local runtime:
+   - `GET /sapi/v1/regions` -> `200` without token
+   - `GET /sapi/v1/countries` -> `200` without token
+   - `GET /sapi/v1/markets` -> `200` without token
+   - `GET /sapi/v1/embedded-apps` -> `200` without token
+2. Internal write/read APIs also execute without auth challenge:
+   - `POST /sapi/v1/ad-groups` -> `200` without token
+   - `POST /sapi/v1/pending-changes/list` -> `200` without token
+   - `POST /sapi/v1/pending-changes` -> `409` (business conflict), not auth failure
+3. `POST /sapi/v1/sessions` with non-empty `adGroupValues` fails with `500`:
+   - `{"errorInfo":[{"code":"E1313","causes":["Database operation failed"]}]}`
+4. `POST /sapi/v1/sessions` with empty `adGroupValues` returns `200` (control path works).
+
+### Control Cases
+
+1. `POST /sapi/v1/direct-saves` with missing required fields returns `400` validation error.
+2. `POST /sapi/v1/change-approvals` and `POST /sapi/v1/change-rejections` with non-existent IDs return `404`.
+
+### Repro Examples
+
+```bash
+# Unauthenticated read endpoint still returns 200
+curl -i http://localhost:8093/sapi/v1/regions
+
+# Session computation with AD group currently fails with E1313
+curl -i -X POST http://localhost:8093/sapi/v1/sessions \
+  -H "Content-Type: application/json" \
+  -d '{"data":{"userIdentifier":"600001","adGroupValues":["CN=Voice_Agent_EMEA,OU=Agents,OU=Groups,DC=hsbc,DC=com"],"forceRefreshFlag":false}}'
+```
+
 ## API Conventions
 
 ### Content Type
 All requests and responses use `application/json`.
 
 ### Authentication
-Internal service-to-service authentication. This SAPI is called by the PAPI layer, not directly by frontend clients.
+Intended deployment model: internal service-to-service authentication only (SAPI called by PAPI, not frontend clients).
+Current local runtime audit (2026-02-10): endpoints respond without inbound auth challenge, so network/boundary controls must enforce isolation.
 
 ### Request/Response Envelope Pattern
 All requests and responses use the Hydrogen API `data` envelope pattern:
@@ -211,8 +242,8 @@ All field names use HSBC Hydrogen API class-word suffixes:
 - `200` - Success
 - `204` - No Content (successful DELETE)
 - `400` - Bad request (validation errors)
-- `401` - Unauthorized (missing/invalid auth)
-- `403` - Forbidden (insufficient permissions)
+- `401` - Unauthorized (intended boundary behavior)
+- `403` - Forbidden (intended boundary behavior)
 - `404` - Resource not found
 - `409` - Conflict (duplicate resource)
 - `500` - Internal server error
@@ -1808,14 +1839,14 @@ curl -X POST http://localhost:8093/sapi/v1/debug/users/600016/roles/voice_agent/
 
 ### Service Health Check
 ```bash
-curl http://localhost:8093/actuator/health
+curl http://localhost:8093/sapi/v1/actuator/health
 ```
 
 ---
 
 ## Additional Resources
 
-- **Swagger UI:** [http://localhost:8093/swagger-ui/index.html](http://localhost:8093/swagger-ui/index.html)
+- **Swagger UI:** [http://localhost:8093/sapi/v1/swagger-ui/index.html](http://localhost:8093/sapi/v1/swagger-ui/index.html)
 - **OpenAPI Spec (Bundled):** `/Users/adarshpandey/indie-repo/ccaas-entitlement-sapi/src/main/api/bundled/ccaas-entitlement-sapi-bundled.yaml`
 - **OpenAPI Spec (Main Entry):** `/Users/adarshpandey/indie-repo/ccaas-entitlement-sapi/src/main/api/ccaas-entitlement-sapi.yaml`
 - **Service Documentation:** `/Users/adarshpandey/indie-repo/ccaas-entitlement-sapi/CLAUDE.md`
@@ -3358,7 +3389,7 @@ The PAPI service reads these fields and computes per-row access levels for each 
 {
   "info": {
     "name": "CCAAS Entitlement SAPI",
-    "description": "Service Access Point API for CCaaS Platform entitlement management (Port 8093). Internal service-to-service API - no X-HSBC-E2E-Trust-Token header needed. Provides authoritative APIs for computing user session layouts, managing AD group configurations, administering user roles, and configuring embedded applications.\n\nThis collection reflects the CURRENT 24 live endpoints after dead API cleanup. All deleted endpoints have been removed.",
+    "description": "Service Access Point API for CCaaS entitlement management (port 8093). Updated with runtime audit snapshot from 2026-02-10. This collection includes core endpoint coverage plus a dedicated audit regression folder showing current no-auth boundary behavior and the /sessions E1313 failure path.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
     "_exporter_id": "ccaas-entitlement-sapi-v1.0"
   },
@@ -5211,7 +5242,142 @@ The PAPI service reads these fields and computes per-row access levels for each 
       ]
     },
     {
-      "name": "11. Health",
+      "name": "11. Audit Regression - 2026-02-10",
+      "description": "Focused regression checks captured during entitlement SAPI runtime audit on 2026-02-10.",
+      "item": [
+        {
+          "name": "Reference Data Without Token - Regions (Observed 200)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{sapi_base_url}}/sapi/v1/regions",
+              "host": ["{{sapi_base_url}}"],
+              "path": ["sapi", "v1", "regions"]
+            },
+            "description": "Observed 2026-02-10: HTTP 200 without inbound token/auth header."
+          },
+          "response": []
+        },
+        {
+          "name": "Compute Session Layout With AD Group - Observed 500 E1313",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"data\": {\n    \"userIdentifier\": \"600001\",\n    \"adGroupValues\": [\"CN=Voice_Agent_EMEA,OU=Agents,OU=Groups,DC=hsbc,DC=com\"],\n    \"forceRefreshFlag\": false\n  }\n}"
+            },
+            "url": {
+              "raw": "{{sapi_base_url}}/sapi/v1/sessions",
+              "host": ["{{sapi_base_url}}"],
+              "path": ["sapi", "v1", "sessions"]
+            },
+            "description": "Observed 2026-02-10: HTTP 500 with error code E1313 when adGroupValues is non-empty."
+          },
+          "response": []
+        },
+        {
+          "name": "Compute Session Layout Empty Groups - Control (Observed 200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"data\": {\n    \"userIdentifier\": \"600001\",\n    \"adGroupValues\": [],\n    \"forceRefreshFlag\": false\n  }\n}"
+            },
+            "url": {
+              "raw": "{{sapi_base_url}}/sapi/v1/sessions",
+              "host": ["{{sapi_base_url}}"],
+              "path": ["sapi", "v1", "sessions"]
+            },
+            "description": "Observed 2026-02-10: HTTP 200 when adGroupValues is empty."
+          },
+          "response": []
+        },
+        {
+          "name": "Submit Pending Change Without Token - Observed 409 (No Auth Challenge)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"data\": {\n    \"targetGroupIdentifier\": \"CN=Voice_Agent_EMEA,OU=Agents,OU=Groups,DC=hsbc,DC=com\",\n    \"proposedConfig\": {},\n    \"submittedByText\": \"600001\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{sapi_base_url}}/sapi/v1/pending-changes",
+              "host": ["{{sapi_base_url}}"],
+              "path": ["sapi", "v1", "pending-changes"]
+            },
+            "description": "Observed 2026-02-10: HTTP 409 business conflict rather than 401/403, indicating request reached service logic unauthenticated."
+          },
+          "response": []
+        },
+        {
+          "name": "Approve Change Without Token - Observed 404 (No Auth Challenge)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"data\": {\n    \"changeIdentifier\": \"11111111-1111-1111-1111-111111111111\",\n    \"approverIdText\": \"600022\",\n    \"commentText\": \"audit\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{sapi_base_url}}/sapi/v1/change-approvals",
+              "host": ["{{sapi_base_url}}"],
+              "path": ["sapi", "v1", "change-approvals"]
+            },
+            "description": "Observed 2026-02-10: HTTP 404 for unknown change ID without auth challenge."
+          },
+          "response": []
+        },
+        {
+          "name": "Direct Save Missing Fields Without Token - Control (Observed 400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"data\": {\n    \"targetGroupIdentifier\": \"CN=Voice_Agent_EMEA,OU=Agents,OU=Groups,DC=hsbc,DC=com\",\n    \"superAdminIdText\": \"600021\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{sapi_base_url}}/sapi/v1/direct-saves",
+              "host": ["{{sapi_base_url}}"],
+              "path": ["sapi", "v1", "direct-saves"]
+            },
+            "description": "Observed 2026-02-10: HTTP 400 validation error (request reaches business validation without auth challenge)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "12. Health",
       "description": "Spring Boot Actuator health check endpoint.",
       "item": [
         {
@@ -6200,17 +6366,17 @@ title: CopyOptions
 description: Options controlling what gets copied during AD group configuration copy operation.
 type: object
 minProperties: 0
-maxProperties: 4
+maxProperties: 6
 properties:
   copyRoleAndPermissionsFlag:
     type: boolean
     description: Copy role name and all entitlement maps (columns, widgets, features, settings, micro-frontends).
     default: true
-  copyLocationMetaFlag:
+  copyBusinessInfoFlag:
     type: boolean
     description: Copy market, region, business unit, country and channel metadata.
     default: true
-  copyEmbeddedFlag:
+  copyApplicationsFlag:
     type: boolean
     description: Copy embedded app function assignments.
     default: true
@@ -6218,6 +6384,24 @@ properties:
     type: boolean
     description: Overwrite target configuration if it already exists.
     default: false
+  copyWorkflowModeCode:
+    type: string
+    description: >
+      Determines whether copy is applied directly or submitted into Maker/Checker workflow.
+      SUBMIT_FOR_APPROVAL should be used for compliance-driven changes.
+    enum:
+      - SUBMIT_FOR_APPROVAL
+      - DIRECT_SAVE
+    default: SUBMIT_FOR_APPROVAL
+  functionMismatchPolicyCode:
+    type: string
+    description: >
+      Policy for handling app-function combinations that are unavailable in the target market.
+      FAIL_ON_MISMATCH rejects the copy, while SKIP_UNAVAILABLE continues and skips unsupported pairs.
+    enum:
+      - FAIL_ON_MISMATCH
+      - SKIP_UNAVAILABLE
+    default: FAIL_ON_MISMATCH
 ===ENDFILE
 ===FILE: ./src/main/api/components/schemas/AdGroupLayoutAssignmentController/request/request-initiator.yaml
 title: RequestInitiator
@@ -7057,6 +7241,10 @@ properties:
     description: List of app-function changes.
     items:
       $ref: './AppFunctionChange.yaml'
+  activeIndicator:
+    type: boolean
+    description: Whether the AD group configuration is active.
+    nullable: true
 additionalProperties: false
 nullable: true
 ===ENDFILE
@@ -7082,6 +7270,11 @@ properties:
     description: Employee ID of the submitter for audit trail.
     minLength: 1
     maxLength: 100
+  changedFields:
+    type: array
+    items:
+      type: string
+    description: List of changed field names for criticality evaluation.
   configVersionNumber:
     type: integer
     format: int64
@@ -9724,6 +9917,13 @@ post:
                 description: Copy operation result details
                 type: object
                 properties:
+                  successFlag:
+                    type: boolean
+                    description: Whether the copy request was accepted and processed successfully.
+                  errorText:
+                    type: string
+                    nullable: true
+                    description: Error code when copy operation fails.
                   sourceGroupIdentifier:
                     type: string
                     description: Source AD group identifier
@@ -9746,6 +9946,35 @@ post:
                     description: Human-readable result message
                     minLength: 1
                     maxLength: 1000
+                  workflowStatusCode:
+                    type: string
+                    description: Workflow outcome for the copy request.
+                    enum:
+                      - DIRECT_APPLIED
+                      - SUBMITTED_FOR_APPROVAL
+                  pendingChangeIdentifier:
+                    type: string
+                    nullable: true
+                    format: uuid
+                    description: Pending change identifier when copy is submitted for approval.
+                  criticalIndicator:
+                    type: boolean
+                    nullable: true
+                    description: Whether approval rules marked this change as critical.
+                  levelTwoApprovalRequiredIndicator:
+                    type: boolean
+                    nullable: true
+                    description: Whether L2 approval will be required after L1 review.
+                  unavailableAppFunctionValues:
+                    type: array
+                    nullable: true
+                    description: >
+                      App-function identifiers that are unavailable in the target market.
+                      Format: APP_KEY:FUNCTION_KEY.
+                    items:
+                      type: string
+                      minLength: 1
+                      maxLength: 500
             required:
               - data
     '400':
@@ -12408,6 +12637,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.security.InvalidParameterException;
 import java.util.Optional;
+import java.util.UUID;
 
 @RestController
 public class CopyConfigurationController implements AdGroupConfigurationCopiesApi {
@@ -12435,12 +12665,33 @@ public class CopyConfigurationController implements AdGroupConfigurationCopiesAp
         CopyResult result = adGroupManagementFacade.copyConfiguration(innerRequest);
 
         CopyAdGroupConfiguration200ResponseData responseData = new CopyAdGroupConfiguration200ResponseData()
+            .successFlag(Boolean.TRUE.equals(result.getSuccess()))
+            .errorText(result.getErrorCode())
             .sourceGroupIdentifier(innerRequest.getSourceGroupIdentifier())
             .targetGroupIdentifier(innerRequest.getTargetGroupIdentifier())
             .copiedSectionValues(result.getCopiedFields())
-            .messageText(result.getMessage());
+            .messageText(result.getMessage())
+            .workflowStatusCode(result.getWorkflowStatusCode() == null
+                ? null
+                : CopyAdGroupConfiguration200ResponseData.WorkflowStatusCodeEnum.fromValue(result.getWorkflowStatusCode()))
+            .pendingChangeIdentifier(parseUuidOrNull(result.getPendingChangeIdentifier()))
+            .criticalIndicator(result.getCriticalIndicator())
+            .levelTwoApprovalRequiredIndicator(result.getLevelTwoApprovalRequiredIndicator())
+            .unavailableAppFunctionValues(result.getUnavailableAppFunctionValues());
 
         return ResponseEntity.ok(new CopyAdGroupConfiguration200Response().data(responseData));
+    }
+
+    private UUID parseUuidOrNull(String uuidText) {
+        if (uuidText == null || uuidText.isBlank()) {
+            return null;
+        }
+        try {
+            return UUID.fromString(uuidText);
+        } catch (IllegalArgumentException ex) {
+            logger.warn("Invalid pending change UUID in copy result: {}", uuidText);
+            return null;
+        }
     }
 }
 ===ENDFILE
@@ -12815,8 +13066,10 @@ public class PendingChangesController implements PendingChangesApi {
             .map(config -> (Map<String, Object>) objectMapper.convertValue(config, Map.class))
             .orElse(Map.of());
 
+        List<String> changedFields = requestData.getChangedFields();
+
         PendingChange created = pendingChangeService.submitChangeFromProposedConfig(
-            targetGroupId, proposedState, submittedBy, requestData.getConfigVersionNumber());
+            targetGroupId, proposedState, submittedBy, changedFields, requestData.getConfigVersionNumber());
 
         PendingChangeVo vo = pendingChangeMapper.toResponse(created, objectMapper);
         return ResponseEntity.ok(new PendingChangeResponse().data(vo));
@@ -13340,10 +13593,16 @@ public class CopyResult {
     private int embeddedAppsCopied;
     private CopySummary summary;
     private Map<String, String> errorDetails;
+    private String workflowStatusCode;
+    private String pendingChangeIdentifier;
+    private Boolean criticalIndicator;
+    private Boolean levelTwoApprovalRequiredIndicator;
+    private List<String> unavailableAppFunctionValues;
 
     public CopyResult() {
         this.copiedFields = new ArrayList<>();
         this.errorDetails = new HashMap<>();
+        this.unavailableAppFunctionValues = new ArrayList<>();
     }
 
     public static CopyResult success(String message) {
@@ -13438,6 +13697,51 @@ public class CopyResult {
 
     public void setErrorDetails(Map<String, String> errorDetails) {
         this.errorDetails = errorDetails;
+    }
+
+    @JsonProperty("workflowStatusCode")
+    public String getWorkflowStatusCode() {
+        return workflowStatusCode;
+    }
+
+    public void setWorkflowStatusCode(String workflowStatusCode) {
+        this.workflowStatusCode = workflowStatusCode;
+    }
+
+    @JsonProperty("pendingChangeIdentifier")
+    public String getPendingChangeIdentifier() {
+        return pendingChangeIdentifier;
+    }
+
+    public void setPendingChangeIdentifier(String pendingChangeIdentifier) {
+        this.pendingChangeIdentifier = pendingChangeIdentifier;
+    }
+
+    @JsonProperty("criticalIndicator")
+    public Boolean getCriticalIndicator() {
+        return criticalIndicator;
+    }
+
+    public void setCriticalIndicator(Boolean criticalIndicator) {
+        this.criticalIndicator = criticalIndicator;
+    }
+
+    @JsonProperty("levelTwoApprovalRequiredIndicator")
+    public Boolean getLevelTwoApprovalRequiredIndicator() {
+        return levelTwoApprovalRequiredIndicator;
+    }
+
+    public void setLevelTwoApprovalRequiredIndicator(Boolean levelTwoApprovalRequiredIndicator) {
+        this.levelTwoApprovalRequiredIndicator = levelTwoApprovalRequiredIndicator;
+    }
+
+    @JsonProperty("unavailableAppFunctionValues")
+    public List<String> getUnavailableAppFunctionValues() {
+        return unavailableAppFunctionValues;
+    }
+
+    public void setUnavailableAppFunctionValues(List<String> unavailableAppFunctionValues) {
+        this.unavailableAppFunctionValues = unavailableAppFunctionValues;
     }
 }
 ===ENDFILE
@@ -16766,8 +17070,9 @@ public interface PendingChangeRepository extends JpaRepository<PendingChange, UU
     @Query(value = """
         SELECT p.* FROM pending_changes p
         JOIN ad_group_layout_assignments a ON p.target_group_identifier = a.group_identifier
+        JOIN ad_group_layout_assignments admin_a ON a.admin_group_identifier = admin_a.group_identifier
         WHERE p.status = 'PENDING_LEVEL_ONE'
-        AND a.checker_ad_group IN :userAdGroups
+        AND admin_a.checker_ad_group IN :userAdGroups
         AND (p.created_by IS DISTINCT FROM :userId)
         AND (CAST(:tgi AS TEXT) IS NULL OR p.target_group_identifier = :tgi)
         ORDER BY p.created_at DESC
@@ -16783,8 +17088,9 @@ public interface PendingChangeRepository extends JpaRepository<PendingChange, UU
     @Query(value = """
         SELECT COUNT(*) FROM pending_changes p
         JOIN ad_group_layout_assignments a ON p.target_group_identifier = a.group_identifier
+        JOIN ad_group_layout_assignments admin_a ON a.admin_group_identifier = admin_a.group_identifier
         WHERE p.status = 'PENDING_LEVEL_ONE'
-        AND a.checker_ad_group IN :userAdGroups
+        AND admin_a.checker_ad_group IN :userAdGroups
         AND (p.created_by IS DISTINCT FROM :userId)
         AND (CAST(:tgi AS TEXT) IS NULL OR p.target_group_identifier = :tgi)
         """, nativeQuery = true)
@@ -16799,8 +17105,9 @@ public interface PendingChangeRepository extends JpaRepository<PendingChange, UU
     @Query(value = """
         SELECT p.* FROM pending_changes p
         JOIN ad_group_layout_assignments a ON p.target_group_identifier = a.group_identifier
+        JOIN ad_group_layout_assignments admin_a ON a.admin_group_identifier = admin_a.group_identifier
         WHERE p.status = 'PENDING_LEVEL_TWO'
-        AND a.super_admin_ad_group IN :userAdGroups
+        AND admin_a.super_admin_ad_group IN :userAdGroups
         AND (p.created_by IS DISTINCT FROM :userId)
         AND (CAST(:tgi AS TEXT) IS NULL OR p.target_group_identifier = :tgi)
         ORDER BY p.created_at DESC
@@ -16816,8 +17123,9 @@ public interface PendingChangeRepository extends JpaRepository<PendingChange, UU
     @Query(value = """
         SELECT COUNT(*) FROM pending_changes p
         JOIN ad_group_layout_assignments a ON p.target_group_identifier = a.group_identifier
+        JOIN ad_group_layout_assignments admin_a ON a.admin_group_identifier = admin_a.group_identifier
         WHERE p.status = 'PENDING_LEVEL_TWO'
-        AND a.super_admin_ad_group IN :userAdGroups
+        AND admin_a.super_admin_ad_group IN :userAdGroups
         AND (p.created_by IS DISTINCT FROM :userId)
         AND (CAST(:tgi AS TEXT) IS NULL OR p.target_group_identifier = :tgi)
         """, nativeQuery = true)
@@ -16832,8 +17140,9 @@ public interface PendingChangeRepository extends JpaRepository<PendingChange, UU
     @Query(value = """
         SELECT DISTINCT p.* FROM pending_changes p
         JOIN ad_group_layout_assignments a ON p.target_group_identifier = a.group_identifier
+        JOIN ad_group_layout_assignments admin_a ON a.admin_group_identifier = admin_a.group_identifier
         WHERE p.status = :statusCode
-        AND (a.checker_ad_group IN :userAdGroups OR a.super_admin_ad_group IN :userAdGroups)
+        AND (admin_a.checker_ad_group IN :userAdGroups OR admin_a.super_admin_ad_group IN :userAdGroups)
         AND (CAST(:tgi AS TEXT) IS NULL OR p.target_group_identifier = :tgi)
         ORDER BY p.created_at DESC
         LIMIT :lim OFFSET :off
@@ -16848,8 +17157,9 @@ public interface PendingChangeRepository extends JpaRepository<PendingChange, UU
     @Query(value = """
         SELECT COUNT(DISTINCT p.id) FROM pending_changes p
         JOIN ad_group_layout_assignments a ON p.target_group_identifier = a.group_identifier
+        JOIN ad_group_layout_assignments admin_a ON a.admin_group_identifier = admin_a.group_identifier
         WHERE p.status = :statusCode
-        AND (a.checker_ad_group IN :userAdGroups OR a.super_admin_ad_group IN :userAdGroups)
+        AND (admin_a.checker_ad_group IN :userAdGroups OR admin_a.super_admin_ad_group IN :userAdGroups)
         AND (CAST(:tgi AS TEXT) IS NULL OR p.target_group_identifier = :tgi)
         """, nativeQuery = true)
     long countByStatusForAdGroupsFiltered(
@@ -17827,6 +18137,11 @@ public class ConfigApplyService {
         // JPA @Version auto-increments on save, providing ongoing optimistic locking
         adGroupRepository.save(adGroup);
 
+        // Copy/approval flows may include app updates in the same proposed state payload.
+        if (proposedState.containsKey("applications")) {
+            applyAppUpdate(targetGroup, proposedState, appliedBy);
+        }
+
         log.debug("CONFIG_UPDATE applied to AD group: {}", targetGroup);
     }
 
@@ -17853,6 +18168,14 @@ public class ConfigApplyService {
                 }
             }
         });
+
+        // Handle Boolean field: activeIndicator -> isActive
+        if (proposedState.containsKey("activeIndicator")) {
+            Object value = proposedState.get("activeIndicator");
+            if (value instanceof Boolean boolValue) {
+                adGroup.setIsActive(boolValue);
+            }
+        }
     }
 
     /**
@@ -19153,9 +19476,9 @@ public class PendingChangeService {
     @Transactional
     public PendingChange submitChangeFromProposedConfig(
             String targetGroupId, Map<String, Object> proposedState,
-            String submittedBy, Long configVersionNumber) {
+            String submittedBy, List<String> changedFields, Long configVersionNumber) {
         return submissionService.submitChangeFromProposedConfig(
-                targetGroupId, proposedState, submittedBy, configVersionNumber);
+                targetGroupId, proposedState, submittedBy, changedFields, configVersionNumber);
     }
 
     public SubmissionContext prepareSubmissionContext(Map<String, Object> proposedState) {
@@ -19436,14 +19759,19 @@ public class PendingChangeSubmissionService {
             String targetGroupId,
             Map<String, Object> proposedState,
             String submittedBy,
+            List<String> changedFields,
             Long configVersionNumber) {
 
         Objects.requireNonNull(targetGroupId, "targetGroupId must not be null");
         Objects.requireNonNull(proposedState, "proposedState must not be null");
         Objects.requireNonNull(submittedBy, "submittedBy must not be null");
 
-        // Extract submission context (changed fields/apps/functions) from the proposed state
+        // Extract app/function context from the proposed state
         SubmissionContext ctx = prepareSubmissionContext(proposedState);
+
+        // Use explicit changedFields from the frontend (not inferred from proposedState keys)
+        List<String> effectiveChangedFields = (changedFields != null && !changedFields.isEmpty())
+                ? changedFields : ctx.changedFields();
 
         String resolvedGroupName = adGroupRepository.findByGroupIdentifier(targetGroupId)
                 .map(AdGroupLayoutAssignment::getLogicalName)
@@ -19453,7 +19781,7 @@ public class PendingChangeSubmissionService {
                 targetGroupId, resolvedGroupName,
                 PendingChange.ChangeType.CONFIG_UPDATE,
                 Map.of(), proposedState,
-                ctx.changedFields(), ctx.changedApps(),
+                effectiveChangedFields, ctx.changedApps(),
                 ctx.changedFunctions(), ctx.appFunctionPairs(),
                 submittedBy, configVersionNumber);
     }
@@ -19507,6 +19835,19 @@ public class PendingChangeSubmissionService {
                 }
             }
         }
+
+        // Also support direct APP_UPDATE style payload ("applications")
+        Object applications = proposedState.get("applications");
+        if (applications instanceof List<?> appList) {
+            for (Object item : appList) {
+                if (item instanceof Map<?, ?> appMap) {
+                    Object appKey = appMap.get("appKey");
+                    if (appKey instanceof String key && !key.isBlank()) {
+                        changedApps.add(key);
+                    }
+                }
+            }
+        }
         return changedApps;
     }
 
@@ -19519,6 +19860,27 @@ public class PendingChangeSubmissionService {
             for (Object item : afList) {
                 if (item instanceof Map<?, ?> afMap) {
                     processAppFunctionEntry(afMap, functionSet, appFunctionPairs);
+                }
+            }
+        }
+
+        // Also support direct APP_UPDATE style payload ("applications")
+        Object applications = proposedState.get("applications");
+        if (applications instanceof List<?> appList) {
+            for (Object item : appList) {
+                if (item instanceof Map<?, ?> appMap) {
+                    String appKey = appMap.get("appKey") instanceof String s ? s : null;
+                    Object functionKeysRaw = appMap.get("functionKeys");
+                    if (functionKeysRaw instanceof List<?> functionKeys) {
+                        for (Object functionKeyRaw : functionKeys) {
+                            if (functionKeyRaw instanceof String functionKey && !functionKey.isBlank()) {
+                                functionSet.add(functionKey);
+                                if (appKey != null && !appKey.isBlank()) {
+                                    appFunctionPairs.add(appKey + ":" + functionKey);
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -19710,11 +20072,17 @@ public class AdGroupCacheInvalidationHelper {
 package com.hsbc.ccaas.sapi.service.impl;
 
 import com.hsbc.ccaas.sapi.controller.model.CopyOptions;
+import com.hsbc.ccaas.sapi.controller.model.EmbeddedAppDto;
+import com.hsbc.ccaas.sapi.controller.model.RegionalConfigDto;
 import com.hsbc.ccaas.sapi.dto.CopyResult;
 import com.hsbc.ccaas.sapi.dto.CopySummary;
 import com.hsbc.ccaas.sapi.entity.AdGroupLayoutAssignment;
+import com.hsbc.ccaas.sapi.entity.PendingChange;
 import com.hsbc.ccaas.sapi.model.EntitlementStateValue;
 import com.hsbc.ccaas.sapi.repository.AdGroupLayoutAssignmentRepository;
+import com.hsbc.ccaas.sapi.service.EmbeddedAppAdminService;
+import com.hsbc.ccaas.sapi.service.PendingChangeService;
+import com.hsbc.ccaas.sapi.util.MarketResolver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
@@ -19727,7 +20095,16 @@ import org.springframework.util.StringUtils;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 
 @Service
 @Transactional
@@ -19735,29 +20112,42 @@ public class AdGroupCopyService {
 
     private static final Logger logger = LoggerFactory.getLogger(AdGroupCopyService.class);
     private static final String GROUP_IDENTIFIER_KEY = "groupIdentifier";
+    private static final String WORKFLOW_STATUS_DIRECT_APPLIED = "DIRECT_APPLIED";
+    private static final String WORKFLOW_STATUS_SUBMITTED_FOR_APPROVAL = "SUBMITTED_FOR_APPROVAL";
+    private static final String ERROR_NO_COPY_SECTION_SELECTED = "NO_COPY_SECTION_SELECTED";
+    private static final String ERROR_FUNCTION_MISMATCH = "APP_FUNCTION_UNAVAILABLE";
+    private static final String ERROR_INITIATOR_REQUIRED = "INITIATOR_REQUIRED";
 
     private final AdGroupLayoutAssignmentRepository repository;
     private final JdbcTemplate jdbcTemplate;
     private final AdGroupUserCountService adGroupUserCountService;
     private final AdGroupCacheInvalidationHelper cacheInvalidationHelper;
+    private final PendingChangeService pendingChangeService;
+    private final EmbeddedAppAdminService embeddedAppAdminService;
 
     public AdGroupCopyService(AdGroupLayoutAssignmentRepository repository,
                               JdbcTemplate jdbcTemplate,
                               AdGroupUserCountService adGroupUserCountService,
-                              AdGroupCacheInvalidationHelper cacheInvalidationHelper) {
+                              AdGroupCacheInvalidationHelper cacheInvalidationHelper,
+                              PendingChangeService pendingChangeService,
+                              EmbeddedAppAdminService embeddedAppAdminService) {
         this.repository = repository;
         this.jdbcTemplate = jdbcTemplate;
         this.adGroupUserCountService = adGroupUserCountService;
         this.cacheInvalidationHelper = cacheInvalidationHelper;
+        this.pendingChangeService = pendingChangeService;
+        this.embeddedAppAdminService = embeddedAppAdminService;
     }
 
     public CopyResult copyAdGroupConfiguration(String sourceGroupIdentifier,
                                                String targetGroupIdentifier,
                                                CopyOptions copyOptions,
                                                String updatedBy) {
-        logger.info("Copying AD group configuration from {} to {}", sourceGroupIdentifier, targetGroupIdentifier);
+        NormalizedCopyOptions options = normalizeCopyOptions(copyOptions);
+        logger.info("Copying AD group configuration from {} to {} with workflow mode {}",
+            sourceGroupIdentifier, targetGroupIdentifier, options.workflowMode());
 
-        CopyResult validationResult = validateCopyRequest(sourceGroupIdentifier, targetGroupIdentifier, copyOptions);
+        CopyResult validationResult = validateCopyRequest(sourceGroupIdentifier, targetGroupIdentifier, options);
         if (!Boolean.TRUE.equals(validationResult.getSuccess())) {
             return validationResult;
         }
@@ -19767,11 +20157,56 @@ public class AdGroupCopyService {
         AdGroupLayoutAssignment target = repository.findByGroupIdentifier(targetGroupIdentifier)
             .orElseThrow(() -> new IllegalStateException("Target AD group not found after validation: " + targetGroupIdentifier));
 
-        CopyResult result = CopyResult.success("Configuration successfully copied");
-        List<String> copiedFields = new ArrayList<>();
+        List<EmbeddedAppAccess> sourceApps = options.copyApplications()
+            ? loadSourceAppAssignments(sourceGroupIdentifier)
+            : Collections.emptyList();
 
-        copyRoleAndPermissions(source, target, copyOptions, copiedFields);
-        copyLocationMetadata(source, target, copyOptions, copiedFields);
+        AppFunctionFilterResult functionFilter = filterByTargetMarket(sourceApps, targetGroupIdentifier, options.functionMismatchPolicy());
+        if (options.functionMismatchPolicy() == FunctionMismatchPolicy.FAIL_ON_MISMATCH
+                && !functionFilter.unavailableAppFunctionValues().isEmpty()) {
+            return buildFunctionMismatchResult(functionFilter.targetMarket(), functionFilter.unavailableAppFunctionValues());
+        }
+
+        List<EmbeddedAppAccess> effectiveApps = applyOverwritePolicy(
+            functionFilter.filteredAppAssignments(),
+            targetGroupIdentifier,
+            options.overwriteExisting()
+        );
+
+        if (options.workflowMode() == WorkflowMode.SUBMIT_FOR_APPROVAL) {
+            return submitCopyForApproval(
+                source,
+                target,
+                options,
+                effectiveApps,
+                functionFilter.unavailableAppFunctionValues(),
+                updatedBy
+            );
+        }
+
+        return applyDirectCopy(
+            source,
+            target,
+            options,
+            effectiveApps,
+            functionFilter.unavailableAppFunctionValues(),
+            updatedBy
+        );
+    }
+
+    private CopyResult applyDirectCopy(AdGroupLayoutAssignment source,
+                                       AdGroupLayoutAssignment target,
+                                       NormalizedCopyOptions options,
+                                       List<EmbeddedAppAccess> effectiveApps,
+                                       List<String> unavailableFunctions,
+                                       String updatedBy) {
+        CopyResult result = CopyResult.success("Configuration successfully copied");
+        result.setWorkflowStatusCode(WORKFLOW_STATUS_DIRECT_APPLIED);
+        result.setUnavailableAppFunctionValues(unavailableFunctions);
+
+        List<String> copiedFields = new ArrayList<>();
+        copyRoleAndPermissions(source, target, options, copiedFields);
+        copyBusinessInfo(source, target, options, copiedFields);
 
         target.setUpdatedAt(LocalDateTime.now());
         if (updatedBy != null && !updatedBy.isBlank()) {
@@ -19781,32 +20216,160 @@ public class AdGroupCopyService {
         AdGroupLayoutAssignment savedTarget = repository.save(target);
         adGroupUserCountService.applyUserCount(savedTarget);
         try {
-            cacheInvalidationHelper.invalidateCache(targetGroupIdentifier);
+            cacheInvalidationHelper.invalidateCache(target.getGroupIdentifier());
         } catch (Exception cacheEx) {
-            logger.warn("Cache invalidation failed for target group {}: {}", targetGroupIdentifier, cacheEx.getMessage());
+            logger.warn("Cache invalidation failed for target group {}: {}", target.getGroupIdentifier(), cacheEx.getMessage());
         }
 
-        int embeddedAppsCopied = copyEmbeddedAppsIfRequested(
-            sourceGroupIdentifier, targetGroupIdentifier, copyOptions, updatedBy, copiedFields);
+        int embeddedAppsCopied = copyApplicationsIfRequested(
+            effectiveApps, target.getGroupIdentifier(), options.overwriteExisting(), updatedBy, copiedFields);
 
         result.setCopiedFields(copiedFields);
         result.setUpdatedGroup(savedTarget);
         result.setEmbeddedAppsCopied(embeddedAppsCopied);
-        result.setSummary(new CopySummary(sourceGroupIdentifier, targetGroupIdentifier, copiedFields.size(), embeddedAppsCopied));
+        result.setSummary(new CopySummary(
+            source.getGroupIdentifier(),
+            target.getGroupIdentifier(),
+            copiedFields.size(),
+            embeddedAppsCopied
+        ));
 
-        logger.info("Successfully copied {} fields and {} embedded apps from {} to {}",
-                   copiedFields.size(), embeddedAppsCopied, sourceGroupIdentifier, targetGroupIdentifier);
+        logger.info("Direct copy completed for {} -> {} (fields={}, apps={})",
+            source.getGroupIdentifier(), target.getGroupIdentifier(), copiedFields.size(), embeddedAppsCopied);
         return result;
+    }
+
+    private CopyResult submitCopyForApproval(AdGroupLayoutAssignment source,
+                                             AdGroupLayoutAssignment target,
+                                             NormalizedCopyOptions options,
+                                             List<EmbeddedAppAccess> effectiveApps,
+                                             List<String> unavailableFunctions,
+                                             String updatedBy) {
+        if (!StringUtils.hasText(updatedBy)) {
+            CopyResult result = CopyResult.error(ERROR_INITIATOR_REQUIRED,
+                "Copy submission requires an initiator user identifier");
+            result.addErrorDetail("initiator", "missing");
+            return result;
+        }
+
+        ProposedCopyState proposedState = buildProposedState(source, options, effectiveApps);
+        if (proposedState.proposedState().isEmpty()) {
+            return CopyResult.error(ERROR_NO_COPY_SECTION_SELECTED,
+                "No copyable sections were found in source AD group configuration");
+        }
+
+        PendingChange pendingChange = pendingChangeService.submitChangeFromProposedConfig(
+            target.getGroupIdentifier(),
+            proposedState.proposedState(),
+            updatedBy,
+            null,
+            target.getVersion()
+        );
+
+        boolean critical = Boolean.TRUE.equals(pendingChange.getIsCritical());
+        CopyResult result = CopyResult.success(critical
+            ? "Configuration copy submitted for approval (L2 approval required after L1)."
+            : "Configuration copy submitted for approval.");
+        result.setWorkflowStatusCode(WORKFLOW_STATUS_SUBMITTED_FOR_APPROVAL);
+        result.setPendingChangeIdentifier(pendingChange.getId() != null ? pendingChange.getId().toString() : null);
+        result.setCriticalIndicator(critical);
+        result.setLevelTwoApprovalRequiredIndicator(critical);
+        result.setCopiedFields(proposedState.copiedFields());
+        result.setEmbeddedAppsCopied(effectiveApps.size());
+        result.setUnavailableAppFunctionValues(unavailableFunctions);
+        result.setSummary(new CopySummary(
+            source.getGroupIdentifier(),
+            target.getGroupIdentifier(),
+            proposedState.copiedFields().size(),
+            effectiveApps.size()
+        ));
+
+        logger.info("Copy submitted for approval for {} -> {} (pendingChangeId={}, critical={})",
+            source.getGroupIdentifier(), target.getGroupIdentifier(), result.getPendingChangeIdentifier(), critical);
+        return result;
+    }
+
+    private ProposedCopyState buildProposedState(AdGroupLayoutAssignment source,
+                                                 NormalizedCopyOptions options,
+                                                 List<EmbeddedAppAccess> effectiveApps) {
+        Map<String, Object> proposedState = new LinkedHashMap<>();
+        List<String> copiedFields = new ArrayList<>();
+
+        if (options.copyRoleAndPermissions()) {
+            putIfNotNull(proposedState, "roleName", source.getRoleName(), copiedFields, "roleName");
+            putMapIfNotEmpty(proposedState, "columnAssignments", source.getColumnAssignments(), copiedFields, "columnAssignments");
+            putMapIfNotEmpty(proposedState, "widgetAssignments", source.getWidgetAssignments(), copiedFields, "widgetAssignments");
+            putMapIfNotEmpty(proposedState, "featureAssignments", source.getFeatureAssignments(), copiedFields, "featureAssignments");
+            putMapIfNotEmpty(proposedState, "settingsTabAssignments", source.getSettingsTabAssignments(), copiedFields, "settingsTabAssignments");
+            putMapIfNotEmpty(proposedState, "settingsOptionAssignments", source.getSettingsOptionAssignments(), copiedFields, "settingsOptionAssignments");
+            putMapIfNotEmpty(proposedState, "microFrontendAssignments", source.getMicroFrontendAssignments(), copiedFields, "microFrontendAssignments");
+        }
+
+        if (options.copyBusinessInfo()) {
+            putIfNotNull(proposedState, "market", source.getMarket(), copiedFields, "market");
+            putIfNotNull(proposedState, "region", source.getRegion(), copiedFields, "region");
+            putIfNotNull(proposedState, "businessUnit", source.getBusinessUnit(), copiedFields, "businessUnit");
+            putIfNotNull(proposedState, "country", source.getCountry(), copiedFields, "country");
+            putIfNotNull(proposedState, "channel", source.getChannel(), copiedFields, "channel");
+        }
+
+        if (options.copyApplications() && !effectiveApps.isEmpty()) {
+            List<Map<String, Object>> applications = new ArrayList<>();
+            for (EmbeddedAppAccess access : effectiveApps) {
+                if (access.functions().isEmpty()) {
+                    continue;
+                }
+                Map<String, Object> appState = new LinkedHashMap<>();
+                appState.put("appKey", access.appKey());
+                appState.put("assignedIndicator", true);
+                appState.put("functionKeys", access.functions());
+                applications.add(appState);
+            }
+            if (!applications.isEmpty()) {
+                proposedState.put("applications", applications);
+                copiedFields.add("embeddedApps");
+            }
+        }
+
+        return new ProposedCopyState(proposedState, copiedFields);
+    }
+
+    private void putIfNotNull(Map<String, Object> proposedState,
+                              String key,
+                              Object value,
+                              List<String> copiedFields,
+                              String copiedFieldKey) {
+        if (value != null) {
+            proposedState.put(key, value);
+            copiedFields.add(copiedFieldKey);
+        }
+    }
+
+    private void putMapIfNotEmpty(Map<String, Object> proposedState,
+                                  String key,
+                                  Map<String, EntitlementStateValue> value,
+                                  List<String> copiedFields,
+                                  String copiedFieldKey) {
+        if (value != null && !value.isEmpty()) {
+            proposedState.put(key, new HashMap<>(value));
+            copiedFields.add(copiedFieldKey);
+        }
     }
 
     private CopyResult validateCopyRequest(String sourceGroupIdentifier,
                                            String targetGroupIdentifier,
-                                           CopyOptions copyOptions) {
+                                           NormalizedCopyOptions options) {
         if (sourceGroupIdentifier.equals(targetGroupIdentifier)) {
             logger.error("Source and target group identifiers cannot be the same");
-            CopyResult result = CopyResult.error("SAME_SOURCE_TARGET", "Source and target group identifiers cannot be the same");
+            CopyResult result = CopyResult.error("SAME_SOURCE_TARGET",
+                "Source and target group identifiers cannot be the same");
             result.addErrorDetail(GROUP_IDENTIFIER_KEY, sourceGroupIdentifier);
             return result;
+        }
+
+        if (!options.hasAnyCopySection()) {
+            return CopyResult.error(ERROR_NO_COPY_SECTION_SELECTED,
+                "At least one copy section must be selected");
         }
 
         Optional<AdGroupLayoutAssignment> sourceOpt = repository.findByGroupIdentifier(sourceGroupIdentifier);
@@ -19826,7 +20389,7 @@ public class AdGroupCopyService {
         }
 
         AdGroupLayoutAssignment target = targetOpt.get();
-        if (!Boolean.TRUE.equals(copyOptions.getOverwriteExistingFlag()) && hasConfiguration(target)) {
+        if (!options.overwriteExisting() && hasConfigurationConflict(target, options)) {
             logger.warn("Target group already has configuration and overwriteExisting is false");
             CopyResult result = CopyResult.error("TARGET_ALREADY_CONFIGURED",
                 "Target group already has configuration. Set overwriteExisting=true to overwrite.");
@@ -19838,11 +20401,36 @@ public class AdGroupCopyService {
         return CopyResult.success("Validation passed");
     }
 
+    private boolean hasConfigurationConflict(AdGroupLayoutAssignment target, NormalizedCopyOptions options) {
+        if (options.copyRoleAndPermissions() && hasRoleAndPermissionConfiguration(target)) {
+            return true;
+        }
+        return options.copyBusinessInfo() && hasBusinessInfoConfiguration(target);
+    }
+
+    private boolean hasRoleAndPermissionConfiguration(AdGroupLayoutAssignment group) {
+        return group.getRoleName() != null
+            || (group.getColumnAssignments() != null && !group.getColumnAssignments().isEmpty())
+            || (group.getWidgetAssignments() != null && !group.getWidgetAssignments().isEmpty())
+            || (group.getFeatureAssignments() != null && !group.getFeatureAssignments().isEmpty())
+            || (group.getSettingsTabAssignments() != null && !group.getSettingsTabAssignments().isEmpty())
+            || (group.getSettingsOptionAssignments() != null && !group.getSettingsOptionAssignments().isEmpty())
+            || (group.getMicroFrontendAssignments() != null && !group.getMicroFrontendAssignments().isEmpty());
+    }
+
+    private boolean hasBusinessInfoConfiguration(AdGroupLayoutAssignment group) {
+        return group.getMarket() != null
+            || group.getRegion() != null
+            || group.getBusinessUnit() != null
+            || group.getCountry() != null
+            || group.getChannel() != null;
+    }
+
     private void copyRoleAndPermissions(AdGroupLayoutAssignment source,
-                                       AdGroupLayoutAssignment target,
-                                       CopyOptions copyOptions,
-                                       List<String> copiedFields) {
-        if (!Boolean.TRUE.equals(copyOptions.getCopyRoleAndPermissionsFlag())) {
+                                        AdGroupLayoutAssignment target,
+                                        NormalizedCopyOptions options,
+                                        List<String> copiedFields) {
+        if (!options.copyRoleAndPermissions()) {
             return;
         }
         copyFieldIfPresent(source.getRoleName(), target::setRoleName, "roleName", copiedFields);
@@ -19854,28 +20442,11 @@ public class AdGroupCopyService {
         copyPermissionMap(source.getMicroFrontendAssignments(), target::setMicroFrontendAssignments, "microFrontendAssignments", copiedFields);
     }
 
-    private <T> void copyFieldIfPresent(T value, java.util.function.Consumer<T> setter,
-                                        String fieldName, List<String> copiedFields) {
-        if (value != null) {
-            setter.accept(value);
-            copiedFields.add(fieldName);
-        }
-    }
-
-    private void copyPermissionMap(Map<String, EntitlementStateValue> source,
-                                   java.util.function.Consumer<Map<String, EntitlementStateValue>> setter,
-                                   String fieldName, List<String> copiedFields) {
-        if (source != null) {
-            setter.accept(new HashMap<>(source));
-            copiedFields.add(fieldName);
-        }
-    }
-
-    private void copyLocationMetadata(AdGroupLayoutAssignment source,
-                                     AdGroupLayoutAssignment target,
-                                     CopyOptions copyOptions,
-                                     List<String> copiedFields) {
-        if (!Boolean.TRUE.equals(copyOptions.getCopyLocationMetaFlag())) {
+    private void copyBusinessInfo(AdGroupLayoutAssignment source,
+                                  AdGroupLayoutAssignment target,
+                                  NormalizedCopyOptions options,
+                                  List<String> copiedFields) {
+        if (!options.copyBusinessInfo()) {
             return;
         }
         copyFieldIfPresent(source.getMarket(), target::setMarket, "market", copiedFields);
@@ -19885,58 +20456,52 @@ public class AdGroupCopyService {
         copyFieldIfPresent(source.getChannel(), target::setChannel, "channel", copiedFields);
     }
 
-    private boolean hasConfiguration(AdGroupLayoutAssignment group) {
-        return group.getRoleName() != null ||
-               (group.getColumnAssignments() != null && !group.getColumnAssignments().isEmpty()) ||
-               (group.getWidgetAssignments() != null && !group.getWidgetAssignments().isEmpty()) ||
-               (group.getFeatureAssignments() != null && !group.getFeatureAssignments().isEmpty());
+    private <T> void copyFieldIfPresent(T value,
+                                        java.util.function.Consumer<T> setter,
+                                        String fieldName,
+                                        List<String> copiedFields) {
+        if (value != null) {
+            setter.accept(value);
+            copiedFields.add(fieldName);
+        }
     }
 
-    private int copyEmbeddedAppsIfRequested(String sourceGroupIdentifier, String targetGroupIdentifier,
-                                            CopyOptions copyOptions, String updatedBy, List<String> copiedFields) {
-        if (!Boolean.TRUE.equals(copyOptions.getCopyEmbeddedFlag())) {
+    private void copyPermissionMap(Map<String, EntitlementStateValue> source,
+                                   java.util.function.Consumer<Map<String, EntitlementStateValue>> setter,
+                                   String fieldName,
+                                   List<String> copiedFields) {
+        if (source != null) {
+            setter.accept(new HashMap<>(source));
+            copiedFields.add(fieldName);
+        }
+    }
+
+    private int copyApplicationsIfRequested(List<EmbeddedAppAccess> sourceApps,
+                                            String targetGroupIdentifier,
+                                            boolean overwriteExisting,
+                                            String updatedBy,
+                                            List<String> copiedFields) {
+        if (sourceApps.isEmpty()) {
             return 0;
         }
-        int count = copyEmbeddedAppsAccess(sourceGroupIdentifier, targetGroupIdentifier,
-            Boolean.TRUE.equals(copyOptions.getOverwriteExistingFlag()), updatedBy);
+        int count = copyEmbeddedAppsAccess(sourceApps, targetGroupIdentifier, overwriteExisting, updatedBy);
         if (count > 0) {
             copiedFields.add("embeddedApps");
         }
         return count;
     }
 
-    private int copyEmbeddedAppsAccess(String sourceGroupIdentifier, String targetGroupIdentifier,
-                                       boolean overwriteExisting, String updatedBy) {
-        logger.info("Copying embedded apps access from {} to {}", sourceGroupIdentifier, targetGroupIdentifier);
-
-        String selectSql = """
-            SELECT app_key,
-                   array_agg(function_key ORDER BY function_key) AS functions
-            FROM embedded_app_ad_group_functions
-            WHERE ad_group_identifier = ?
-              AND is_enabled = true
-            GROUP BY app_key
-            """;
+    private int copyEmbeddedAppsAccess(List<EmbeddedAppAccess> sourceApps,
+                                       String targetGroupIdentifier,
+                                       boolean overwriteExisting,
+                                       String updatedBy) {
+        logger.info("Copying {} embedded app assignments to {}", sourceApps.size(), targetGroupIdentifier);
 
         int copiedCount = 0;
         try {
-            List<EmbeddedAppAccess> sourceApps = jdbcTemplate.query(selectSql,
-                ps -> ps.setString(1, sourceGroupIdentifier),
-                (rs, rowNum) -> {
-                    java.sql.Array array = rs.getArray("functions");
-                    List<String> functions = array != null
-                        ? Arrays.asList((String[]) array.getArray())
-                        : Collections.emptyList();
-                    return new EmbeddedAppAccess(rs.getString("app_key"), functions);
-                });
-
-            // Fetch all existing app keys for target group in one query (avoids N+1)
-            Set<String> existingAppKeys = new HashSet<>(jdbcTemplate.queryForList(
-                "SELECT DISTINCT app_key FROM embedded_app_ad_group_functions WHERE ad_group_identifier = ? AND is_enabled = true",
-                String.class, targetGroupIdentifier));
+            Set<String> existingAppKeys = loadExistingTargetAppKeys(targetGroupIdentifier);
 
             if (overwriteExisting) {
-                // Batch-delete all target apps that will be overwritten
                 List<String> appsToOverwrite = sourceApps.stream()
                     .filter(a -> !a.functions().isEmpty() && existingAppKeys.contains(a.appKey()))
                     .map(EmbeddedAppAccess::appKey)
@@ -19944,19 +20509,20 @@ public class AdGroupCopyService {
                 for (String appKey : appsToOverwrite) {
                     jdbcTemplate.update(
                         "DELETE FROM embedded_app_ad_group_functions WHERE app_key = ? AND ad_group_identifier = ?",
-                        appKey, targetGroupIdentifier);
+                        appKey, targetGroupIdentifier
+                    );
                 }
             }
 
             for (EmbeddedAppAccess access : sourceApps) {
                 if (!access.functions().isEmpty()
-                        && (overwriteExisting || !existingAppKeys.contains(access.appKey()))) {
+                    && (overwriteExisting || !existingAppKeys.contains(access.appKey()))) {
                     insertAppFunctions(access, targetGroupIdentifier, updatedBy);
                     copiedCount++;
                 }
             }
-            logger.info("Successfully copied {} embedded apps from {} to {}",
-                copiedCount, sourceGroupIdentifier, targetGroupIdentifier);
+
+            logger.info("Successfully copied {} embedded apps to {}", copiedCount, targetGroupIdentifier);
             return copiedCount;
         } catch (DataAccessException e) {
             logger.error("Failed to copy embedded apps access: {}", e.getMessage(), e);
@@ -19994,8 +20560,192 @@ public class AdGroupCopyService {
 
         jdbcTemplate.update(
             "UPDATE embedded_apps SET updated_at = CURRENT_TIMESTAMP WHERE app_key = ?",
-            access.appKey());
+            access.appKey()
+        );
     }
+
+    private List<EmbeddedAppAccess> loadSourceAppAssignments(String sourceGroupIdentifier) {
+        String selectSql = """
+            SELECT app_key,
+                   array_agg(function_key ORDER BY function_key) AS functions
+            FROM embedded_app_ad_group_functions
+            WHERE ad_group_identifier = ?
+              AND is_enabled = true
+            GROUP BY app_key
+            """;
+
+        try {
+            return jdbcTemplate.query(selectSql,
+                ps -> ps.setString(1, sourceGroupIdentifier),
+                (rs, rowNum) -> {
+                    java.sql.Array array = rs.getArray("functions");
+                    List<String> functions = array != null
+                        ? Arrays.asList((String[]) array.getArray())
+                        : Collections.emptyList();
+                    return new EmbeddedAppAccess(rs.getString("app_key"), functions);
+                });
+        } catch (DataAccessException ex) {
+            logger.error("Failed to load source app assignments for {}: {}", sourceGroupIdentifier, ex.getMessage(), ex);
+            return Collections.emptyList();
+        }
+    }
+
+    private AppFunctionFilterResult filterByTargetMarket(List<EmbeddedAppAccess> sourceApps,
+                                                         String targetGroupIdentifier,
+                                                         FunctionMismatchPolicy policy) {
+        if (sourceApps.isEmpty()) {
+            return new AppFunctionFilterResult(Collections.emptyList(), Collections.emptyList(), null);
+        }
+
+        String targetMarket = MarketResolver.resolveMarket(repository, targetGroupIdentifier);
+        List<String> unavailableAppFunctionValues = new ArrayList<>();
+        List<EmbeddedAppAccess> filteredAssignments = new ArrayList<>();
+
+        for (EmbeddedAppAccess sourceAccess : sourceApps) {
+            List<String> marketAvailableFunctions = resolveMarketAvailableFunctions(sourceAccess.appKey(), targetMarket);
+            if (marketAvailableFunctions == null) {
+                filteredAssignments.add(sourceAccess);
+                continue;
+            }
+
+            List<String> allowedFunctions = new ArrayList<>();
+            for (String function : sourceAccess.functions()) {
+                if (marketAvailableFunctions.contains(function)) {
+                    allowedFunctions.add(function);
+                } else {
+                    unavailableAppFunctionValues.add(sourceAccess.appKey() + ":" + function);
+                }
+            }
+
+            if (policy == FunctionMismatchPolicy.FAIL_ON_MISMATCH) {
+                filteredAssignments.add(sourceAccess);
+            } else if (!allowedFunctions.isEmpty()) {
+                filteredAssignments.add(new EmbeddedAppAccess(sourceAccess.appKey(), allowedFunctions));
+            }
+        }
+
+        return new AppFunctionFilterResult(filteredAssignments, unavailableAppFunctionValues, targetMarket);
+    }
+
+    private List<String> resolveMarketAvailableFunctions(String appKey, String targetMarket) {
+        EmbeddedAppDto app = embeddedAppAdminService.getEmbeddedAppByKey(appKey);
+        if (app == null || app.getRegionalUrls() == null || app.getRegionalUrls().isEmpty()) {
+            return null;
+        }
+
+        RegionalConfigDto marketConfig = app.getRegionalUrls().get(targetMarket);
+        if (marketConfig == null) {
+            marketConfig = app.getRegionalUrls().get(MarketResolver.DEFAULT_MARKET);
+        }
+        if (marketConfig == null || marketConfig.getAvailableFunctionValues() == null) {
+            return null;
+        }
+
+        return marketConfig.getAvailableFunctionValues();
+    }
+
+    private List<EmbeddedAppAccess> applyOverwritePolicy(List<EmbeddedAppAccess> sourceApps,
+                                                         String targetGroupIdentifier,
+                                                         boolean overwriteExisting) {
+        if (overwriteExisting || sourceApps.isEmpty()) {
+            return sourceApps;
+        }
+
+        Set<String> existingAppKeys = loadExistingTargetAppKeys(targetGroupIdentifier);
+        return sourceApps.stream()
+            .filter(access -> !existingAppKeys.contains(access.appKey()))
+            .toList();
+    }
+
+    private Set<String> loadExistingTargetAppKeys(String targetGroupIdentifier) {
+        return new HashSet<>(jdbcTemplate.queryForList(
+            "SELECT DISTINCT app_key FROM embedded_app_ad_group_functions WHERE ad_group_identifier = ? AND is_enabled = true",
+            String.class,
+            targetGroupIdentifier
+        ));
+    }
+
+    private CopyResult buildFunctionMismatchResult(String targetMarket, List<String> unavailableFunctions) {
+        CopyResult result = CopyResult.error(
+            ERROR_FUNCTION_MISMATCH,
+            "Copy contains app functions that are unavailable in target market " + targetMarket
+        );
+        result.setUnavailableAppFunctionValues(unavailableFunctions);
+        result.addErrorDetail("targetMarket", targetMarket);
+        return result;
+    }
+
+    private NormalizedCopyOptions normalizeCopyOptions(CopyOptions copyOptions) {
+        boolean copyRoleAndPermissions = resolveBoolean(copyOptions == null ? null : copyOptions.getCopyRoleAndPermissionsFlag(), true);
+        boolean copyBusinessInfo = resolveBoolean(copyOptions == null ? null : copyOptions.getCopyBusinessInfoFlag(), true);
+        boolean copyApplications = resolveBoolean(copyOptions == null ? null : copyOptions.getCopyApplicationsFlag(), true);
+        boolean overwriteExisting = resolveBoolean(copyOptions == null ? null : copyOptions.getOverwriteExistingFlag(), false);
+
+        WorkflowMode workflowMode = resolveWorkflowMode(copyOptions);
+        FunctionMismatchPolicy mismatchPolicy = resolveMismatchPolicy(copyOptions);
+
+        return new NormalizedCopyOptions(
+            copyRoleAndPermissions,
+            copyBusinessInfo,
+            copyApplications,
+            overwriteExisting,
+            workflowMode,
+            mismatchPolicy
+        );
+    }
+
+    private boolean resolveBoolean(Boolean value, boolean defaultValue) {
+        return value == null ? defaultValue : value;
+    }
+
+    private WorkflowMode resolveWorkflowMode(CopyOptions copyOptions) {
+        if (copyOptions == null || copyOptions.getCopyWorkflowModeCode() == null) {
+            return WorkflowMode.SUBMIT_FOR_APPROVAL;
+        }
+        String modeCode = copyOptions.getCopyWorkflowModeCode().toString();
+        if ("DIRECT_SAVE".equalsIgnoreCase(modeCode)) {
+            return WorkflowMode.DIRECT_SAVE;
+        }
+        return WorkflowMode.SUBMIT_FOR_APPROVAL;
+    }
+
+    private FunctionMismatchPolicy resolveMismatchPolicy(CopyOptions copyOptions) {
+        if (copyOptions == null || copyOptions.getFunctionMismatchPolicyCode() == null) {
+            return FunctionMismatchPolicy.FAIL_ON_MISMATCH;
+        }
+        String policyCode = copyOptions.getFunctionMismatchPolicyCode().toString();
+        if ("SKIP_UNAVAILABLE".equalsIgnoreCase(policyCode)) {
+            return FunctionMismatchPolicy.SKIP_UNAVAILABLE;
+        }
+        return FunctionMismatchPolicy.FAIL_ON_MISMATCH;
+    }
+
+    private enum WorkflowMode {
+        SUBMIT_FOR_APPROVAL,
+        DIRECT_SAVE
+    }
+
+    private enum FunctionMismatchPolicy {
+        FAIL_ON_MISMATCH,
+        SKIP_UNAVAILABLE
+    }
+
+    private record NormalizedCopyOptions(boolean copyRoleAndPermissions,
+                                         boolean copyBusinessInfo,
+                                         boolean copyApplications,
+                                         boolean overwriteExisting,
+                                         WorkflowMode workflowMode,
+                                         FunctionMismatchPolicy functionMismatchPolicy) {
+        private boolean hasAnyCopySection() {
+            return copyRoleAndPermissions || copyBusinessInfo || copyApplications;
+        }
+    }
+
+    private record ProposedCopyState(Map<String, Object> proposedState, List<String> copiedFields) {}
+
+    private record AppFunctionFilterResult(List<EmbeddedAppAccess> filteredAppAssignments,
+                                           List<String> unavailableAppFunctionValues,
+                                           String targetMarket) {}
 
     private record EmbeddedAppAccess(String appKey, List<String> functions) {}
 }
@@ -22474,285 +23224,6 @@ logging:
   level:
     com.hsbc.ccaas.sapi: INFO
     com.zaxxer.hikari: INFO
-===ENDFILE
-===FILE: ./src/main/resources/openapi-templates/api.mustache
-/**
- * NOTE: This class is auto generated by OpenAPI Generator (https://openapi-generator.tech) ({{{generatorVersion}}}).
- * https://openapi-generator.tech
- * Do not edit the class manually.
- */
-package {{package}};
-
-{{#imports}}import {{import}};
-{{/imports}}
-{{#swagger2AnnotationLibrary}}
-import io.swagger.v3.oas.annotations.ExternalDocumentation;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.Parameters;
-import io.swagger.v3.oas.annotations.media.ArraySchema;
-import io.swagger.v3.oas.annotations.media.Content;
-import io.swagger.v3.oas.annotations.media.Schema;
-import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.security.SecurityRequirement;
-import io.swagger.v3.oas.annotations.tags.Tag;
-import io.swagger.v3.oas.annotations.enums.ParameterIn;
-{{/swagger2AnnotationLibrary}}
-{{#swagger1AnnotationLibrary}}
-import io.swagger.annotations.*;
-{{/swagger1AnnotationLibrary}}
-{{#jdk8-no-delegate}}
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
-{{/jdk8-no-delegate}}
-{{^useResponseEntity}}
-import org.springframework.http.HttpStatus;
-{{/useResponseEntity}}
-{{#useResponseEntity}}
-import org.springframework.http.ResponseEntity;
-{{/useResponseEntity}}
-{{#useBeanValidation}}
-import org.springframework.validation.annotation.Validated;
-{{/useBeanValidation}}
-import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;
-import com.hsbc.wpb.ef.ports.RequestContext;
-
-{{#useBeanValidation}}
-import {{javaxPackage}}.validation.Valid;
-import {{javaxPackage}}.validation.constraints.*;
-{{/useBeanValidation}}
-import java.util.List;
-import java.util.Map;
-{{#jdk8-no-delegate}}
-import java.util.Optional;
-{{/jdk8-no-delegate}}
-{{^jdk8-no-delegate}}
-{{#useOptional}}
-import java.util.Optional;
-{{/useOptional}}
-{{/jdk8-no-delegate}}
-import {{javaxPackage}}.annotation.Generated;
-
-{{>generatedAnnotation}}
-{{#useBeanValidation}}
-@Validated
-{{/useBeanValidation}}
-{{#swagger2AnnotationLibrary}}
-@Tag(name = "{{{tagName}}}", description = {{#tagDescription}}"{{{.}}}"{{/tagDescription}}{{^tagDescription}}"the {{{tagName}}} API"{{/tagDescription}})
-{{/swagger2AnnotationLibrary}}
-{{#swagger1AnnotationLibrary}}
-@Api(value = "{{{tagName}}}", description = {{#tagDescription}}"{{{.}}}"{{/tagDescription}}{{^tagDescription}}"the {{{tagName}}} API"{{/tagDescription}})
-{{/swagger1AnnotationLibrary}}
-{{#operations}}
-public interface {{classname}} {
-{{#operation}}
-
-    /**
-     * {{httpMethod}} {{{path}}}{{#summary}} : {{.}}{{/summary}}
-    {{#notes}}
-     * {{.}}
-    {{/notes}}
-     *
-    {{#allParams}}
-     * @param {{paramName}} {{description}}{{#required}} (required){{/required}}{{^required}} (optional{{#defaultValue}}, default to {{.}}{{/defaultValue}}){{/required}}
-    {{/allParams}}
-     * @return {{#responses}}{{message}} (status code {{code}}){{^-last}}
-     *         or {{/-last}}{{/responses}}
-    {{#isDeprecated}}
-     * @deprecated
-    {{/isDeprecated}}
-    {{#externalDocs}}
-     * {{description}}
-     * @see <a href="{{url}}">{{summary}} Documentation</a>
-    {{/externalDocs}}
-     */
-    {{#isDeprecated}}
-    @Deprecated
-    {{/isDeprecated}}
-    {{#swagger2AnnotationLibrary}}
-    @Operation(
-        operationId = "{{{operationId}}}",
-        {{#summary}}
-        summary = "{{{.}}}",
-        {{/summary}}
-        {{#notes}}
-        description = "{{{.}}}",
-        {{/notes}}
-        {{#isDeprecated}}
-        deprecated = true,
-        {{/isDeprecated}}
-        {{#vendorExtensions.x-tags.size}}
-        tags = { {{#vendorExtensions.x-tags}}"{{tag}}"{{^-last}}, {{/-last}}{{/vendorExtensions.x-tags}} },
-        {{/vendorExtensions.x-tags.size}}
-        responses = {
-            {{#responses}}
-            @ApiResponse(responseCode = {{#isDefault}}"default"{{/isDefault}}{{^isDefault}}"{{{code}}}"{{/isDefault}}, description = "{{{message}}}"{{#baseType}}, content = {
-                {{#produces}}
-                @Content(mediaType = "{{{mediaType}}}", {{#isArray}}array = @ArraySchema({{/isArray}}schema = @Schema(implementation = {{{baseType}}}.class){{#isArray}}){{/isArray}}){{^-last}},{{/-last}}
-                {{/produces}}
-            }{{/baseType}}){{^-last}},{{/-last}}
-            {{/responses}}
-        }{{#hasAuthMethods}},
-        security = {
-            {{#authMethods}}
-            @SecurityRequirement(name = "{{name}}"{{#scopes.0}}, scopes={ {{#scopes}}"{{scope}}"{{^-last}}, {{/-last}}{{/scopes}} }{{/scopes.0}}){{^-last}},{{/-last}}
-            {{/authMethods}}
-        }{{/hasAuthMethods}}
-    )
-    {{/swagger2AnnotationLibrary}}
-    {{#implicitHeadersParams.0}}
-    {{#swagger2AnnotationLibrary}}
-    @Parameters({
-        {{#implicitHeadersParams}}
-        {{>paramDoc}}{{^-last}},{{/-last}}
-        {{/implicitHeadersParams}}
-    })
-    {{/swagger2AnnotationLibrary}}
-    {{/implicitHeadersParams.0}}
-    @RequestMapping(
-        method = RequestMethod.{{httpMethod}},
-        value = "{{{path}}}"{{#singleContentTypes}}{{#hasProduces}},
-        produces = { {{#vendorExtensions.x-accepts}}"{{{.}}}"{{^-last}}, {{/-last}}{{/vendorExtensions.x-accepts}} }{{/hasProduces}}{{#hasConsumes}},
-        consumes = "{{{vendorExtensions.x-content-type}}}"{{/hasConsumes}}{{/singleContentTypes}}{{^singleContentTypes}}{{#hasProduces}},
-        produces = { {{#produces}}"{{{mediaType}}}"{{^-last}}, {{/-last}}{{/produces}} }{{/hasProduces}}{{#hasConsumes}},
-        consumes = { {{#consumes}}"{{{mediaType}}}"{{^-last}}, {{/-last}}{{/consumes}} }{{/hasConsumes}}{{/singleContentTypes}}
-    )
-    {{#vendorExtensions.x-operation-extra-annotation}}
-    {{{.}}}
-    {{/vendorExtensions.x-operation-extra-annotation}}
-    default {{>responseType}} {{operationId}}(
-        {{#bodyParam}}RequestContext<{{{dataType}}}> requestContext{{/bodyParam}}{{^bodyParam}}RequestContext<Void> requestContext{{/bodyParam}}
-    ) throws Exception {
-        return new ResponseEntity<>(HttpStatus.NOT_IMPLEMENTED);
-    }
-
-{{/operation}}
-}
-{{/operations}}
-===ENDFILE
-===FILE: ./src/main/resources/static/api-docs.html
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Entitlement SAPI - API Documentation</title>
-  <style>
-    body {
-      margin: 0;
-      padding: 0;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    }
-
-    /* Hide "Powered by Scalar" footer, "Open API Client", "Share", and "Generate SDKs" */
-    footer[class*="scalar"],
-    footer[class*="Footer"],
-    [class*="PoweredBy"],
-    [class*="powered-by"],
-    a[href*="scalar.com"],
-    button[aria-label*="API Client"],
-    button[aria-label*="Open API Client"],
-    [aria-label*="Share"],
-    [aria-label*="Generate SDKs"],
-    [data-testid*="api-client"],
-    [data-testid*="powered-by"],
-    [data-testid*="share"],
-    [data-testid*="generate"],
-    [class*="HeaderActions"],
-    [class*="ToolbarActions"],
-    button[class*="Share"],
-    button[class*="GenerateSDK"] {
-      display: none !important;
-      visibility: hidden !important;
-      opacity: 0 !important;
-      height: 0 !important;
-      width: 0 !important;
-      pointer-events: none !important;
-    }
-
-    /* Additional catch-all for top-right action buttons */
-    header > div > div:last-child > button,
-    [class*="Header"] > [class*="Actions"] {
-      display: none !important;
-    }
-  </style>
-</head>
-<body>
-  <!--
-    Scalar API Reference with custom styling to hide branding.
-
-    Customizations applied:
-    - CSS hiding for Scalar footer, Share/Generate SDK buttons (lines 14-44)
-    - JavaScript to remove branding elements after load (lines 72-116)
-    - MutationObserver to handle dynamic re-renders
-
-    Scalar features available:
-    - Dark mode by default
-    - 3-column layout (sidebar, content, code examples)
-    - Interactive API testing
-    - Auto-generated code in multiple languages
-    - Command palette (Press ⌘K)
-  -->
-  <script
-    id="api-reference"
-    data-url="/v3/api-docs"
-    data-configuration='{
-      "theme": "purple",
-      "darkMode": true,
-      "layout": "modern"
-    }'
-  ></script>
-
-  <script src="/scalar-api-reference.min.js"></script>
-
-  <script>
-    // Wait for Scalar to fully render, then hide unwanted elements
-    function hideScalarBranding() {
-      // Hide buttons containing specific text
-      const buttonsToHide = ['Share', 'Generate SDKs', 'Open API Client'];
-      const buttons = document.querySelectorAll('button');
-
-      buttons.forEach(button => {
-        const buttonText = button.textContent || button.innerText;
-        if (buttonsToHide.some(text => buttonText.includes(text))) {
-          button.style.display = 'none';
-          button.style.visibility = 'hidden';
-        }
-      });
-
-      // Hide links to scalar.com
-      const links = document.querySelectorAll('a[href*="scalar.com"]');
-      links.forEach(link => {
-        link.style.display = 'none';
-        link.style.visibility = 'hidden';
-      });
-
-      // Hide footer elements
-      const footers = document.querySelectorAll('footer, [class*="Footer"], [class*="powered"]');
-      footers.forEach(footer => {
-        if (footer.textContent.toLowerCase().includes('scalar') ||
-            footer.textContent.toLowerCase().includes('powered by')) {
-          footer.style.display = 'none';
-        }
-      });
-    }
-
-    // Run after Scalar loads
-    setTimeout(hideScalarBranding, 1000);
-
-    // Also run on any DOM changes (in case Scalar re-renders)
-    const observer = new MutationObserver(() => {
-      hideScalarBranding();
-    });
-
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true
-    });
-  </script>
-</body>
-</html>
 ===ENDFILE
 ===FILE: ./src/test/java/com/hsbc/ccaas/sapi/application/DefaultAdGroupManagementFacadeTest.java
 package com.hsbc.ccaas.sapi.application;
@@ -26849,7 +27320,7 @@ class PendingChangesControllerComprehensiveTest {
             mockChange.setProposedState(proposedConfig);
 
             when(pendingChangeService.submitChangeFromProposedConfig(
-                anyString(), any(Map.class), anyString(), any()
+                anyString(), any(Map.class), anyString(), any(), any()
             )).thenReturn(mockChange);
 
             RequestContext<CreatePendingChangeRequestEnvelope> rc = mockRequestContext();
@@ -26873,7 +27344,7 @@ class PendingChangesControllerComprehensiveTest {
 
             PendingChange mockChange = createMockPendingChange();
             when(pendingChangeService.submitChangeFromProposedConfig(
-                anyString(), any(Map.class), anyString(), any()
+                anyString(), any(Map.class), anyString(), any(), any()
             )).thenReturn(mockChange);
 
             RequestContext<CreatePendingChangeRequestEnvelope> rc = mockRequestContext();
@@ -26918,7 +27389,7 @@ class PendingChangesControllerComprehensiveTest {
 
             PendingChange mockChange = createMockPendingChange();
             when(pendingChangeService.submitChangeFromProposedConfig(
-                any(), any(Map.class), anyString(), any()
+                any(), any(Map.class), anyString(), any(), any()
             )).thenReturn(mockChange);
 
             RequestContext<CreatePendingChangeRequestEnvelope> rc = mockRequestContext();
@@ -26940,7 +27411,7 @@ class PendingChangesControllerComprehensiveTest {
 
             PendingChange mockChange = createMockPendingChange();
             when(pendingChangeService.submitChangeFromProposedConfig(
-                anyString(), any(Map.class), anyString(), any()
+                anyString(), any(Map.class), anyString(), any(), any()
             )).thenReturn(mockChange);
 
             RequestContext<CreatePendingChangeRequestEnvelope> rc = mockRequestContext();
@@ -26985,7 +27456,7 @@ class PendingChangesControllerComprehensiveTest {
             mockChange.setProposedState(proposedConfig);
 
             when(pendingChangeService.submitChangeFromProposedConfig(
-                anyString(), any(Map.class), anyString(), any()
+                anyString(), any(Map.class), anyString(), any(), any()
             )).thenReturn(mockChange);
 
             RequestContext<CreatePendingChangeRequestEnvelope> rc = mockRequestContext();
@@ -27006,7 +27477,7 @@ class PendingChangesControllerComprehensiveTest {
             );
 
             when(pendingChangeService.submitChangeFromProposedConfig(
-                anyString(), any(Map.class), anyString(), any()
+                anyString(), any(Map.class), anyString(), any(), any()
             )).thenThrow(new PendingChangeExistsException(
                 "Pending change already exists", UUID.randomUUID(), "EMP999"));
 
@@ -27553,7 +28024,7 @@ class PendingChangesControllerTest {
 
             PendingChange mockChange = createMockPendingChange();
             when(pendingChangeService.submitChangeFromProposedConfig(
-                anyString(), any(Map.class), anyString(), any()
+                anyString(), any(Map.class), anyString(), any(), any()
             )).thenReturn(mockChange);
 
             RequestContext<CreatePendingChangeRequestEnvelope> rc = mockRequestContext();
@@ -27564,7 +28035,7 @@ class PendingChangesControllerTest {
             assertEquals(HttpStatus.OK, response.getStatusCode());
             assertEquals("AD_GROUP_001", response.getBody().getData().getTargetGroupIdentifier());
             verify(pendingChangeService).submitChangeFromProposedConfig(
-                eq(TARGET_GROUP_UUID.toString()), any(Map.class), eq("EMP123"), any()
+                eq(TARGET_GROUP_UUID.toString()), any(Map.class), eq("EMP123"), any(), any()
             );
         }
 
@@ -27590,7 +28061,7 @@ class PendingChangesControllerTest {
 
             PendingChange mockChange = createMockPendingChange();
             when(pendingChangeService.submitChangeFromProposedConfig(
-                any(), any(Map.class), anyString(), any()
+                any(), any(Map.class), anyString(), any(), any()
             )).thenReturn(mockChange);
 
             RequestContext<CreatePendingChangeRequestEnvelope> rc = mockRequestContext();
@@ -27612,7 +28083,7 @@ class PendingChangesControllerTest {
 
             PendingChange mockChange = createMockPendingChange();
             when(pendingChangeService.submitChangeFromProposedConfig(
-                anyString(), any(Map.class), anyString(), any()
+                anyString(), any(Map.class), anyString(), any(), any()
             )).thenReturn(mockChange);
 
             RequestContext<CreatePendingChangeRequestEnvelope> rc = mockRequestContext();
@@ -36672,7 +37143,7 @@ class PendingChangeServiceTest {
                     .thenReturn(new ChangeAuditLog());
 
             PendingChange result = service.submitChangeFromProposedConfig(
-                    targetGroup, proposedState, "EMP001", 42L);
+                    targetGroup, proposedState, "EMP001", null, 42L);
 
             assertNotNull(result);
             assertEquals(PendingChange.Status.PENDING_LEVEL_ONE, result.getStatus());
@@ -37844,7 +38315,7 @@ class PendingChangeSubmissionServiceTest {
             mockAuditLogSubmission();
 
             PendingChange result = service.submitChangeFromProposedConfig(
-                    TARGET_GROUP, proposedState, "EMP001", 42L);
+                    TARGET_GROUP, proposedState, "EMP001", null, 42L);
 
             assertNotNull(result);
             assertEquals(PendingChange.Status.PENDING_LEVEL_ONE, result.getStatus());
@@ -37866,7 +38337,7 @@ class PendingChangeSubmissionServiceTest {
             mockAuditLogSubmission();
 
             PendingChange result = service.submitChangeFromProposedConfig(
-                    TARGET_GROUP, Map.of("market", "HK"), "EMP001", 10L);
+                    TARGET_GROUP, Map.of("market", "HK"), "EMP001", null, 10L);
 
             assertEquals("Voice Agent Basic", result.getTargetGroupName());
         }
@@ -37879,7 +38350,7 @@ class PendingChangeSubmissionServiceTest {
             mockAuditLogSubmission();
 
             PendingChange result = service.submitChangeFromProposedConfig(
-                    TARGET_GROUP, Map.of("market", "HK"), "EMP001", 10L);
+                    TARGET_GROUP, Map.of("market", "HK"), "EMP001", null, 10L);
 
             assertTrue(result.getCurrentState().isEmpty());
         }
@@ -38124,6 +38595,8 @@ import com.hsbc.ccaas.sapi.dto.CopyResult;
 import com.hsbc.ccaas.sapi.entity.AdGroupLayoutAssignment;
 import com.hsbc.ccaas.sapi.model.EntitlementStateValue;
 import com.hsbc.ccaas.sapi.repository.AdGroupLayoutAssignmentRepository;
+import com.hsbc.ccaas.sapi.service.EmbeddedAppAdminService;
+import com.hsbc.ccaas.sapi.service.PendingChangeService;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -38153,12 +38626,19 @@ class AdGroupCopyServiceTest {
     @Mock
     private AdGroupCacheInvalidationHelper cacheInvalidationHelper;
 
+    @Mock
+    private PendingChangeService pendingChangeService;
+
+    @Mock
+    private EmbeddedAppAdminService embeddedAppAdminService;
+
     @InjectMocks
     private AdGroupCopyService service;
 
     @Test
     void copyAdGroupConfiguration_SameSourceTarget_ReturnsError() {
         CopyOptions options = new CopyOptions();
+        options.setCopyWorkflowModeCode(CopyOptions.CopyWorkflowModeCodeEnum.DIRECT_SAVE);
 
         CopyResult result = service.copyAdGroupConfiguration("group", "group", options, "updater");
 
@@ -38169,6 +38649,7 @@ class AdGroupCopyServiceTest {
     @Test
     void copyAdGroupConfiguration_SourceNotFound_ReturnsError() {
         CopyOptions options = new CopyOptions();
+        options.setCopyWorkflowModeCode(CopyOptions.CopyWorkflowModeCodeEnum.DIRECT_SAVE);
         when(repository.findByGroupIdentifier("source")).thenReturn(Optional.empty());
 
         CopyResult result = service.copyAdGroupConfiguration("source", "target", options, "updater");
@@ -38180,6 +38661,7 @@ class AdGroupCopyServiceTest {
     @Test
     void copyAdGroupConfiguration_TargetNotFound_ReturnsError() {
         CopyOptions options = new CopyOptions();
+        options.setCopyWorkflowModeCode(CopyOptions.CopyWorkflowModeCodeEnum.DIRECT_SAVE);
         when(repository.findByGroupIdentifier("source")).thenReturn(Optional.of(new AdGroupLayoutAssignment()));
         when(repository.findByGroupIdentifier("target")).thenReturn(Optional.empty());
 
@@ -38192,6 +38674,7 @@ class AdGroupCopyServiceTest {
     @Test
     void copyAdGroupConfiguration_TargetAlreadyConfigured_ReturnsError() {
         CopyOptions options = new CopyOptions();
+        options.setCopyWorkflowModeCode(CopyOptions.CopyWorkflowModeCodeEnum.DIRECT_SAVE);
         options.setOverwriteExistingFlag(false);
 
         AdGroupLayoutAssignment source = new AdGroupLayoutAssignment();
@@ -38213,6 +38696,7 @@ class AdGroupCopyServiceTest {
     @Test
     void copyAdGroupConfiguration_CopyRoleAndPermissions_Success() {
         CopyOptions options = new CopyOptions();
+        options.setCopyWorkflowModeCode(CopyOptions.CopyWorkflowModeCodeEnum.DIRECT_SAVE);
         options.setCopyRoleAndPermissionsFlag(true);
         options.setOverwriteExistingFlag(true);
 
@@ -38251,7 +38735,8 @@ class AdGroupCopyServiceTest {
     @Test
     void copyAdGroupConfiguration_CopyLocationMetadata_Success() {
         CopyOptions options = new CopyOptions();
-        options.setCopyLocationMetaFlag(true);
+        options.setCopyWorkflowModeCode(CopyOptions.CopyWorkflowModeCodeEnum.DIRECT_SAVE);
+        options.setCopyBusinessInfoFlag(true);
         options.setOverwriteExistingFlag(true);
 
         AdGroupLayoutAssignment source = new AdGroupLayoutAssignment();
@@ -38283,8 +38768,9 @@ class AdGroupCopyServiceTest {
     @Test
     void copyAdGroupConfiguration_NoCopyFlags_CopiesNothing() {
         CopyOptions options = new CopyOptions();
+        options.setCopyWorkflowModeCode(CopyOptions.CopyWorkflowModeCodeEnum.DIRECT_SAVE);
         options.setCopyRoleAndPermissionsFlag(false);
-        options.setCopyLocationMetaFlag(false);
+        options.setCopyBusinessInfoFlag(false);
         options.setOverwriteExistingFlag(true);
 
         AdGroupLayoutAssignment source = new AdGroupLayoutAssignment();
@@ -38308,6 +38794,7 @@ class AdGroupCopyServiceTest {
     @Test
     void copyAdGroupConfiguration_SetsUpdatedByAndTimestamp() {
         CopyOptions options = new CopyOptions();
+        options.setCopyWorkflowModeCode(CopyOptions.CopyWorkflowModeCodeEnum.DIRECT_SAVE);
         options.setOverwriteExistingFlag(true);
 
         AdGroupLayoutAssignment source = new AdGroupLayoutAssignment();
@@ -38328,6 +38815,7 @@ class AdGroupCopyServiceTest {
     @Test
     void copyAdGroupConfiguration_BlankUpdatedBy_DoesNotSetLastModifiedBy() {
         CopyOptions options = new CopyOptions();
+        options.setCopyWorkflowModeCode(CopyOptions.CopyWorkflowModeCodeEnum.DIRECT_SAVE);
         options.setOverwriteExistingFlag(true);
 
         AdGroupLayoutAssignment source = new AdGroupLayoutAssignment();
@@ -38347,6 +38835,7 @@ class AdGroupCopyServiceTest {
     @Test
     void copyAdGroupConfiguration_CacheInvalidationFailure_StillSucceeds() {
         CopyOptions options = new CopyOptions();
+        options.setCopyWorkflowModeCode(CopyOptions.CopyWorkflowModeCodeEnum.DIRECT_SAVE);
         options.setOverwriteExistingFlag(true);
 
         AdGroupLayoutAssignment source = new AdGroupLayoutAssignment();
@@ -38368,6 +38857,7 @@ class AdGroupCopyServiceTest {
     @Test
     void copyAdGroupConfiguration_SummaryPopulated() {
         CopyOptions options = new CopyOptions();
+        options.setCopyWorkflowModeCode(CopyOptions.CopyWorkflowModeCodeEnum.DIRECT_SAVE);
         options.setCopyRoleAndPermissionsFlag(true);
         options.setOverwriteExistingFlag(true);
 
@@ -38395,7 +38885,8 @@ class AdGroupCopyServiceTest {
     @SuppressWarnings("unchecked")
     void copyAdGroupConfiguration_CopyEmbeddedApps_Success() {
         CopyOptions options = new CopyOptions();
-        options.setCopyEmbeddedFlag(true);
+        options.setCopyWorkflowModeCode(CopyOptions.CopyWorkflowModeCodeEnum.DIRECT_SAVE);
+        options.setCopyApplicationsFlag(true);
         options.setOverwriteExistingFlag(true);
 
         AdGroupLayoutAssignment source = new AdGroupLayoutAssignment();
@@ -38431,7 +38922,8 @@ class AdGroupCopyServiceTest {
     @SuppressWarnings("unchecked")
     void copyAdGroupConfiguration_CopyEmbeddedApps_DataAccessException_ReturnsZero() {
         CopyOptions options = new CopyOptions();
-        options.setCopyEmbeddedFlag(true);
+        options.setCopyWorkflowModeCode(CopyOptions.CopyWorkflowModeCodeEnum.DIRECT_SAVE);
+        options.setCopyApplicationsFlag(true);
         options.setOverwriteExistingFlag(true);
 
         AdGroupLayoutAssignment source = new AdGroupLayoutAssignment();
@@ -38455,7 +38947,8 @@ class AdGroupCopyServiceTest {
     @Test
     void copyAdGroupConfiguration_CopyEmbeddedFlagFalse_SkipsEmbeddedCopy() {
         CopyOptions options = new CopyOptions();
-        options.setCopyEmbeddedFlag(false);
+        options.setCopyWorkflowModeCode(CopyOptions.CopyWorkflowModeCodeEnum.DIRECT_SAVE);
+        options.setCopyApplicationsFlag(false);
         options.setOverwriteExistingFlag(true);
 
         AdGroupLayoutAssignment source = new AdGroupLayoutAssignment();
@@ -38476,6 +38969,7 @@ class AdGroupCopyServiceTest {
     @Test
     void copyAdGroupConfiguration_TargetHasColumnAssignments_BlockedWithoutOverwrite() {
         CopyOptions options = new CopyOptions();
+        options.setCopyWorkflowModeCode(CopyOptions.CopyWorkflowModeCodeEnum.DIRECT_SAVE);
         options.setOverwriteExistingFlag(false);
 
         AdGroupLayoutAssignment source = new AdGroupLayoutAssignment();
@@ -38497,6 +38991,7 @@ class AdGroupCopyServiceTest {
     @Test
     void copyAdGroupConfiguration_NullUpdatedBy_DoesNotSetLastModifiedBy() {
         CopyOptions options = new CopyOptions();
+        options.setCopyWorkflowModeCode(CopyOptions.CopyWorkflowModeCodeEnum.DIRECT_SAVE);
         options.setOverwriteExistingFlag(true);
 
         AdGroupLayoutAssignment source = new AdGroupLayoutAssignment();
@@ -38516,6 +39011,7 @@ class AdGroupCopyServiceTest {
     @Test
     void copyAdGroupConfiguration_CopySettingsAndMfes() {
         CopyOptions options = new CopyOptions();
+        options.setCopyWorkflowModeCode(CopyOptions.CopyWorkflowModeCodeEnum.DIRECT_SAVE);
         options.setCopyRoleAndPermissionsFlag(true);
         options.setOverwriteExistingFlag(true);
 
@@ -38982,7 +39478,7 @@ class DefaultAdGroupLayoutAssignmentServiceTest {
         String targetGroup = "target-group";
         com.hsbc.ccaas.sapi.controller.model.CopyOptions options = new com.hsbc.ccaas.sapi.controller.model.CopyOptions();
         options.setCopyRoleAndPermissionsFlag(true);
-        options.setCopyLocationMetaFlag(true);
+        options.setCopyBusinessInfoFlag(true);
         options.setOverwriteExistingFlag(true);
 
         AdGroupLayoutAssignment updatedTarget = new AdGroupLayoutAssignment();
@@ -39173,7 +39669,7 @@ class DefaultAdGroupLayoutAssignmentServiceTest {
         String targetGroup = "target";
         com.hsbc.ccaas.sapi.controller.model.CopyOptions options = new com.hsbc.ccaas.sapi.controller.model.CopyOptions();
         options.setCopyRoleAndPermissionsFlag(false);
-        options.setCopyLocationMetaFlag(false);
+        options.setCopyBusinessInfoFlag(false);
         options.setOverwriteExistingFlag(true);
 
         AdGroupLayoutAssignment updatedTarget = new AdGroupLayoutAssignment();
@@ -39202,7 +39698,7 @@ class DefaultAdGroupLayoutAssignmentServiceTest {
         String sourceGroup = "source";
         String targetGroup = "target";
         com.hsbc.ccaas.sapi.controller.model.CopyOptions options = new com.hsbc.ccaas.sapi.controller.model.CopyOptions();
-        options.setCopyEmbeddedFlag(true);
+        options.setCopyApplicationsFlag(true);
         options.setOverwriteExistingFlag(true);
 
         AdGroupLayoutAssignment target = new AdGroupLayoutAssignment();
@@ -46536,581 +47032,6 @@ fi
 
 exit "$FAIL_COUNT"
 ===ENDFILE
-===FILE: ./tools/fix_openapi_yaml.py
-#!/usr/bin/env python3
-import re
-from pathlib import Path
-import sys
-from ruamel.yaml import YAML
-
-
-DEFAULT_FILE = Path(__file__).resolve().parents[1] / "src/main/api/ccaas-entitlement-sapi.yml"
-
-
-def to_kebab(s: str) -> str:
-    # convert camelCase/PascalCase to kebab-case
-    s = re.sub(r"([a-z0-9])([A-Z])", r"\1-\2", s)
-    s = s.replace("_", "-")
-    return s.lower()
-
-
-def ensure_problem_details(components: dict):
-    schemas = components.setdefault("schemas", {})
-    if "ProblemDetails" not in schemas:
-        schemas["ProblemDetails"] = {
-            "type": "object",
-            "required": ["type", "title", "status"],
-            "properties": {
-                "type": {
-                    "type": "string",
-                    "format": "uri-reference",
-                    "minLength": 1,
-                    "maxLength": 2000,
-                    "description": "URI reference that identifies the problem type",
-                },
-                "title": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 200,
-                    "description": "Short, human-readable summary of the problem type",
-                },
-                "status": {
-                    "type": "integer",
-                    "minimum": 100,
-                    "maximum": 599,
-                    "description": "HTTP status code for this occurrence of the problem",
-                },
-                "detail": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 2000,
-                    "description": "Human-readable explanation specific to this occurrence of the problem",
-                },
-                "instance": {
-                    "type": "string",
-                    "format": "uri-reference",
-                    "minLength": 1,
-                    "maxLength": 2000,
-                    "description": "URI reference that identifies the specific occurrence of the problem",
-                },
-            },
-            "description": "RFC 7807 Problem Details object",
-        }
-
-
-def ensure_param_description_and_validation(param: dict):
-    # add/normalize description if missing or too short
-    name = param.get("name", "parameter")
-    where = param.get("in", "")
-    desc = str(param.get("description", "")).strip() if isinstance(param.get("description"), str) else ""
-    if not desc or len(desc) < 12:
-        param["description"] = f"{name} {where} parameter"
-    # add validation for string schema
-    schema = param.get("schema")
-    if isinstance(schema, dict) and schema.get("type") == "string":
-        schema.setdefault("minLength", 1)
-        # keep conservative default upper bound; can be refined per field later
-        schema.setdefault("maxLength", 1000)
-        # permissive safe pattern for typical identifiers/keys; do not break existing values
-        if "pattern" not in schema:
-            schema["pattern"] = r"^[A-Za-z0-9_.:@\-\/]+$"
-
-
-def ensure_operation(op: dict, components: dict):
-    def rename_example_keys(obj):
-        # Applies Hydrogen rename_map to example dictionaries recursively
-        if isinstance(obj, dict):
-            out = {}
-            for k, v in obj.items():
-                nk = k
-                if k in {
-                    "functions": "functionKeys",
-                    "assignedFunctions": "assignedFunctionKeys",
-                    "defaultFunctions": "defaultFunctionKeys",
-                    "appFunctions": "applicationFunctionKeys",
-                    "functionDefinitions": "functionDefinitionMap",
-                    "requiresApproval": "approvalRequiredFlag",
-                    "copyRoleAndPermissions": "copyRolePermissionsFlag",
-                    "copyLocationMetadata": "copyLocationMetadataFlag",
-                    "copyEmbeddedApps": "copyEmbeddedAppsFlag",
-                    "overwriteExisting": "overwriteExistingFlag",
-                    "isSuccess": "successFlag",
-                    "status": "statusCode",
-                    "broadcastToAll": "broadcastToAllFlag",
-                    "requiresAcknowledgement": "requiresAcknowledgementFlag",
-                    "targetRoles": "targetRoleNames",
-                    "targetAdGroups": "targetAdGroupIdentifiers",
-                    "adGroups": "adGroupIdentifiers",
-                    "updatedRoles": "updatedRoleNames",
-                    "skippedRoles": "skippedRoleNames",
-                }:
-                    nk = {
-                        "functions": "functionKeys",
-                        "assignedFunctions": "assignedFunctionKeys",
-                        "defaultFunctions": "defaultFunctionKeys",
-                        "appFunctions": "applicationFunctionKeys",
-                        "functionDefinitions": "functionDefinitionMap",
-                        "requiresApproval": "approvalRequiredFlag",
-                        "copyRoleAndPermissions": "copyRolePermissionsFlag",
-                        "copyLocationMetadata": "copyLocationMetadataFlag",
-                        "copyEmbeddedApps": "copyEmbeddedAppsFlag",
-                        "overwriteExisting": "overwriteExistingFlag",
-                        "isSuccess": "successFlag",
-                        "status": "statusCode",
-                        "broadcastToAll": "broadcastToAllFlag",
-                        "requiresAcknowledgement": "requiresAcknowledgementFlag",
-                        "targetRoles": "targetRoleNames",
-                        "targetAdGroups": "targetAdGroupIdentifiers",
-                        "adGroups": "adGroupIdentifiers",
-                        "updatedRoles": "updatedRoleNames",
-                        "skippedRoles": "skippedRoleNames",
-                    }[k]
-                out[nk] = rename_example_keys(v)
-            return out
-        if isinstance(obj, list):
-            return [rename_example_keys(x) for x in obj]
-        return obj
-    # operationId to kebab-case
-    op_id = op.get("operationId")
-    if isinstance(op_id, str):
-        op["operationId"] = to_kebab(op_id)
-
-    # parameters
-    params = op.get("parameters", [])
-    if isinstance(params, list):
-        for p in params:
-            if isinstance(p, dict):
-                ensure_param_description_and_validation(p)
-
-    # responses: add application/problem+json for 4xx/5xx and enforce schema
-    responses = op.get("responses", {})
-    for code, resp in list(responses.items()):
-        try:
-            # numeric and default strings like '400', '404', '500'
-            if str(code).startswith(("4", "5")) and isinstance(resp, dict):
-                content = resp.setdefault("content", {})
-                prob = content.setdefault("application/problem+json", {})
-                # Force RFC7807 schema
-                prob["schema"] = {"$ref": "#/components/schemas/ProblemDetails"}
-                # remove non-RFC7807 content for error responses
-                for ct in list(content.keys()):
-                    if ct != "application/problem+json":
-                        content.pop(ct, None)
-        except Exception:
-            continue
-
-    # ensure at least one 4xx response exists
-    has_4xx = any(str(c).startswith("4") for c in responses.keys())
-    if not has_4xx:
-        responses.setdefault("400", {
-            "description": "Bad Request",
-            "content": {
-                "application/problem+json": {
-                    "schema": {"$ref": "#/components/schemas/ProblemDetails"}
-                }
-            }
-        })
-    op["responses"] = responses
-
-    # normalize examples for known response wrappers
-    WRAPPER_MIN_EXAMPLES = {
-        "AddEntitlementResponse": {
-            "data": {"successFlag": True, "messageText": "OK", "updatedRoleNames": [], "skippedRoleNames": []}
-        },
-        "SessionLayoutResponse": {
-            "data": {"schemaVersion": "v1", "roleNames": []}
-        }
-    }
-    DIRECT_MIN_EXAMPLES = {
-        "CopyResult": {
-            "successFlag": True,
-            "messageText": "Copied",
-            "summary": {
-                "sourceGroupIdentifier": "CN=Source,OU=Groups,DC=hsbc,DC=com",
-                "targetGroupIdentifier": "CN=Target,OU=Groups,DC=hsbc,DC=com",
-                "fieldsCopied": 1
-            }
-        }
-    }
-
-    for code, resp in op.get("responses", {}).items():
-        if not isinstance(resp, dict):
-            continue
-        content = resp.get("content", {})
-        aj = content.get("application/json")
-        if not isinstance(aj, dict):
-            continue
-        schema = aj.get("schema")
-        if isinstance(schema, dict) and "$ref" in schema:
-            ref = schema["$ref"]
-            ref_name = ref.split("/")[-1]
-            if ref_name in WRAPPER_MIN_EXAMPLES:
-                aj.pop("examples", None)
-                aj["example"] = WRAPPER_MIN_EXAMPLES[ref_name]
-            elif ref_name in DIRECT_MIN_EXAMPLES:
-                aj.pop("examples", None)
-                aj["example"] = DIRECT_MIN_EXAMPLES[ref_name]
-        elif isinstance(schema, dict):
-            # Inline schema: ensure descriptions/constraints
-            ensure_descriptions_on_schema("response", schema)
-
-        # Enforce wrapper object with data for 2xx responses
-        if str(code).startswith("2"):
-            sch = aj.get("schema")
-            if isinstance(sch, dict):
-                # Collapse double-wrapped schema: { object -> data: { $ref: RefWithData } } => $ref: RefWithData
-                if sch.get("type") == "object" and isinstance(sch.get("properties"), dict):
-                    data_prop = sch["properties"].get("data")
-                    if isinstance(data_prop, dict) and "$ref" in data_prop:
-                        ref_name = data_prop["$ref"].split("/")[-1]
-                        ref_def = ((components.get("schemas") or {}).get(ref_name)) if isinstance(components, dict) else None
-                        if isinstance(ref_def, dict) and isinstance(ref_def.get("properties"), dict) and "data" in ref_def.get("properties"):
-                            aj["schema"] = {"$ref": data_prop["$ref"]}
-                            sch = aj["schema"]
-
-                # Check if $ref schema already has data property
-                if "$ref" in sch:
-                    ref_name = sch["$ref"].split("/")[-1]
-                    ref_def = ((components.get("schemas") or {}).get(ref_name)) if isinstance(components, dict) else None
-                    if isinstance(ref_def, dict):
-                        props = ref_def.get("properties")
-                        if isinstance(props, dict) and "data" in props:
-                            continue  # already wrapped via component
-                is_object = sch.get("type") == "object"
-                has_data = isinstance(sch.get("properties"), dict) and "data" in sch.get("properties")
-                if not (is_object and has_data):
-                    # Wrap existing schema into { type: object, properties: { data: <old schema> } }
-                    aj["schema"] = {
-                        "type": "object",
-                        "properties": {
-                            "data": sch
-                        }
-                    }
-                else:
-                    # If example exists but is missing top-level 'data', wrap it for consistency
-                    ex = aj.get("example")
-                    if isinstance(ex, dict) and "data" not in ex:
-                        aj["example"] = {"data": ex}
-            # Finally, normalize example keys per Hydrogen map
-            if isinstance(aj.get("example"), dict):
-                aj["example"] = rename_example_keys(aj["example"])
-
-    # Ensure requestBody inline schemas also get normalized
-    rb = op.get("requestBody")
-    if isinstance(rb, dict):
-        content = rb.get("content", {})
-        aj = content.get("application/json")
-        if isinstance(aj, dict):
-            schema = aj.get("schema")
-            if isinstance(schema, dict):
-                # If $ref points to component already wrapped with data, keep
-                if "$ref" in schema:
-                    ref_name = schema["$ref"].split("/")[-1]
-                    ref_def = ((components.get("schemas") or {}).get(ref_name)) if isinstance(components, dict) else None
-                    if isinstance(ref_def, dict):
-                        props = ref_def.get("properties")
-                        if isinstance(props, dict) and "data" in props:
-                            pass
-                        else:
-                            # Wrap $ref into object with data
-                            aj["schema"] = {"type": "object", "properties": {"data": schema}}
-                else:
-                    ensure_descriptions_on_schema("request", schema)
-                    is_object = schema.get("type") == "object"
-                    has_data = isinstance(schema.get("properties"), dict) and "data" in schema.get("properties")
-                    if not (is_object and has_data):
-                        aj["schema"] = {"type": "object", "properties": {"data": schema}}
-
-
-def ensure_path_level_description(path_item: dict, path: str):
-    if "description" not in path_item:
-        path_item["description"] = f"Operations for {path}"
-
-
-def ensure_descriptions_on_schema(name: str, schema: dict):
-    def apply_string_constraints(n: str, s: dict):
-        if s.get("type") == "string":
-            s.setdefault("minLength", 1)
-            s.setdefault("maxLength", 1000)
-            # Add URI format for common URL/URI fields
-            if (n.lower().endswith("uri") or "url" in n.lower()) and "format" not in s:
-                s["format"] = "uri"
-            if n.lower() == "email" and "format" not in s:
-                s["format"] = "email"
-        # If looks like a timestamp field, ensure date-time format
-        if s.get("type") == "string" and any(n.lower().endswith(x) for x in ("at", "timestamp")):
-            s.setdefault("format", "date-time")
-
-    def improve_known_descriptions(n: str):
-        known = {
-            "hasAccess": "Whether the current user/group has access to this application",
-            "defaultFunction": "Default function key to open when the app loads",
-            "defaultFunctions": "Default function keys enabled by default for this application or group",
-            "functions": "Available function keys in this application",
-            "assignedFunctions": "Function keys assigned to this AD group",
-            "appFunctions": "Function keys declared by the application",
-            "functionDefinitions": "Map of function key to its metadata (display name, category, description)",
-            "title": "Display title for this application or resource",
-            "titleText": "Display title for this application or resource",
-            # Common wrapper fields and results
-            "data": "Response payload data for this operation",
-            "isSuccess": "Indicates whether the operation completed successfully",
-            "success": "Indicates whether the operation completed successfully",
-            "messageText": "Human-readable message describing the result of the operation",
-            "errorText": "Error message explaining why the operation failed",
-            "status": "Current status value for this resource or operation",
-            # Notices
-            "severityText": "Notice severity level (INFO, SUCCESS, WARNING, ERROR, CRITICAL)",
-            "broadcastToAll": "If true, deliver this notice to all users",
-            "requiresAcknowledgement": "If true, users must acknowledge the notice before dismissal",
-            # Metadata
-            "id": "Unique identifier for this record",
-            "createdBy": "Identifier of the user who created this record",
-            "createdAt": "Timestamp when this record was created (UTC, ISO 8601)",
-            "updatedAt": "Timestamp when this record was last updated (UTC, ISO 8601)",
-            "timestamp": "Timestamp associated with this event or response (UTC, ISO 8601)",
-            "correlationId": "Correlation identifier used to trace requests across services",
-            # Identity/roles
-            "userId": "Employee identifier for the user",
-            "roleName": "Role identifier (voice_agent, chat_agent, supervisor, admin)",
-            "adGroupIdentifier": "Active Directory group distinguished name (DN)",
-            "adGroupLogicalName": "Human-readable logical name for the AD group",
-            "employeeIdentifier": "Employee identifier of the initiating user",
-            "email": "Email address of the initiating user",
-            "adGroups": "AD group identifiers associated with the initiator",
-            # Targeting
-            "targetRoles": "List of role names targeted by this notice or operation",
-            "targetAdGroups": "List of AD group distinguished names (DNs) targeted by this notice or operation",
-            # Time ranges
-            "startAt": "Start timestamp when this becomes active (UTC, ISO 8601)",
-            "endAt": "End timestamp when this expires (UTC, ISO 8601)",
-        }
-        return known.get(n)
-
-    def humanize(n: str) -> str:
-        s2 = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", n).replace("_", " ")
-        return s2.strip().lower()
-
-    def auto_description(n: str, s: dict) -> str:
-        h = humanize(n)
-        t = s.get("type")
-        if t == "boolean":
-            return f"Indicates whether {h} is true"
-        if t == "array":
-            return f"List of {h}"
-        if t == "integer":
-            return f"Numeric value for {h}"
-        if t == "number":
-            return f"Number representing {h}"
-        if t == "object":
-            return f"Object containing {h}"
-        return f"Text value for {h}"
-
-    if isinstance(schema, dict):
-        if "description" not in schema:
-            schema["description"] = f"{name} schema"
-        # Ensure type for object-like definitions with properties
-        if "properties" in schema and "type" not in schema:
-            schema["type"] = "object"
-
-        # If this schema itself is a string, apply constraints
-        apply_string_constraints(name, schema)
-
-        # Recurse into properties
-        props = schema.get("properties")
-        if isinstance(props, dict):
-            # Hydrogen style: rename properties to end with known class words
-            rename_map = {
-                "functions": "functionKeys",
-                "assignedFunctions": "assignedFunctionKeys",
-                "defaultFunctions": "defaultFunctionKeys",
-                "appFunctions": "applicationFunctionKeys",
-                "functionDefinitions": "functionDefinitionMap",
-                "requiresApproval": "approvalRequiredFlag",
-                "copyRoleAndPermissions": "copyRolePermissionsFlag",
-                "copyLocationMetadata": "copyLocationMetadataFlag",
-                "copyEmbeddedApps": "copyEmbeddedAppsFlag",
-                "overwriteExisting": "overwriteExistingFlag",
-                # More Hydrogen class-word mappings
-                "isSuccess": "successFlag",
-                "status": "statusCode",
-                "broadcastToAll": "broadcastToAllFlag",
-                "requiresAcknowledgement": "requiresAcknowledgementFlag",
-                "targetRoles": "targetRoleNames",
-                "targetAdGroups": "targetAdGroupIdentifiers",
-                "adGroups": "adGroupIdentifiers",
-                "updatedRoles": "updatedRoleNames",
-                "skippedRoles": "skippedRoleNames",
-            }
-            # Apply renames at this level first
-            for old_name, new_name in list(rename_map.items()):
-                if old_name in props and new_name not in props:
-                    props[new_name] = props.pop(old_name)
-                    # update required if present
-                    if isinstance(schema.get("required"), list):
-                        req = schema["required"]
-                        for i, v in enumerate(req):
-                            if v == old_name:
-                                req[i] = new_name
-            # Now iterate with possibly renamed keys
-            for prop_name, prop_schema in list(props.items()):
-                if isinstance(prop_schema, dict):
-                    # Overwrite placeholder or too-short descriptions
-                    improved = improve_known_descriptions(prop_name)
-                    existing = prop_schema.get("description")
-                    if improved:
-                        if "$ref" in prop_schema:
-                            # $ref cannot have siblings; wrap via allOf to attach description
-                            ref_val = prop_schema.pop("$ref")
-                            prop_schema.clear()
-                            prop_schema.update({"allOf": [{"$ref": ref_val}], "description": improved})
-                        else:
-                            prop_schema["description"] = improved
-                    else:
-                        too_short = not existing or len(str(existing).strip()) < 12 or str(existing).strip().lower() == prop_name.lower()
-                        if too_short:
-                            if "$ref" in prop_schema:
-                                ref_val = prop_schema.pop("$ref")
-                                prop_schema.clear()
-                                prop_schema.update({"allOf": [{"$ref": ref_val}], "description": auto_description(prop_name, prop_schema)})
-                            else:
-                                prop_schema["description"] = auto_description(prop_name, prop_schema)
-                    apply_string_constraints(prop_name, prop_schema)
-                    # arrays
-                    if prop_schema.get("type") == "array" and isinstance(prop_schema.get("items"), dict):
-                        items = prop_schema["items"]
-                        apply_string_constraints(prop_name+".items", items)
-                        # improve items description where generic
-                        if "$ref" in items:
-                            # wrap to attach description safely
-                            if not items.get("description") or len(str(items.get("description")).strip()) < 12:
-                                ref_val = items.pop("$ref")
-                                items.clear()
-                                items.update({"allOf": [{"$ref": ref_val}], "description": f"Items for {humanize(prop_name)}"})
-                        elif not items.get("description") or len(str(items.get("description")).strip()) < 12:
-                            items["description"] = f"Items for {humanize(prop_name)}"
-                        ensure_descriptions_on_schema(prop_name+".items", items)
-                    # nested object
-                    if isinstance(prop_schema.get("properties"), dict) or isinstance(prop_schema.get("additionalProperties"), dict):
-                        ensure_descriptions_on_schema(prop_name, prop_schema)
-
-        # Recurse into additionalProperties if it's a schema
-        ap = schema.get("additionalProperties")
-        if isinstance(ap, dict) and "$ref" not in ap:
-            ensure_descriptions_on_schema(f"{name}.additionalProperties", ap)
-
-
-def main():
-    yaml = YAML()
-    yaml.preserve_quotes = True
-    yaml.width = 120
-
-    target = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_FILE
-    data = yaml.load(target.read_text())
-
-    # Ensure components and problem details schema
-    components = data.setdefault("components", {})
-    ensure_problem_details(components)
-
-    # Ensure top-level security requirement
-    security = data.get("security")
-    if not security:
-        data["security"] = [{"Internal": []}]
-
-    # Ensure license info exists
-    info = data.setdefault("info", {})
-    if "license" not in info:
-        info["license"] = {"name": "Internal Use Only", "url": "https://internal.hsbc.com/license"}
-    else:
-        lic = info.get("license")
-        if isinstance(lic, dict) and "url" not in lic:
-            lic["url"] = "https://internal.hsbc.com/license"
-
-    # Ensure at least one non-localhost server is present
-    servers = data.get("servers") or []
-    has_non_local = any(isinstance(s, dict) and isinstance(s.get("url"), str) and not s.get("url", "").startswith("http://localhost") and "example.com" not in s.get("url", "") for s in servers)
-    if not has_non_local:
-        servers.append({"url": "https://api.hsbc.com/ccaas/entitlement-sapi", "description": "Production server"})
-        data["servers"] = servers
-
-    # Add descriptions to component schemas/properties if missing
-    schemas = components.get("schemas", {})
-    for s_name, s_def in list(schemas.items()):
-        ensure_descriptions_on_schema(s_name, s_def)
-
-    # Traverse paths
-    paths = data.get("paths", {})
-    used_tags = set()
-    # Pluralize specific subresource collections per style guide
-    path_renames = {}
-    for p in list(paths.keys()):
-        if isinstance(p, str) and p.endswith("/ad-group-config"):
-            plural = p + "s"
-            if plural not in paths:
-                path_renames[p] = plural
-    for old, new in path_renames.items():
-        paths[new] = paths.pop(old)
-    for path, item in paths.items():
-        if not isinstance(item, dict):
-            continue
-        ensure_path_level_description(item, path)
-        for method in ("get", "post", "put", "patch", "delete", "options", "head"): 
-            if method in item and isinstance(item[method], dict):
-                # collect tags used
-                for t in item[method].get("tags", []) or []:
-                    used_tags.add(t)
-                ensure_operation(item[method], components)
-                # DELETE request bodies are discouraged by style rules
-                if method == "delete" and isinstance(item[method].get("requestBody"), dict):
-                    # Attempt to map common body field to query parameter if present
-                    # Fallback: remove body silently to satisfy style
-                    parameters = item[method].setdefault("parameters", [])
-                    # avoid duplicates
-                    existing_names = {p.get("name") for p in parameters if isinstance(p, dict)}
-                    if "groupIdentifier" not in existing_names:
-                        parameters.append({
-                            "name": "groupIdentifier",
-                            "in": "query",
-                            "required": True,
-                            "description": "AD group distinguished name (DN)",
-                            "schema": {"type": "string", "minLength": 1, "maxLength": 255}
-                        })
-                    # remove the body
-                    item[method].pop("requestBody", None)
-
-    # Normalize inline component-level requestBodies/responses if present
-    for rb in (components.get("requestBodies") or {}).values():
-        if isinstance(rb, dict):
-            aj = (rb.get("content") or {}).get("application/json")
-            if isinstance(aj, dict):
-                schema = aj.get("schema")
-                if isinstance(schema, dict) and "$ref" not in schema:
-                    ensure_descriptions_on_schema("components.requestBody", schema)
-    for rp in (components.get("responses") or {}).values():
-        if isinstance(rp, dict):
-            aj = (rp.get("content") or {}).get("application/json")
-            if isinstance(aj, dict):
-                schema = aj.get("schema")
-                if isinstance(schema, dict) and "$ref" not in schema:
-                    ensure_descriptions_on_schema("components.response", schema)
-
-    # Ensure all used operation tags are declared globally
-    top_tags = data.setdefault("tags", [])
-    declared = {t.get("name") for t in top_tags if isinstance(t, dict)}
-    for t in sorted(used_tags):
-        if t not in declared:
-            top_tags.append({"name": t, "description": f"{t} APIs"})
-
-    # Write back
-    with target.open("w") as f:
-        yaml.dump(data, f)
-
-    print(f"Updated: {target}")
-
-
-if __name__ == "__main__":
-    main()
-===ENDFILE
 ===FILE: ./tools/integration/test-sapi-all-apis-v2.sh
 #!/usr/bin/env bash
 set -uo pipefail
@@ -47413,4 +47334,11 @@ if [ "$FAIL_COUNT" -gt 0 ]; then
 fi
 
 exit 0
+===ENDFILE
+===FILE: ./tools/sql/2026-02-06-add-active-pending-change-unique-index.sql
+-- Prevent duplicate active (L1/L2) pending changes per target AD group.
+-- NOTE: CREATE INDEX CONCURRENTLY must run outside an explicit transaction block.
+CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS uq_pending_changes_active_group
+ON pending_changes (target_group_identifier)
+WHERE status IN ('PENDING_LEVEL_ONE', 'PENDING_LEVEL_TWO');
 ===ENDFILE
