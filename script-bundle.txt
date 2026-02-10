@@ -1,36 +1,19 @@
 # CCaaS Script - Database Setup Bundle
-# Generated: 2026-02-10 13:06:09
-# Total files: 19
-# Categories: 3 shell scripts, 3 schema SQL, 11 seed SQL, 1 config, 1 docs
+# Generated: 2026-02-10 13:16:07
+# Total files: 15
+# Categories: 3 shell scripts, 2 schema SQL, 9 seed SQL, 1 docs
 ===FILE: ./README.md
 # CCaaS Platform - Database Scripts
 
-Database setup scripts for the CCaaS (Contact Center as a Service) platform. Creates all tables, indexes, triggers, and loads demo seed data for PostgreSQL.
+Database setup scripts for the CCaaS (Contact Center as a Service) platform. Creates all tables, indexes, triggers, and loads seed data for PostgreSQL.
 
 ## Prerequisites
 
-- PostgreSQL 15+ (tested with 15-alpine)
+- PostgreSQL 15+ (AWS RDS or any PostgreSQL instance)
 - `psql` client installed
 - Network access to the target PostgreSQL instance
 
-## Quick Start (Local Docker)
-
-```bash
-# 1. Start PostgreSQL
-docker compose up -d postgres
-
-# 2. Wait for it to be ready (5-10 seconds)
-docker compose exec postgres pg_isready -U hsbc_user -d hsbc_ccaas
-
-# 3. Create schema + seed data
-chmod +x *.sh
-./setup-database.sh
-
-# 4. Validate
-./validate-database.sh
-```
-
-## AWS / Remote Deployment
+## Deployment (AWS RDS)
 
 ```bash
 # 1. Create database and user (requires admin/superuser access)
@@ -69,11 +52,8 @@ All scripts accept:
 
 `setup-database.sh` also accepts:
 - `--skip-seed` - Create schema only (no seed data)
-- `--skip-demo` - Skip demo customer data (keep production reference data)
 
-## Database Schema
-
-### Production Tables (22 tables)
+## Database Schema (19 tables)
 
 **Reference Data:**
 - `ref_regions` - 3 regions (EMEA, AMER, APAC)
@@ -83,7 +63,7 @@ All scripts accept:
 
 **Entitlements:**
 - `role_layout_templates` - 4 role templates (admin, voice_agent, chat_agent, supervisor)
-- `ad_group_layout_assignments` - 30 AD group configurations
+- `ad_group_layout_assignments` - 30+ AD group configurations
 - `user_layout_configurations` - Cached computed layouts
 - `user_role_assignments` - User-to-role mappings
 
@@ -91,10 +71,10 @@ All scripts accept:
 - `embedded_apps` - 10 embedded applications
 - `embedded_app_routes` - App routing
 - `embedded_app_ad_group_functions` - Per-group function toggles
-- `intent_app_mappings` - 94 AI intent-to-app mappings
+- `intent_app_mappings` - 65 AI intent-to-app mappings
 
 **Approval Workflow:**
-- `approval_rules` - 16 criticality rules
+- `approval_rules` - 15 criticality rules
 - `pending_changes` - Maker/checker pending changes
 - `change_audit_log` - Full audit trail
 
@@ -104,22 +84,6 @@ All scripts accept:
 - `admin_notice_roles` - Notice targeting by role
 - `admin_notice_user_states` - Acknowledgement tracking
 
-### Demo Tables (for local development)
-- `customers` - 8 demo customers
-- `customer_interactions` - 30 interaction records
-- `agent_metrics` - Agent performance metrics
-- `documents` - Knowledge base articles
-
-## Connection Details
-
-| Setting | Default |
-|---------|---------|
-| Host | `localhost` |
-| Port | `5432` |
-| Database | `hsbc_ccaas` |
-| User | `hsbc_user` |
-| Password | `hsbc_secure_pass` |
-
 ## File Structure
 
 ```
@@ -127,11 +91,9 @@ ccaas-script/
   create-database.sh          # Step 1: Create DB + user
   setup-database.sh           # Step 2: Schema + seed data
   validate-database.sh        # Step 3: Validate everything
-  docker-compose.yml          # Local PostgreSQL + Kafka + pgAdmin
   sql/
     schema/
       01-create-tables.sql           # Core tables + indexes + triggers
-      02-create-demo-tables.sql      # Demo-only tables (customers, etc.)
       03-create-approval-workflow-tables.sql  # Approval workflow tables
     seed/
       seed-01-ref-regions.sql        # 3 regions
@@ -139,12 +101,10 @@ ccaas-script/
       seed-02-ref-countries.sql      # 37 countries
       seed-03-ref-business-units.sql # 3 business units
       seed-04-role-layout-templates.sql     # 4 role templates
-      seed-05-ad-group-layout-assignments.sql  # 30 AD groups
-      seed-06-customers.sql          # 8 demo customers
+      seed-05-ad-group-layout-assignments.sql  # 30+ AD groups
       seed-07-embedded-apps.sql      # 10 embedded apps
-      seed-08-intent-app-mappings.sql # 94 intent mappings
-      seed-10-customer-interactions.sql # 30 interactions
-      seed-11-approval-rules.sql     # 16 approval rules
+      seed-08-intent-app-mappings.sql # 65 intent mappings
+      seed-11-approval-rules.sql     # 15 approval rules
 ```
 ===ENDFILE
 ===FILE: ./create-database.sh
@@ -274,120 +234,6 @@ echo "Connection string:"
 echo "  postgresql://$DB_USER:$DB_PASS@$DB_HOST:$DB_PORT/$DB_NAME"
 echo ""
 ===ENDFILE
-===FILE: ./docker-compose.yml
-version: '3.8'
-
-services:
-  postgres:
-    image: postgres:15-alpine
-    container_name: hsbc-postgres
-    ports:
-      - "5432:5432"
-    environment:
-      POSTGRES_DB: hsbc_ccaas
-      POSTGRES_USER: hsbc_user
-      POSTGRES_PASSWORD: hsbc_secure_pass
-      POSTGRES_INIT_DB_ARGS: "--encoding=UTF8 --locale=en_US.UTF-8"
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    networks:
-      - hsbc-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U hsbc_user -d hsbc_ccaas"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  pgadmin:
-    image: dpage/pgadmin4:latest
-    container_name: hsbc-pgadmin
-    ports:
-      - "8082:80"
-    environment:
-      PGADMIN_DEFAULT_EMAIL: admin@hsbc.com
-      PGADMIN_DEFAULT_PASSWORD: admin123
-      PGADMIN_CONFIG_ENHANCED_COOKIE_PROTECTION: 'True'
-      PGADMIN_CONFIG_LOGIN_BANNER: '"HSBC CCAAS Database Admin"'
-      PGADMIN_CONFIG_CONSOLE_LOG_LEVEL: '10'
-    volumes:
-      - pgadmin-data:/var/lib/pgadmin
-    networks:
-      - hsbc-network
-    depends_on:
-      - postgres
-
-  zookeeper:
-    image: confluentinc/cp-zookeeper:7.3.0
-    hostname: zookeeper
-    container_name: hsbc-zookeeper
-    ports:
-      - "2181:2181"
-    environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_TICK_TIME: 2000
-    networks:
-      - hsbc-network
-    volumes:
-      - zookeeper-data:/var/lib/zookeeper/data
-      - zookeeper-logs:/var/lib/zookeeper/log
-
-  kafka:
-    image: confluentinc/cp-kafka:7.3.0
-    hostname: kafka
-    container_name: hsbc-kafka
-    depends_on:
-      - zookeeper
-    ports:
-      - "9092:9092"
-      - "9101:9101"
-    environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
-      KAFKA_JMX_PORT: 9101
-      KAFKA_JMX_HOSTNAME: localhost
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
-      KAFKA_LOG4J_LOGGERS: "kafka.controller=INFO,kafka.producer.async.DefaultEventHandler=INFO,state.change.logger=INFO"
-    networks:
-      - hsbc-network
-    volumes:
-      - kafka-data:/var/lib/kafka/data
-    healthcheck:
-      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  kafka-ui:
-    image: provectuslabs/kafka-ui:latest
-    container_name: hsbc-kafka-ui
-    depends_on:
-      - kafka
-    ports:
-      - "8090:8080"
-    environment:
-      KAFKA_CLUSTERS_0_NAME: local
-      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
-      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
-    networks:
-      - hsbc-network
-
-networks:
-  hsbc-network:
-    driver: bridge
-
-volumes:
-  postgres-data:
-  pgadmin-data:
-  zookeeper-data:
-  zookeeper-logs:
-  kafka-data:
-===ENDFILE
 ===FILE: ./setup-database.sh
 #!/bin/bash
 # =====================================================================
@@ -417,7 +263,6 @@ DB_NAME="${PGDATABASE:-hsbc_ccaas}"
 DB_USER="${PGUSER:-hsbc_user}"
 DB_PASS="${PGPASSWORD:-hsbc_secure_pass}"
 SKIP_SEED=false
-SKIP_DEMO=false
 
 # =====================================================================
 # Parse command line arguments
@@ -432,7 +277,6 @@ usage() {
     echo "  --user USER       Database user (default: hsbc_user)"
     echo "  --pass PASSWORD   Database password"
     echo "  --skip-seed       Skip seed data (create schema only)"
-    echo "  --skip-demo       Skip demo/test data (customers, interactions)"
     echo "  --help            Show this help message"
     echo ""
     echo "Environment variables: PGHOST, PGPORT, PGUSER, PGPASSWORD, PGDATABASE"
@@ -447,7 +291,6 @@ while [[ $# -gt 0 ]]; do
         --user) DB_USER="$2"; shift 2 ;;
         --pass) DB_PASS="$2"; shift 2 ;;
         --skip-seed) SKIP_SEED=true; shift ;;
-        --skip-demo) SKIP_DEMO=true; shift ;;
         --help) usage ;;
         *) echo "Unknown option: $1"; usage ;;
     esac
@@ -473,7 +316,6 @@ echo "  Host:     $DB_HOST:$DB_PORT"
 echo "  Database: $DB_NAME"
 echo "  User:     $DB_USER"
 echo "  Seed:     $([ "$SKIP_SEED" = true ] && echo 'SKIP' || echo 'YES')"
-echo "  Demo:     $([ "$SKIP_DEMO" = true ] && echo 'SKIP' || echo 'YES')"
 echo ""
 
 # Test connection
@@ -482,14 +324,11 @@ if ! psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -c "SELECT 1" 
     echo ""
     echo "ERROR: Cannot connect to PostgreSQL at $DB_HOST:$DB_PORT"
     echo ""
-    echo "If the database doesn't exist yet, create it with:"
-    echo "  createdb -h $DB_HOST -p $DB_PORT -U postgres $DB_NAME"
-    echo "  psql -h $DB_HOST -p $DB_PORT -U postgres -c \"CREATE USER $DB_USER WITH PASSWORD '$DB_PASS';\""
-    echo "  psql -h $DB_HOST -p $DB_PORT -U postgres -c \"GRANT ALL PRIVILEGES ON DATABASE $DB_NAME TO $DB_USER;\""
-    echo "  psql -h $DB_HOST -p $DB_PORT -U postgres -d $DB_NAME -c \"GRANT ALL ON SCHEMA public TO $DB_USER;\""
+    echo "If the database doesn't exist yet, run create-database.sh first:"
+    echo "  ./create-database.sh --host $DB_HOST --port $DB_PORT"
     echo ""
-    echo "Or start the included Docker Compose:"
-    echo "  docker compose up -d postgres"
+    echo "For local development, start Docker Compose:"
+    echo "  docker compose up -d"
     exit 1
 fi
 echo "Connection OK."
@@ -540,22 +379,12 @@ else
     echo "  Loading embedded apps data..."
     echo "    - Embedded Apps (10 apps)"
     $PSQL -f "$SEED_DIR/seed-07-embedded-apps.sql" > /dev/null
-    echo "    - Intent App Mappings (94 mappings)"
+    echo "    - Intent App Mappings (65 mappings)"
     $PSQL -f "$SEED_DIR/seed-08-intent-app-mappings.sql" > /dev/null
 
     echo "  Loading approval rules..."
-    echo "    - Approval Rules (16 rules)"
+    echo "    - Approval Rules (15 rules)"
     $PSQL -f "$SEED_DIR/seed-11-approval-rules.sql" > /dev/null
-
-    if [ "$SKIP_DEMO" = false ]; then
-        echo "  Loading demo/test data..."
-        echo "    - Customers (8 records)"
-        $PSQL -f "$SEED_DIR/seed-06-customers.sql" > /dev/null
-        echo "    - Customer Interactions (30 records)"
-        $PSQL -f "$SEED_DIR/seed-10-customer-interactions.sql" > /dev/null
-    else
-        echo "  Skipping demo/test data (--skip-demo)."
-    fi
 
     echo ""
     echo "Seed data loaded successfully."
@@ -581,8 +410,6 @@ UNION ALL SELECT 'intent_app_mappings', COUNT(*) FROM intent_app_mappings
 UNION ALL SELECT 'approval_rules', COUNT(*) FROM approval_rules
 UNION ALL SELECT 'pending_changes', COUNT(*) FROM pending_changes
 UNION ALL SELECT 'change_audit_log', COUNT(*) FROM change_audit_log
-UNION ALL SELECT 'customers', COUNT(*) FROM customers
-UNION ALL SELECT 'customer_interactions', COUNT(*) FROM customer_interactions
 UNION ALL SELECT 'user_role_assignments', COUNT(*) FROM user_role_assignments
 UNION ALL SELECT 'user_layout_configurations', COUNT(*) FROM user_layout_configurations
 UNION ALL SELECT 'admin_notices', COUNT(*) FROM admin_notices
@@ -634,10 +461,6 @@ DROP TABLE IF EXISTS user_role_assignments CASCADE;
 DROP TABLE IF EXISTS user_layout_configurations CASCADE;
 DROP TABLE IF EXISTS ad_group_layout_assignments CASCADE;
 DROP TABLE IF EXISTS role_layout_templates CASCADE;
-DROP TABLE IF EXISTS customer_interactions CASCADE;
-DROP TABLE IF EXISTS customers CASCADE;
-DROP TABLE IF EXISTS agent_metrics CASCADE;
-DROP TABLE IF EXISTS documents CASCADE;
 DROP TABLE IF EXISTS ref_countries CASCADE;
 DROP TABLE IF EXISTS ref_markets CASCADE;
 DROP TABLE IF EXISTS ref_regions CASCADE;
@@ -696,99 +519,6 @@ CREATE TABLE ref_business_units (
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- =====================================================================
--- CUSTOMER & INTERACTION TABLES
--- =====================================================================
-
--- Customers table
-CREATE TABLE customers (
-    account_number VARCHAR(20) PRIMARY KEY,
-    cin VARCHAR(20) UNIQUE,
-    name VARCHAR(100) NOT NULL,
-    tier VARCHAR(50) NOT NULL,
-    phone VARCHAR(30),
-    email VARCHAR(100),
-    location VARCHAR(100),
-    balance NUMERIC,
-    credit_score INTEGER,
-    products TEXT[],
-    member_since DATE,
-    account_type VARCHAR(50),
-    monthly_income NUMERIC,
-    risk_profile VARCHAR(20),
-    occupation VARCHAR(100),
-    age INTEGER,
-    verification_status VARCHAR(20) DEFAULT 'pending',
-    care_need VARCHAR(20) DEFAULT 'none',
-    total_interactions INTEGER DEFAULT 0,
-    last_contact_date TIMESTAMP,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Customer interactions table
-CREATE TABLE customer_interactions (
-    interaction_id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
-    account_number VARCHAR(20),
-    interaction_date TIMESTAMP NOT NULL,
-    interaction_type VARCHAR(50),
-    channel VARCHAR(50),
-    interaction_medium VARCHAR(50),
-    social_handle VARCHAR(100),
-    subject VARCHAR(200),
-    description TEXT,
-    interaction_context TEXT,
-    interaction_outcome VARCHAR(50),
-    sentiment VARCHAR(20),
-    duration_minutes INTEGER,
-    response_time_minutes INTEGER,
-    resolution_time_minutes INTEGER,
-    status VARCHAR(20),
-    agent_name VARCHAR(100),
-    resolution_notes TEXT,
-    satisfaction_rating INTEGER,
-    follow_up_required BOOLEAN DEFAULT FALSE,
-    channel_icon VARCHAR(50),
-    priority_level VARCHAR(20),
-    tags TEXT[],
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Agent metrics table
-CREATE TABLE agent_metrics (
-    id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
-    agent_id VARCHAR(50) NOT NULL,
-    calls_today INTEGER DEFAULT 0,
-    avg_handle_time INTEGER DEFAULT 0,
-    resolution_rate NUMERIC(5,2) DEFAULT 0.00,
-    satisfaction_score NUMERIC(5,2) DEFAULT 0.00,
-    first_call_resolution NUMERIC(5,2) DEFAULT 0.00,
-    calls_handled INTEGER DEFAULT 0,
-    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT agent_metrics_agent_id_timestamp_key UNIQUE (agent_id, timestamp)
-);
-
--- =====================================================================
--- KNOWLEDGE MANAGEMENT TABLES
--- =====================================================================
-
--- Documents table (knowledge articles)
-CREATE TABLE documents (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    title TEXT NOT NULL,
-    content TEXT NOT NULL,
-    url TEXT,
-    category VARCHAR(100),
-    product VARCHAR(100),
-    country_code VARCHAR(2),
-    locale VARCHAR(10),
-    tags TEXT[],
-    entitlement_groups TEXT[],
-    search_vector TSVECTOR,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- =====================================================================
@@ -1035,42 +765,6 @@ CREATE TABLE admin_notice_user_states (
 CREATE INDEX idx_ref_countries_region ON ref_countries(region_code);
 
 -- =====================================================================
--- INDEXES - Customer & Interactions
--- =====================================================================
-
-CREATE INDEX idx_customer_name ON customers(name);
-CREATE INDEX idx_customer_phone ON customers(phone);
-CREATE INDEX idx_customer_account ON customers(account_number);
-
-CREATE INDEX idx_interaction_account ON customer_interactions(account_number);
-CREATE INDEX idx_interaction_date ON customer_interactions(interaction_date DESC);
-CREATE INDEX idx_interaction_type ON customer_interactions(interaction_type);
-CREATE INDEX idx_interaction_agent ON customer_interactions(agent_name);
-
-CREATE INDEX idx_metrics_agent ON agent_metrics(agent_id);
-CREATE INDEX idx_metrics_timestamp ON agent_metrics(timestamp DESC);
-
--- =====================================================================
--- INDEXES - Documents (Knowledge Management)
--- =====================================================================
-
-CREATE INDEX idx_documents_category ON documents(category);
-CREATE INDEX idx_documents_product ON documents(product);
-CREATE INDEX idx_documents_country_locale ON documents(country_code, locale);
-CREATE INDEX idx_documents_category_product_updated ON documents(category, product, updated_at DESC);
-CREATE INDEX idx_documents_search_composite ON documents(category, product, updated_at DESC)
-    WHERE category IS NOT NULL AND product IS NOT NULL;
-CREATE INDEX idx_documents_search_covering ON documents(id, title, url, category, product, updated_at);
-CREATE INDEX idx_documents_search_covering_v2 ON documents(id, title, url, category, product, updated_at, country_code, locale)
-    INCLUDE (content);
-CREATE INDEX idx_documents_entitlements ON documents USING GIN(entitlement_groups);
-CREATE INDEX idx_documents_entitlements_composite ON documents USING GIN(entitlement_groups)
-    WHERE entitlement_groups IS NOT NULL AND array_length(entitlement_groups, 1) > 0;
-CREATE INDEX idx_documents_fts ON documents USING GIN(to_tsvector('english', COALESCE(title, '') || ' ' || COALESCE(content, '')));
-CREATE INDEX idx_documents_search_vector ON documents USING GIN(search_vector);
-CREATE INDEX idx_documents_title_trgm ON documents USING GIN(title gin_trgm_ops);
-
--- =====================================================================
 -- INDEXES - User Layout Configurations
 -- =====================================================================
 
@@ -1184,24 +878,6 @@ CREATE INDEX idx_admin_notice_user_states_state ON admin_notice_user_states(stat
 -- TRIGGERS - Auto-Maintain Search Vectors
 -- =====================================================================
 
--- Document search_vector trigger (for knowledge articles)
-CREATE OR REPLACE FUNCTION update_document_search_vector()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.search_vector :=
-        setweight(to_tsvector('english', coalesce(NEW.title,'')), 'A') ||
-        setweight(to_tsvector('english', coalesce(NEW.content,'')), 'B') ||
-        setweight(to_tsvector('english', coalesce(array_to_string(NEW.tags, ' '),'')), 'C');
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER trg_update_document_search_vector
-    BEFORE INSERT OR UPDATE OF title, content, tags
-    ON documents
-    FOR EACH ROW
-    EXECUTE FUNCTION update_document_search_vector();
-
 -- Embedded app search_vector and search_text trigger
 CREATE OR REPLACE FUNCTION update_embedded_app_search_vector()
 RETURNS TRIGGER AS $$
@@ -1233,178 +909,14 @@ CREATE TRIGGER trg_update_embedded_app_search_vector
     FOR EACH ROW
     EXECUTE FUNCTION update_embedded_app_search_vector();
 
-COMMENT ON FUNCTION update_document_search_vector() IS
-'Automatically maintains search_vector for documents table. Fires on INSERT/UPDATE of searchable fields.';
-
 COMMENT ON FUNCTION update_embedded_app_search_vector() IS
 'Automatically maintains search_text and search_vector for embedded_apps table. Fires on INSERT/UPDATE of searchable fields.';
-
-COMMENT ON TRIGGER trg_update_document_search_vector ON documents IS
-'Auto-updates FTS fields when title, content, or tags change';
 
 COMMENT ON TRIGGER trg_update_embedded_app_search_vector ON embedded_apps IS
 'Auto-updates FTS fields when title, description, keywords, or category changes';
 
 -- =====================================================================
 -- END OF SCRIPT
--- =====================================================================
-===ENDFILE
-===FILE: ./sql/schema/02-create-demo-tables.sql
--- =====================================================================
--- HSBC Platform - Demo/Test Tables
--- =====================================================================
--- IMPORTANT: These tables are for LOCAL DEVELOPMENT AND TESTING ONLY
--- DO NOT use these tables in production environments
--- Production systems should integrate with external CRM, KMS, and metrics systems
--- =====================================================================
--- These tables provide sample data for UI testing and development:
--- - customers: Demo customer profiles
--- - customer_interactions: Sample interaction history  
--- - agent_metrics: Mock agent performance data
--- - documents: Sample knowledge base articles
--- =====================================================================
-
--- Required extensions (idempotent)
-CREATE EXTENSION IF NOT EXISTS "pgcrypto";
-CREATE EXTENSION IF NOT EXISTS "pg_trgm";
-
--- =====================================================================
--- DROP DEMO TABLES
--- =====================================================================
-
-DROP TABLE IF EXISTS customer_interactions CASCADE;
-DROP TABLE IF EXISTS customers CASCADE;
-DROP TABLE IF EXISTS agent_metrics CASCADE;
-DROP TABLE IF EXISTS documents CASCADE;
-
--- =====================================================================
--- CUSTOMER & INTERACTION TABLES
--- =====================================================================
-
--- Customers table
-CREATE TABLE customers (
-    account_number VARCHAR(20) PRIMARY KEY,
-    cin VARCHAR(20) UNIQUE,
-    name VARCHAR(100) NOT NULL,
-    tier VARCHAR(50) NOT NULL,
-    phone VARCHAR(30),
-    email VARCHAR(100),
-    location VARCHAR(100),
-    balance NUMERIC,
-    credit_score INTEGER,
-    products TEXT[],
-    member_since DATE,
-    account_type VARCHAR(50),
-    monthly_income NUMERIC,
-    risk_profile VARCHAR(20),
-    occupation VARCHAR(100),
-    age INTEGER,
-    verification_status VARCHAR(20) DEFAULT 'pending',
-    care_need VARCHAR(20) DEFAULT 'none',
-    total_interactions INTEGER DEFAULT 0,
-    last_contact_date TIMESTAMP,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Customer interactions table
-CREATE TABLE customer_interactions (
-    interaction_id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
-    account_number VARCHAR(20),
-    interaction_date TIMESTAMP NOT NULL,
-    interaction_type VARCHAR(50),
-    channel VARCHAR(50),
-    interaction_medium VARCHAR(50),
-    social_handle VARCHAR(100),
-    subject VARCHAR(200),
-    description TEXT,
-    interaction_context TEXT,
-    interaction_outcome VARCHAR(50),
-    sentiment VARCHAR(20),
-    duration_minutes INTEGER,
-    response_time_minutes INTEGER,
-    resolution_time_minutes INTEGER,
-    status VARCHAR(20),
-    agent_name VARCHAR(100),
-    resolution_notes TEXT,
-    satisfaction_rating INTEGER,
-    follow_up_required BOOLEAN DEFAULT FALSE,
-    channel_icon VARCHAR(50),
-    priority_level VARCHAR(20),
-    tags TEXT[],
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Agent metrics table
-CREATE TABLE agent_metrics (
-    id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
-    agent_id VARCHAR(50) NOT NULL,
-    calls_today INTEGER DEFAULT 0,
-    avg_handle_time INTEGER DEFAULT 0,
-    resolution_rate NUMERIC(5,2) DEFAULT 0.00,
-    satisfaction_score NUMERIC(5,2) DEFAULT 0.00,
-    first_call_resolution NUMERIC(5,2) DEFAULT 0.00,
-    calls_handled INTEGER DEFAULT 0,
-    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT agent_metrics_agent_id_timestamp_key UNIQUE (agent_id, timestamp)
-);
-
--- =====================================================================
--- KNOWLEDGE MANAGEMENT TABLES
--- =====================================================================
-
--- Documents table (knowledge articles)
-CREATE TABLE documents (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    title TEXT NOT NULL,
-    content TEXT NOT NULL,
-    url TEXT,
-    category VARCHAR(100),
-    product VARCHAR(100),
-    country_code VARCHAR(2),
-    locale VARCHAR(10),
-    tags TEXT[],
-    entitlement_groups TEXT[],
-    search_vector TSVECTOR,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
--- =====================================================================
--- INDEXES - Customer & Interactions
--- =====================================================================
-
-CREATE INDEX idx_customer_name ON customers(name);
-CREATE INDEX idx_customer_phone ON customers(phone);
-CREATE INDEX idx_customer_account ON customers(account_number);
-
-CREATE INDEX idx_interaction_account ON customer_interactions(account_number);
-CREATE INDEX idx_interaction_date ON customer_interactions(interaction_date DESC);
-CREATE INDEX idx_interaction_type ON customer_interactions(interaction_type);
-CREATE INDEX idx_interaction_agent ON customer_interactions(agent_name);
-
-CREATE INDEX idx_metrics_agent ON agent_metrics(agent_id);
-CREATE INDEX idx_metrics_timestamp ON agent_metrics(timestamp DESC);
-
--- =====================================================================
--- INDEXES - Documents (Knowledge Management)
--- =====================================================================
-
-CREATE INDEX idx_documents_category ON documents(category);
-CREATE INDEX idx_documents_product ON documents(product);
-CREATE INDEX idx_documents_country_locale ON documents(country_code, locale);
-CREATE INDEX idx_documents_category_product_updated ON documents(category, product, updated_at DESC);
-CREATE INDEX idx_documents_search_composite ON documents(category, product, updated_at DESC)
-    WHERE category IS NOT NULL AND product IS NOT NULL;
-CREATE INDEX idx_documents_search_covering ON documents(id, title, url, category, product, updated_at);
-CREATE INDEX idx_documents_search_covering_v2 ON documents(id, title, url, category, product, updated_at, country_code, locale)
-    INCLUDE (content);
-CREATE INDEX idx_documents_entitlements ON documents USING GIN(entitlement_groups);
-CREATE INDEX idx_documents_entitlements_composite ON documents USING GIN(entitlement_groups)
-    WHERE entitlement_groups IS NOT NULL AND array_length(entitlement_groups, 1) > 0;
-CREATE INDEX idx_documents_fts ON documents USING GIN(to_tsvector('english', COALESCE(title, '') || ' ' || COALESCE(content, '')));
-CREATE INDEX idx_documents_search_vector ON documents USING GIN(search_vector);
-CREATE INDEX idx_documents_title_trgm ON documents USING GIN(title gin_trgm_ops);
-
 -- =====================================================================
 ===ENDFILE
 ===FILE: ./sql/schema/03-create-approval-workflow-tables.sql
@@ -1931,80 +1443,6 @@ SET checker_ad_group = 'CN=Admin_Checker_GLOBAL,OU=Admin,OU=Groups,DC=hsbc,DC=co
     super_admin_ad_group = 'CN=Super_Admin_EMEA,OU=Admin,OU=Groups,DC=hsbc,DC=com'
 WHERE group_identifier = 'CN=Admin_Checker_GLOBAL,OU=Admin,OU=Groups,DC=hsbc,DC=com';
 ===ENDFILE
-===FILE: ./sql/seed/seed-06-customers.sql
--- =====================================================================
--- HSBC Platform - Seed Data
--- Customer Table: Customers
--- =====================================================================
-
-TRUNCATE TABLE customers CASCADE;
-
-INSERT INTO customers (
-    account_number, cin, name, tier, phone, email, location,
-    balance, credit_score, products, member_since, account_type,
-    verification_status, care_need, total_interactions, created_at, updated_at
-) VALUES
-
--- Premier Banking Customers
-('HSBC0001234', 'CIN-789456123', 'Jonathan Mitchell', 'Premier Banking',
- '+44-20-7946-0958', 'j.mitchell@email.com', 'London, UK',
- 125000.00, 780,
- ARRAY['Premier Account', 'Mortgage', 'Credit Card', 'Investment ISA'],
- '2015-03-15', 'Premier Current Account',
- 'verified', 'none', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-
-('HSBC0001236', 'CIN-321654987', 'Victoria Pemberton', 'Premier Banking',
- '+44-161-999-8877', 'v.pemberton@email.com', 'Manchester, UK',
- 95000.00, 750,
- ARRAY['Premier Account', 'Travel Insurance', 'Premier Credit Card'],
- '2018-11-08', 'Premier Current Account',
- 'verified', 'none', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-
-('HSBC0002223', 'CIN-889977665', 'Audrey Gertrude Antimony', 'Personal Banking',
- '+44-161-234-5678', 'audrey.antimony@email.com', 'Manchester, UK',
- 2847.00, 720,
- ARRAY['Personal Current Account', 'Fixed Term Savings Account ****2223'],
- '2012-03-15', 'Personal Banking Package',
- 'verified', 'none', 9, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-
--- Jade Banking Customers
-('HSBC0002001', 'CIN-147258369', 'Sarah Chen Wei', 'Jade Banking',
- '+852-2234-5678', 's.chenwei@email.com', 'Hong Kong',
- 8500000.00, 850,
- ARRAY['Jade Account', 'Wealth Management', 'Private Banking', 'Multiple Properties'],
- '2018-01-20', 'Jade Account',
- 'verified', 'none', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-
-('HSBC0002002', 'CIN-963852741', 'Michael Zhang', 'Jade Banking',
- '+86-21-6234-5678', 'm.zhang@email.com', 'Shanghai, China',
- 15000000.00, 830,
- ARRAY['Jade Account', 'Investment Advisory', 'Art Finance', 'Global Transfers'],
- '2016-05-12', 'Jade Account',
- 'verified', 'none', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-
--- HSBC Advance Customer
-('HSBC0003002', 'CIN-369258147', 'Emily Davis', 'HSBC Advance',
- '+1-617-555-0234', 'e.davis@email.com', 'Boston, MA',
- 42000.00, 690,
- ARRAY['Advance Account', 'Student Loan Refinance'],
- '2021-06-28', 'Advance Account',
- 'verified', 'none', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-
--- Student Banking Customers
-('HSBC0006001', 'CIN-975318642', 'Oliver Chen', 'Student Banking',
- '+44-1865-234567', 'o.chen@student.com', 'Oxford, UK',
- 850.00, 600,
- ARRAY['Student Account', 'Student Overdraft'],
- '2022-09-01', 'Student Account',
- 'verified', 'none', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-
-('HSBC0006002', 'CIN-642975318', 'Emma Thompson', 'Student Banking',
- '+44-113-555-0123', 'e.thompson@student.com', 'Leeds, UK',
- 420.00, 580,
- ARRAY['Student Account', 'Student Credit Card'],
- '2023-09-15', 'Student Account',
- 'verified', 'none', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
-===ENDFILE
 ===FILE: ./sql/seed/seed-07-embedded-apps.sql
 --
 -- Seed data for embedded_apps table
@@ -2177,250 +1615,6 @@ WHERE is_enabled = TRUE
 GROUP BY app_key
 ORDER BY app_key;
 ===ENDFILE
-===FILE: ./sql/seed/seed-10-customer-interactions.sql
--- =====================================================================
--- HSBC Platform - Seed Data
--- Customer Interactions Table: Customer Interaction History
--- =====================================================================
-
-\echo 'Loading Customer Interactions...'
-
-TRUNCATE TABLE customer_interactions CASCADE;
-
-INSERT INTO customer_interactions (
-    account_number, interaction_date, interaction_type, channel, interaction_medium,
-    social_handle, subject, description, interaction_context, interaction_outcome,
-    sentiment, duration_minutes, response_time_minutes, resolution_time_minutes,
-    status, agent_name, resolution_notes, satisfaction_rating, follow_up_required,
-    channel_icon, priority_level, tags, created_at
-) VALUES
-
--- =====================================================================
--- Jonathan Mitchell (HSBC0001234) - Premier Banking
--- =====================================================================
-('HSBC0001234', '2024-10-01 10:30:00', 'Service Request', 'Voice', 'Phone Call',
- NULL, 'Mortgage Rate Review', 'Customer called to discuss current mortgage rates and potential refinancing options',
- 'Customer has existing mortgage and wants to explore rate reduction opportunities', 'Resolved',
- 'Positive', 18, 2, 18, 'Resolved', 'Sarah Johnson', 'Provided current rates and scheduled meeting with mortgage advisor',
- 5, false, 'phone', 'Medium', ARRAY['mortgage', 'refinancing', 'rates'], '2024-10-01 10:30:00'),
-
-('HSBC0001234', '2024-09-15 14:20:00', 'Account Management', 'Web Chat', 'Online Chat',
- NULL, 'Credit Card Limit Increase', 'Request to increase credit limit on Premier Credit Card',
- 'Customer planning international travel and needs higher credit limit', 'Resolved',
- 'Positive', 12, 1, 12, 'Resolved', 'James Chen', 'Approved £5,000 limit increase. New limit: £20,000',
- 4, false, 'message-circle', 'Low', ARRAY['credit-card', 'limit-increase', 'approved'], '2024-09-15 14:20:00'),
-
-('HSBC0001234', '2024-08-22 09:45:00', 'Inquiry', 'Email', 'Email',
- NULL, 'Investment ISA Performance', 'Question about current ISA performance and contribution limits',
- 'Customer wants to maximize ISA contributions before tax year end', 'Resolved',
- 'Neutral', NULL, 45, 180, 'Resolved', 'Emma Williams', 'Sent portfolio performance report and contribution details',
- 4, false, 'mail', 'Low', ARRAY['investment', 'ISA', 'contributions'], '2024-08-22 09:45:00'),
-
--- =====================================================================
--- Audrey Gertrude Antimony (****2223) - Personal Banking
--- =====================================================================
-('HSBC0002223', NOW() - INTERVAL '15 minutes', 'Complaint', 'Web Chat', 'Online Chat',
- NULL, 'Account Closure Request', 'Customer stated: "I want to close my account". Agent asked which account and transfer destination.',
- 'Customer wants to close savings account ending in ****2223. Balance: £2,847. Dissatisfied with £5 monthly fee. Escalated from chat to voice for retention discussion.', 'Escalated to Voice',
- 'Negative', 8, 1, NULL, 'Escalated to Voice', 'Chat Agent', 'Customer requested closure of account ****2223. Escalated to voice agent for retention conversation.',
- 2, true, 'message-circle', 'High', ARRAY['account-closure', 'complaint', 'retention', 'fees'], NOW() - INTERVAL '15 minutes'),
-
-('HSBC0002223', '2024-09-20 10:15:00', 'Service Request', 'Voice', 'Phone Call',
- NULL, 'Lost Debit Card Replacement', 'Customer lost debit card while shopping in Manchester city center',
- 'Card last used at Sainsbury''s. No suspicious transactions. Needs emergency replacement.', 'Resolved',
- 'Neutral', 12, 2, 12, 'Resolved', 'Marcus Williams', 'Old card canceled. New card dispatched. Expected delivery 3-5 business days. Temporary card available at branch.',
- 4, false, 'phone', 'High', ARRAY['lost-card', 'replacement', 'security'], '2024-09-20 10:15:00'),
-
-('HSBC0002223', '2024-08-14 14:30:00', 'Inquiry', 'Email', 'Email',
- NULL, 'Standing Order Setup Question', 'Needs help setting up monthly standing order for rent payment',
- 'Monthly rent £850 to landlord account. First payment next month.', 'Resolved',
- 'Positive', NULL, 30, 90, 'Resolved', 'Jennifer Parker', 'Provided step-by-step guide. Standing order configured successfully.',
- 5, false, 'mail', 'Low', ARRAY['standing-order', 'rent', 'setup'], '2024-08-14 14:30:00'),
-
-('HSBC0002223', '2024-07-22 16:45:00', 'Complaint', 'Voice', 'Phone Call',
- NULL, 'Unexpected Monthly Fee Charge', 'Charged £5 monthly maintenance fee without prior notification',
- 'Customer not aware of fee changes. Account had free banking for 12 years.', 'Resolved',
- 'Negative', 18, 3, 18, 'Resolved', 'David Roberts', 'Explained fee structure change. Offered fee waiver if minimum balance maintained. Customer accepted.',
- 3, false, 'phone', 'Medium', ARRAY['fees', 'complaint', 'account-maintenance'], '2024-07-22 16:45:00'),
-
-('HSBC0002223', '2024-06-10 11:20:00', 'Service Request', 'In-Branch', 'Branch Visit',
- NULL, 'Update Contact Information', 'Customer moved house, needs to update address and phone number',
- 'New address: 42 Oxford Road, Manchester M13 9PL', 'Resolved',
- 'Positive', 15, 0, 15, 'Resolved', 'Branch Staff', 'Updated address, phone, and email. Confirmed all contact details.',
- 5, false, 'building', 'Low', ARRAY['contact-update', 'address-change'], '2024-06-10 11:20:00'),
-
-('HSBC0002223', '2024-05-05 09:30:00', 'Inquiry', 'Web Chat', 'Online Chat',
- NULL, 'Savings Account Interest Rate Query', 'Question about current interest rates on savings accounts',
- 'Considering opening additional savings account for emergency fund', 'Resolved',
- 'Neutral', 10, 1, 10, 'Resolved', 'Sophie Taylor', 'Provided current rates: Easy Access 1.5%, Fixed Term 3.2%. Customer opened Fixed Term Savings account ending in 2223.',
- 4, false, 'message-circle', 'Low', ARRAY['savings', 'interest-rates', 'inquiry'], '2024-05-05 09:30:00'),
-
-('HSBC0002223', '2024-03-18 13:00:00', 'Service Request', 'Voice', 'Phone Call',
- NULL, 'Overdraft Protection Request', 'Requesting overdraft facility for account',
- 'Recently started part-time work, needs £500 overdraft buffer for emergencies', 'Resolved',
- 'Positive', 22, 2, 22, 'Resolved', 'Lisa Anderson', 'Approved £500 overdraft. 19.9% APR on used amount. Buffer active.',
- 4, false, 'phone', 'Medium', ARRAY['overdraft', 'credit-facility', 'approved'], '2024-03-18 13:00:00'),
-
-('HSBC0002223', '2024-01-25 15:50:00', 'Account Management', 'Email', 'Email',
- NULL, 'Annual Statement Request', 'Needs annual statement for 2023 tax purposes',
- 'Self-employed, requires full transaction history for tax return', 'Resolved',
- 'Positive', NULL, 60, 120, 'Resolved', 'Back Office Team', 'Annual statement generated and sent via secure email. Covers Jan-Dec 2023.',
- 5, false, 'mail', 'Low', ARRAY['statement', 'tax', 'annual-report'], '2024-01-25 15:50:00'),
-
--- =====================================================================
--- Victoria Pemberton (HSBC0001236) - Premier Banking
--- =====================================================================
-('HSBC0001236', '2024-10-10 16:15:00', 'Service Request', 'Voice', 'Phone Call',
- NULL, 'Travel Insurance Claim', 'Filing claim for delayed luggage during recent trip to Spain',
- 'Flight delayed 8 hours, luggage arrived 2 days late', 'In Progress',
- 'Neutral', 25, 3, NULL, 'In Progress', 'Michael Brown', 'Claim submitted. Reference: TRV-2024-1236. Processing time 5-7 business days',
- NULL, true, 'phone', 'High', ARRAY['insurance', 'claim', 'travel', 'luggage'], '2024-10-10 16:15:00'),
-
-('HSBC0001236', '2024-09-28 11:30:00', 'Inquiry', 'Web Chat', 'Online Chat',
- NULL, 'Foreign Exchange Rates', 'Query about EUR exchange rates for upcoming trip',
- 'Customer traveling to France next week and wants to exchange £2,000', 'Resolved',
- 'Positive', 8, 1, 8, 'Resolved', 'Sophie Taylor', 'Provided current rates. Order placed for currency pickup at Manchester branch',
- 5, false, 'message-circle', 'Low', ARRAY['forex', 'currency', 'travel'], '2024-09-28 11:30:00'),
-
-('HSBC0001236', '2024-08-05 13:45:00', 'Complaint', 'Email', 'Email',
- NULL, 'Unauthorized Transaction Alert', 'Received alert for transaction not recognized',
- 'Transaction for £450 at online retailer - customer claims did not authorize', 'Resolved',
- 'Negative', NULL, 30, 120, 'Resolved', 'David Roberts', 'Verified transaction was legitimate - customer spouse made purchase. Alert resolved',
- 3, false, 'mail', 'High', ARRAY['fraud-alert', 'transaction', 'security'], '2024-08-05 13:45:00'),
-
--- =====================================================================
--- Sarah Chen Wei (HSBC0002001) - Jade Banking
--- =====================================================================
-('HSBC0002001', '2024-10-12 10:00:00', 'Service Request', 'In-Branch', 'Branch Visit',
- NULL, 'Wealth Management Review', 'Quarterly portfolio review with relationship manager',
- 'Review investment strategy and rebalancing recommendations', 'Resolved',
- 'Positive', 60, 0, 60, 'Resolved', 'Richard Thompson', 'Portfolio performing well. Recommended 5% reallocation to emerging markets',
- 5, true, 'building', 'High', ARRAY['wealth-management', 'portfolio', 'review'], '2024-10-12 10:00:00'),
-
-('HSBC0002001', '2024-09-20 15:30:00', 'Service Request', 'Voice', 'Phone Call',
- NULL, 'International Wire Transfer', 'Large wire transfer to property purchase in Singapore',
- 'Purchasing investment property - transfer of $2.5M USD', 'Resolved',
- 'Positive', 35, 1, 35, 'Resolved', 'Jennifer Lee', 'Transfer initiated. Provided SWIFT details and expected completion date',
- 5, false, 'phone', 'High', ARRAY['wire-transfer', 'international', 'property'], '2024-09-20 15:30:00'),
-
-('HSBC0002001', '2024-08-15 14:00:00', 'Inquiry', 'Email', 'Email',
- NULL, 'Jade Credit Card Benefits', 'Question about airport lounge access in Europe',
- 'Traveling to multiple European cities and wants to confirm lounge access', 'Resolved',
- 'Positive', NULL, 60, 120, 'Resolved', 'Amanda Zhang', 'Confirmed access to all LoungeKey partner lounges. Sent complete list',
- 4, false, 'mail', 'Low', ARRAY['credit-card', 'benefits', 'travel', 'lounge-access'], '2024-08-15 14:00:00'),
-
--- =====================================================================
--- Michael Zhang (HSBC0002002) - Jade Banking  
--- =====================================================================
--- RECENT: Account Closure Request - Chat to Voice Escalation (Demo Story)
-('HSBC0002002', '2024-10-14 14:30:00', 'Complaint', 'Web Chat', 'Online Chat',
- NULL, 'Incorrect Overdraft Fee - Account Closure Request', 'Customer charged £35 overdraft fee incorrectly. Very frustrated and wants to close account.',
- 'Customer claims never went into overdraft. Fee charged on 2024-10-10. Requesting account closure.', 'Escalated to Voice',
- 'Negative', 8, 1, NULL, 'Pending Voice Call', 'James Chen', 'Escalated to voice agent for immediate resolution. Customer accepted call transfer.',
- NULL, true, 'message-circle', 'Urgent', ARRAY['overdraft-fee', 'incorrect-charge', 'account-closure', 'escalation', 'voice-transfer'], '2024-10-14 14:30:00'),
-
-('HSBC0002002', '2024-10-08 09:30:00', 'Service Request', 'Voice', 'Phone Call',
- NULL, 'Art Finance Consultation', 'Inquiry about financing for contemporary art acquisition',
- 'Considering purchase of artwork valued at $3M USD', 'In Progress',
- 'Positive', 42, 2, NULL, 'In Progress', 'Catherine Moore', 'Art finance specialist scheduled for consultation on Oct 15th',
- NULL, true, 'phone', 'High', ARRAY['art-finance', 'lending', 'consultation'], '2024-10-08 09:30:00'),
-
-('HSBC0002002', '2024-09-25 11:15:00', 'Account Management', 'Web Chat', 'Online Chat',
- NULL, 'Multi-Currency Account Setup', 'Request to add USD and EUR sub-accounts',
- 'Customer expanding business operations to US and Europe', 'Resolved',
- 'Positive', 15, 1, 15, 'Resolved', 'Kevin Liu', 'Added USD and EUR sub-accounts. Activated same-day',
- 5, false, 'message-circle', 'Medium', ARRAY['multi-currency', 'account-setup', 'business'], '2024-09-25 11:15:00'),
-
-('HSBC0002002', '2024-08-30 16:00:00', 'Service Request', 'Email', 'Email',
- NULL, 'Global Transfers Fee Waiver', 'Request fee waiver for multiple international transfers',
- 'High volume of transfers due to property transactions', 'Resolved',
- 'Neutral', NULL, 120, 240, 'Resolved', 'Patricia Anderson', 'Applied Jade privilege fee waiver for next 6 months',
- 4, false, 'mail', 'Medium', ARRAY['fees', 'waiver', 'transfers', 'jade-privilege'], '2024-08-30 16:00:00'),
-
--- =====================================================================
--- Emily Davis (HSBC0003002) - HSBC Advance
--- =====================================================================
-('HSBC0003002', '2024-10-11 13:45:00', 'Service Request', 'Web Chat', 'Online Chat',
- NULL, 'Student Loan Refinancing Options', 'Exploring refinancing to reduce monthly payments',
- 'Recent salary increase allows for better refinancing terms', 'Resolved',
- 'Positive', 20, 2, 20, 'Resolved', 'Brian Mitchell', 'Provided refinancing options. Could save $150/month. Application link sent',
- 5, true, 'message-circle', 'Medium', ARRAY['student-loan', 'refinancing', 'savings'], '2024-10-11 13:45:00'),
-
-('HSBC0003002', '2024-09-18 10:30:00', 'Complaint', 'Social Media', 'Twitter',
- '@emilydavis', 'Mobile App Login Issues', 'Cannot login to mobile app for 2 days',
- 'App crashes on launch after recent update', 'Resolved',
- 'Negative', NULL, 15, 90, 'Resolved', 'Tech Support Team', 'App cache issue. Provided fix instructions. Working now',
- 3, false, 'twitter', 'High', ARRAY['mobile-app', 'technical-issue', 'login'], '2024-09-18 10:30:00'),
-
-('HSBC0003002', '2024-08-12 15:20:00', 'Inquiry', 'Voice', 'Phone Call',
- NULL, 'Overdraft Protection Setup', 'Questions about overdraft protection features',
- 'Wants to avoid overdraft fees and understand protection options', 'Resolved',
- 'Neutral', 14, 1, 14, 'Resolved', 'Lisa Anderson', 'Explained overdraft protection. Customer opted for account alerts instead',
- 4, false, 'phone', 'Low', ARRAY['overdraft', 'protection', 'fees'], '2024-08-12 15:20:00'),
-
--- =====================================================================
--- Oliver Chen (HSBC0006001) - Student Banking
--- =====================================================================
-('HSBC0006001', '2024-10-09 14:00:00', 'Service Request', 'Web Chat', 'Online Chat',
- NULL, 'Student Overdraft Increase', 'Request to increase overdraft limit for tuition payment',
- 'Tuition fee payment due, current overdraft insufficient', 'Resolved',
- 'Positive', 18, 2, 18, 'Resolved', 'Hannah Wilson', 'Increased overdraft from £1,000 to £1,500. Interest-free maintained',
- 5, false, 'message-circle', 'High', ARRAY['student', 'overdraft', 'tuition', 'increase'], '2024-10-09 14:00:00'),
-
-('HSBC0006001', '2024-09-22 11:00:00', 'Inquiry', 'Email', 'Email',
- NULL, 'Contactless Payment Limit', 'Question about contactless payment limits',
- 'Card declined at supermarket for £65 purchase', 'Resolved',
- 'Neutral', NULL, 30, 60, 'Resolved', 'Ryan Martinez', 'Explained £100 contactless limit. Transaction required PIN. All normal',
- 4, false, 'mail', 'Low', ARRAY['contactless', 'payment', 'limits'], '2024-09-22 11:00:00'),
-
-('HSBC0006001', '2024-08-28 16:30:00', 'Account Management', 'Voice', 'Phone Call',
- NULL, 'Update Contact Details', 'Need to update phone number and address',
- 'Moved to new student accommodation', 'Resolved',
- 'Positive', 8, 1, 8, 'Resolved', 'Claire Thompson', 'Updated address and mobile number in system',
- 5, false, 'phone', 'Low', ARRAY['contact-details', 'update', 'address'], '2024-08-28 16:30:00'),
-
--- =====================================================================
--- Emma Thompson (HSBC0006002) - Student Banking
--- =====================================================================
-('HSBC0006002', '2024-10-13 12:30:00', 'Service Request', 'Social Media', 'Instagram',
- '@emmathompson', 'Student Credit Card Application', 'Wants to apply for student credit card',
- 'Starting part-time job and wants to build credit history', 'In Progress',
- 'Positive', NULL, 20, NULL, 'Open', 'Digital Banking Team', 'Application link sent. Awaiting completed application',
- NULL, true, 'instagram', 'Medium', ARRAY['credit-card', 'application', 'student'], '2024-10-13 12:30:00'),
-
-('HSBC0006002', '2024-09-30 09:15:00', 'Complaint', 'Web Chat', 'Online Chat',
- NULL, 'Unauthorized Fee Charge', 'Charged £5 monthly fee despite student status',
- 'Should have free banking as full-time student', 'Resolved',
- 'Negative', 22, 3, 22, 'Resolved', 'Oliver Harris', 'Verified student status. Refunded £5. Updated account to prevent future charges',
- 4, false, 'message-circle', 'Medium', ARRAY['fees', 'refund', 'student', 'complaint'], '2024-09-30 09:15:00'),
-
-('HSBC0006002', '2024-09-05 14:45:00', 'Inquiry', 'Voice', 'Phone Call',
- NULL, 'Direct Debit Setup Help', 'Need help setting up direct debit for rent',
- 'First time setting up direct debit, needs guidance', 'Resolved',
- 'Positive', 12, 2, 12, 'Resolved', 'Natalie Green', 'Walked through direct debit setup process. Successfully configured',
- 5, false, 'phone', 'Low', ARRAY['direct-debit', 'setup', 'rent'], '2024-09-05 14:45:00'),
-
-('HSBC0006002', '2024-08-20 10:00:00', 'Service Request', 'Email', 'Email',
- NULL, 'Graduation Account Transition', 'Questions about transitioning from student to graduate account',
- 'Graduating next summer, wants to understand account options', 'Resolved',
- 'Neutral', NULL, 90, 180, 'Resolved', 'Mark Stevens', 'Explained graduate account benefits. Will follow up 3 months before graduation',
- 4, true, 'mail', 'Low', ARRAY['student', 'graduate', 'account-transition', 'planning'], '2024-08-20 10:00:00');
-
-\echo 'Customer Interactions loaded successfully!'
-\echo ''
-
--- Display summary
-SELECT 
-    account_number,
-    COUNT(*) as interaction_count,
-    COUNT(CASE WHEN status = 'Resolved' THEN 1 END) as resolved_count,
-    COUNT(CASE WHEN status = 'In Progress' THEN 1 END) as in_progress_count,
-    COUNT(CASE WHEN status = 'Open' THEN 1 END) as open_count,
-    ROUND(AVG(CASE WHEN satisfaction_rating IS NOT NULL THEN satisfaction_rating END), 2) as avg_satisfaction
-FROM customer_interactions
-GROUP BY account_number
-ORDER BY account_number;
-===ENDFILE
 ===FILE: ./sql/seed/seed-11-approval-rules.sql
 -- =====================================================================
 -- HSBC Platform - Approval Rules Seed Data
@@ -2562,7 +1756,6 @@ echo ""
 echo "Tables (existence):"
 EXPECTED_TABLES=(
     ref_regions ref_markets ref_countries ref_business_units
-    customers customer_interactions agent_metrics documents
     role_layout_templates ad_group_layout_assignments
     user_layout_configurations user_role_assignments
     embedded_apps embedded_app_routes embedded_app_ad_group_functions
@@ -2587,8 +1780,6 @@ check "ad_group_layout_assignments >= 25" "SELECT CASE WHEN COUNT(*) >= 25 THEN 
 check "embedded_apps >= 10" "SELECT CASE WHEN COUNT(*) >= 10 THEN 'ok' ELSE 'low' END FROM embedded_apps" "ok"
 check "intent_app_mappings >= 60" "SELECT CASE WHEN COUNT(*) >= 60 THEN 'ok' ELSE 'low' END FROM intent_app_mappings" "ok"
 check "approval_rules >= 14" "SELECT CASE WHEN COUNT(*) >= 14 THEN 'ok' ELSE 'low' END FROM approval_rules" "ok"
-check "customers >= 8" "SELECT CASE WHEN COUNT(*) >= 8 THEN 'ok' ELSE 'low' END FROM customers" "ok"
-check "customer_interactions >= 25" "SELECT CASE WHEN COUNT(*) >= 25 THEN 'ok' ELSE 'low' END FROM customer_interactions" "ok"
 echo ""
 
 # --- Critical columns ---
@@ -2602,7 +1793,6 @@ echo ""
 
 # --- Triggers ---
 echo "Triggers:"
-check "document search_vector trigger" "SELECT COUNT(*) FROM pg_trigger WHERE tgname='trg_update_document_search_vector'" "1"
 check "embedded_app search_vector trigger" "SELECT COUNT(*) FROM pg_trigger WHERE tgname='trg_update_embedded_app_search_vector'" "1"
 echo ""
 
