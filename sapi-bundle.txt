@@ -1,7 +1,7 @@
 # CCaaS Entitlement SAPI - Source Bundle
-# Generated: 2026-02-10 20:58:58
-# Total files: 356
-# Categories: 1 pom.xml, 2 CLAUDE.md, 2 docs, 2 resources, 129 YAML specs, 139 main Java, 68 test Java, 13 other
+# Generated: 2026-02-11 01:51:56
+# Total files: 359
+# Categories: 1 pom.xml, 2 CLAUDE.md, 2 docs, 2 resources, 129 YAML specs, 142 main Java, 68 test Java, 13 other
 # Note: target/generated-sources NOT included - run 'mvn generate-sources' after extraction
 ===FILE: ./AGENTS.md
 # AGENTS.md - ccaas-entitlement-sapi
@@ -6539,6 +6539,11 @@ properties:
     pattern: ^[A-Za-z0-9_.:@\-\/]+$
   userAccessCode:
     $ref: './UserAccessCode.yaml'
+  statusCode:
+    type: string
+    description: Filter by AD group status (e.g. ENABLED, DISABLED)
+    minLength: 1
+    maxLength: 50
   offsetNumber:
     type: integer
     format: int32
@@ -8607,7 +8612,7 @@ properties:
   acknowledgedFlag:
     type: boolean
     description: Whether user has acknowledged this notice. If true, notice may be hidden.
-  severityCode:
+  severityValue:
     type: string
     description: Visual severity cue for UI rendering (info, warning, error, critical).
     minLength: 0
@@ -10808,7 +10813,6 @@ import com.hsbc.ccaas.sapi.controller.model.AdGroupWithAccessDto;
 import com.hsbc.ccaas.sapi.controller.model.CopyConfigRequest;
 import com.hsbc.ccaas.sapi.controller.model.CopyOptions;
 import com.hsbc.ccaas.sapi.controller.model.PaginationLinks;
-import com.hsbc.ccaas.sapi.controller.model.UserAccessCode;
 import com.hsbc.ccaas.sapi.dto.AdGroupLookupItem;
 import com.hsbc.ccaas.sapi.dto.AdGroupLayoutAssignmentUpdateDTO;
 import com.hsbc.ccaas.sapi.dto.AdGroupPage;
@@ -10914,8 +10918,7 @@ public class DefaultAdGroupManagementFacade implements AdGroupManagementFacade {
         int resolvedLimit = (limitNumber <= 0) ? 20 : Math.min(limitNumber, 500);
         int resolvedOffset = Math.max(offsetNumber, 0);
 
-        UserAccessCode userAccessCode = request.getUserAccessCode();
-        String accessCodeStr = userAccessCode != null ? userAccessCode.getValue() : null;
+        String statusFilter = normalizeStatusFilter(request.getStatusCode());
 
         AdGroupSearchCriteria criteria = new AdGroupSearchCriteria(
             request.getAdminAdGroupValues(),
@@ -10923,7 +10926,7 @@ public class DefaultAdGroupManagementFacade implements AdGroupManagementFacade {
             resolvedOffset,
             resolvedLimit,
             request.getRoleName(),
-            accessCodeStr,
+            statusFilter,
             null,
             null,
             null,
@@ -10959,6 +10962,17 @@ public class DefaultAdGroupManagementFacade implements AdGroupManagementFacade {
             .offsetNumber(resolvedOffset)
             .limitNumber(resolvedLimit)
             .links(links);
+    }
+
+    private String normalizeStatusFilter(String statusCode) {
+        if (statusCode == null || statusCode.isBlank()) {
+            return null;
+        }
+        return switch (statusCode.toUpperCase()) {
+            case "ACTIVE", "ENABLED" -> "active";
+            case "DISABLED", "INACTIVE" -> "inactive";
+            default -> statusCode.toLowerCase();
+        };
     }
 }
 ===ENDFILE
@@ -12414,13 +12428,7 @@ package com.hsbc.ccaas.sapi.controller;
 
 import com.hsbc.ccaas.sapi.constants.SapiConstants;
 import com.hsbc.ccaas.sapi.controller.api.AdGroupsApi;
-import com.hsbc.ccaas.sapi.controller.model.AdGroupConfigResponseEnvelope;
-import com.hsbc.ccaas.sapi.controller.model.AdGroupLookupRequestEnvelope;
-import com.hsbc.ccaas.sapi.controller.model.AdGroupListResponse;
-import com.hsbc.ccaas.sapi.controller.model.AdGroupListData;
-import com.hsbc.ccaas.sapi.controller.model.AdGroupListRequestEnvelope;
-import com.hsbc.ccaas.sapi.controller.model.AdGroupListRequest;
-import com.hsbc.ccaas.sapi.controller.model.AdGroupWithAccessDto;
+import com.hsbc.ccaas.sapi.controller.model.*;
 import com.hsbc.ccaas.sapi.application.AdGroupManagementFacade;
 import com.hsbc.ccaas.sapi.mapper.AdGroupAssignmentMapper;
 import com.hsbc.wpb.ef.ports.RequestContext;
@@ -12428,6 +12436,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.security.InvalidParameterException;
+import java.util.Optional;
 
 @RestController
 public class AdGroupLayoutAssignmentController implements AdGroupsApi {
@@ -12470,19 +12479,16 @@ public class AdGroupLayoutAssignmentController implements AdGroupsApi {
         AdGroupLookupRequestEnvelope envelope = requestContext.getBody()
             .orElseThrow(() -> new InvalidParameterException(SapiConstants.MSG_BODY_REQUIRED));
 
-        if (envelope.getData() == null || envelope.getData().getGroupIdentifier() == null) {
-            throw new InvalidParameterException("Group identifier is required");
-        }
-
-        String groupIdentifier = envelope.getData().getGroupIdentifier();
-
+        String groupIdentifier = Optional.ofNullable(envelope.getData())
+                .map(AdGroupLookupRequest::getGroupIdentifier)
+                .orElseThrow(() -> new InvalidParameterException("Group identifier is required"));
         return adGroupManagementFacade.getAdGroupByIdentifier(groupIdentifier)
-            .map(adGroup -> {
-                AdGroupWithAccessDto dto = adGroupAssignmentMapper.toResponse(adGroup);
-                AdGroupConfigResponseEnvelope responseEnvelope = new AdGroupConfigResponseEnvelope()
-                    .data(dto);
-                return ResponseEntity.ok(responseEnvelope);
-            })
+                .map(adGroup -> {
+                    AdGroupWithAccessDto dto = adGroupAssignmentMapper.toResponse(adGroup);
+                    AdGroupConfigResponseEnvelope responseEnvelope = new AdGroupConfigResponseEnvelope()
+                            .data(dto);
+                    return ResponseEntity.ok(responseEnvelope);
+                })
             .orElseGet(() -> ResponseEntity.notFound().build());
     }
 }
@@ -12588,20 +12594,30 @@ public class AdminNoticeController implements NoticesApi {
             .orElseThrow(() -> new InvalidParameterException(MSG_BODY_REQUIRED));
 
         AdminNoticeRequest data = envelope.getData();
-        if (data == null || data.getStatusCode() == null) {
+        if (data == null) {
+            return ResponseEntity.badRequest().build();
+        }
+        com.hsbc.ccaas.sapi.controller.model.AdminNoticeStatusDto statusCode = data.getStatusCode();
+        if (statusCode == null || statusCode.getValue() == null) {
+            return ResponseEntity.badRequest().build();
+        }
+        String statusValue = statusCode.getValue();
+        AdminNoticeStatus noticeStatus;
+
+        try {
+            noticeStatus = AdminNoticeStatus.valueOf(statusValue);
+        } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().build();
         }
 
-        String statusValue = data.getStatusCode().getValue();
+    java.util.UUID noticeUuid = java.util.UUID.fromString(noticeIdentifier);
+    AdminNotice notice = adminNoticeFacade.updateStatus(noticeUuid, noticeStatus);
+    AdminNoticeResponse genResponse = adminNoticeMapper.toResponse(notice);
 
-        java.util.UUID noticeUuid = java.util.UUID.fromString(noticeIdentifier);
-        AdminNoticeStatus noticeStatus = AdminNoticeStatus.valueOf(statusValue);
-        AdminNotice notice = adminNoticeFacade.updateStatus(noticeUuid, noticeStatus);
-        AdminNoticeResponse genResponse = adminNoticeMapper.toResponse(notice);
-
-        return ResponseEntity.ok(new CreateNotices200Response().data(genResponse));
-    }
+    return ResponseEntity.ok(new CreateNotices200Response().data(genResponse));
 }
+}
+
 ===ENDFILE
 ===FILE: ./src/main/java/com/hsbc/ccaas/sapi/controller/AuditLogController.java
 package com.hsbc.ccaas.sapi.controller;
@@ -13028,8 +13044,9 @@ public class DebugController {
         @PathVariable String userId,
         @PathVariable String roleName
     ) {
-        logger.info("[DEBUG] Resetting primary and layout for user: {}, role: {}",
-            userId.replaceAll("[\\r\\n\\t]", "_"), roleName.replaceAll("[\\r\\n\\t]", "_"));
+        String safeUserId = sanitizeForLog(userId);
+        String safeRoleName = sanitizeForLog(roleName);
+        logger.info("[DEBUG] Resetting primary and layout for user: {}, role: {}", safeUserId, safeRoleName);
 
         // Clear primary flags for all assignments for the role
         List<UserRoleAssignment> assignments = userRoleAssignmentRepository
@@ -13051,6 +13068,18 @@ public class DebugController {
 
         return ResponseEntity.ok(new ResetResult(true, userId, roleName, cleared, deletedLayouts));
     }
+
+    /**
+     * Sanitize user-controlled input before logging to prevent log injection.
+     * Strips control characters and limits length.
+     */
+    private static String sanitizeForLog(String input) {
+        if (input == null) {
+            return "";
+        }
+        String sanitized = input.replaceAll("[\\r\\n\\t]", "_");
+        return sanitized.length() > 256 ? sanitized.substring(0, 256) + "..." : sanitized;
+    }
 }
 ===ENDFILE
 ===FILE: ./src/main/java/com/hsbc/ccaas/sapi/controller/DirectSaveController.java
@@ -13062,6 +13091,7 @@ import com.hsbc.ccaas.sapi.controller.model.DirectSaveRequest;
 import com.hsbc.ccaas.sapi.controller.model.DirectSaveRequestEnvelope;
 import com.hsbc.ccaas.sapi.controller.model.DirectSaveResponse;
 import com.hsbc.ccaas.sapi.controller.model.DirectSaveResponseData;
+import com.hsbc.ccaas.sapi.dto.DirectSaveCommand;
 import com.hsbc.ccaas.sapi.entity.PendingChange;
 import com.hsbc.ccaas.sapi.service.PendingChangeService;
 import com.hsbc.wpb.ef.ports.RequestContext;
@@ -13111,7 +13141,7 @@ public class DirectSaveController implements DirectSavesApi {
         log.info("Direct save: target={}, superAdmin={}, changeType={}",
                 targetGroupId, superAdminId, changeType);
 
-        pendingChangeService.directSave(
+        DirectSaveCommand command = new DirectSaveCommand(
                 targetGroupId,
                 data.getCurrentState(),
                 proposedState,
@@ -13120,6 +13150,7 @@ public class DirectSaveController implements DirectSavesApi {
                 data.getSuperAdminNameText(),
                 data.getConfigVersionNumber(),
                 data.getSuperAdminAdGroupValues());
+        pendingChangeService.directSave(command);
 
         DirectSaveResponseData responseData = new DirectSaveResponseData()
                 .successIndicator(true)
@@ -14077,6 +14108,28 @@ public record CopySummary(
     @JsonProperty("fieldsCopied") int fieldsCopied,
     @JsonProperty("embeddedAppsCopied") int embeddedAppsCopied
 ) {}
+===ENDFILE
+===FILE: ./src/main/java/com/hsbc/ccaas/sapi/dto/DirectSaveCommand.java
+package com.hsbc.ccaas.sapi.dto;
+
+import com.hsbc.ccaas.sapi.entity.PendingChange;
+
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Parameter object for direct-save operations (super-admin bypass of the approval workflow).
+ */
+public record DirectSaveCommand(
+        String targetGroupId,
+        Map<String, Object> currentState,
+        Map<String, Object> proposedState,
+        PendingChange.ChangeType changeType,
+        String superAdminId,
+        String superAdminName,
+        Long configVersion,
+        List<String> superAdminAdGroups) {
+}
 ===ENDFILE
 ===FILE: ./src/main/java/com/hsbc/ccaas/sapi/dto/MarketDto.java
 package com.hsbc.ccaas.sapi.dto;
@@ -16736,7 +16789,7 @@ public class Notice {
         this.acknowledged = acknowledged;
     }
 
-    @JsonProperty("severityCode")
+    @JsonProperty("severityValue")
     public String getSeverity() {
         return severity;
     }
@@ -18355,6 +18408,8 @@ import com.hsbc.ccaas.sapi.repository.AdGroupLayoutAssignmentRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -18387,12 +18442,14 @@ public class ConfigApplyService {
 
     private final AdGroupLayoutAssignmentRepository adGroupRepository;
     private final JdbcTemplate jdbcTemplate;
+    private final NamedParameterJdbcTemplate namedJdbcTemplate;
 
     public ConfigApplyService(
             AdGroupLayoutAssignmentRepository adGroupRepository,
             JdbcTemplate jdbcTemplate) {
         this.adGroupRepository = adGroupRepository;
         this.jdbcTemplate = jdbcTemplate;
+        this.namedJdbcTemplate = new NamedParameterJdbcTemplate(jdbcTemplate);
     }
 
     /**
@@ -18660,19 +18717,16 @@ public class ConfigApplyService {
     private Map<String, Set<String>> prefetchExistingFunctions(String targetGroup, List<String> assignedAppKeys) {
         Map<String, Set<String>> existingByApp = new HashMap<>();
         if (!assignedAppKeys.isEmpty()) {
-            String placeholders = String.join(",", Collections.nCopies(assignedAppKeys.size(), "?"));
-            String sql = "SELECT app_key, function_key FROM embedded_app_ad_group_functions " +
-                    "WHERE ad_group_identifier = ? AND app_key IN (" + placeholders + ")";
-            Object[] params = new Object[assignedAppKeys.size() + 1];
-            params[0] = targetGroup;
-            for (int i = 0; i < assignedAppKeys.size(); i++) {
-                params[i + 1] = assignedAppKeys.get(i);
-            }
-            jdbcTemplate.query(sql, rs -> {
+            String sql = "SELECT app_key, function_key FROM embedded_app_ad_group_functions "
+                    + "WHERE ad_group_identifier = :targetGroup AND app_key IN (:appKeys)";
+            MapSqlParameterSource params = new MapSqlParameterSource()
+                    .addValue("targetGroup", targetGroup)
+                    .addValue("appKeys", assignedAppKeys);
+            namedJdbcTemplate.query(sql, params, rs -> {
                 String appKey = rs.getString("app_key");
                 String functionKey = rs.getString("function_key");
                 existingByApp.computeIfAbsent(appKey, k -> new HashSet<>()).add(functionKey);
-            }, params);
+            });
         }
         return existingByApp;
     }
@@ -18827,6 +18881,27 @@ public class ConfigApplyService {
         return new EntitlementStateValue().state(EntitlementStateValue.StateEnum.fromValue(STATE_ENABLED));
     }
 
+}
+===ENDFILE
+===FILE: ./src/main/java/com/hsbc/ccaas/sapi/service/DebugService.java
+package com.hsbc.ccaas.sapi.service;
+
+/**
+ * Debug-only operations for demos: reset primary assignment and clear cached layouts.
+ * Only active when {@code sapi.debug.enabled=true}.
+ */
+public interface DebugService {
+
+    /**
+     * Result of reset primary and layout operation.
+     */
+    record ResetResult(boolean success, String userId, String roleName,
+                       int primaryCleared, int layoutsDeleted) {}
+
+    /**
+     * Clears primary flags for all assignments of the given user/role and deletes cached layouts.
+     */
+    ResetResult resetPrimaryAndLayout(String userId, String roleName);
 }
 ===ENDFILE
 ===FILE: ./src/main/java/com/hsbc/ccaas/sapi/service/EmbeddedAppAdminService.java
@@ -19365,6 +19440,7 @@ public class NoticeApplicationService {
 package com.hsbc.ccaas.sapi.service;
 
 import com.hsbc.ccaas.sapi.dto.ApproveResult;
+import com.hsbc.ccaas.sapi.dto.DirectSaveCommand;
 import com.hsbc.ccaas.sapi.entity.AdGroupLayoutAssignment;
 import com.hsbc.ccaas.sapi.entity.ChangeAuditLog;
 import com.hsbc.ccaas.sapi.entity.PendingChange;
@@ -19376,6 +19452,7 @@ import com.hsbc.ccaas.sapi.repository.AdGroupLayoutAssignmentRepository;
 import com.hsbc.ccaas.sapi.repository.PendingChangeRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19406,16 +19483,27 @@ public class PendingChangeApprovalService {
     private final AdGroupLayoutAssignmentRepository adGroupRepository;
     private final ChangeAuditLogService auditLogService;
     private final ConfigApplyService configApplyService;
+    private PendingChangeApprovalService self;
 
     public PendingChangeApprovalService(
             PendingChangeRepository pendingChangeRepository,
             AdGroupLayoutAssignmentRepository adGroupRepository,
             ChangeAuditLogService auditLogService,
-            ConfigApplyService configApplyService) {
+            ConfigApplyService configApplyService,
+            @Lazy PendingChangeApprovalService self) {
         this.pendingChangeRepository = pendingChangeRepository;
         this.adGroupRepository = adGroupRepository;
         this.auditLogService = auditLogService;
         this.configApplyService = configApplyService;
+        this.self = self;
+    }
+
+    /**
+     * Sets the self-reference for transactional proxy dispatch. Used by tests when not using Spring container.
+     * Production code relies on constructor injection.
+     */
+    void setSelf(PendingChangeApprovalService self) {
+        this.self = self;
     }
 
     /**
@@ -19531,9 +19619,9 @@ public class PendingChangeApprovalService {
         // Route to the correct approval level based on the change's current state
         PendingChange pendingChange = found.get();
         if (pendingChange.getStatus() == PendingChange.Status.PENDING_LEVEL_ONE) {
-            return Optional.of(approveL1(changeId, approverId, approverName, comment, approverAdGroups));
+            return Optional.of(self.approveL1(changeId, approverId, approverName, comment, approverAdGroups));
         } else if (pendingChange.getStatus() == PendingChange.Status.PENDING_LEVEL_TWO) {
-            return Optional.of(approveL2(changeId, approverId, approverName, comment, approverAdGroups));
+            return Optional.of(self.approveL2(changeId, approverId, approverName, comment, approverAdGroups));
         }
         throw new PendingChangeInvalidStateException("Change is not in a pending state", pendingChange.getStatus());
     }
@@ -19592,7 +19680,7 @@ public class PendingChangeApprovalService {
             pendingChange.getStatus() == PendingChange.Status.PENDING_LEVEL_TWO
                 ? ChangeAuditLog.PerformerRole.SUPER_ADMIN
                 : ChangeAuditLog.PerformerRole.CHECKER;
-        return Optional.of(reject(changeId, rejecterId, rejecterName, rejecterRole, reason, rejecterAdGroups));
+        return Optional.of(self.reject(changeId, rejecterId, rejecterName, rejecterRole, reason, rejecterAdGroups));
     }
 
     /**
@@ -19621,7 +19709,7 @@ public class PendingChangeApprovalService {
 
     @Transactional
     public PendingChange cancel(UUID pendingChangeId, String userId) {
-        return cancel(pendingChangeId, userId, null);
+        return self.cancel(pendingChangeId, userId, null);
     }
 
     /**
@@ -19630,13 +19718,20 @@ public class PendingChangeApprovalService {
      * without creating a persistent PendingChange record.
      */
     @Transactional
-    public void directSave(String targetGroupId, Map<String, Object> currentState,
-            Map<String, Object> proposedState, PendingChange.ChangeType changeType,
-            String superAdminId, String superAdminName, Long configVersion,
-            List<String> superAdminAdGroups) {
-        Objects.requireNonNull(targetGroupId, "targetGroupId must not be null");
-        Objects.requireNonNull(proposedState, "proposedState must not be null");
-        Objects.requireNonNull(superAdminId, "superAdminId must not be null");
+    public void directSave(DirectSaveCommand command) {
+        Objects.requireNonNull(command, "command must not be null");
+        Objects.requireNonNull(command.targetGroupId(), "targetGroupId must not be null");
+        Objects.requireNonNull(command.proposedState(), "proposedState must not be null");
+        Objects.requireNonNull(command.superAdminId(), "superAdminId must not be null");
+
+        String targetGroupId = command.targetGroupId();
+        Map<String, Object> currentState = command.currentState();
+        Map<String, Object> proposedState = command.proposedState();
+        PendingChange.ChangeType changeType = command.changeType();
+        String superAdminId = command.superAdminId();
+        String superAdminName = command.superAdminName();
+        Long configVersion = command.configVersion();
+        List<String> superAdminAdGroups = command.superAdminAdGroups();
 
         // Verify the caller has super_admin authorization for the target group
         verifyGroupMembership(targetGroupId, superAdminAdGroups, GROUP_FIELD_SUPER_ADMIN);
@@ -19825,6 +19920,7 @@ public class PendingChangeQueryService {
 package com.hsbc.ccaas.sapi.service;
 
 import com.hsbc.ccaas.sapi.dto.ApproveResult;
+import com.hsbc.ccaas.sapi.dto.DirectSaveCommand;
 import com.hsbc.ccaas.sapi.dto.SubmitResult;
 import com.hsbc.ccaas.sapi.entity.ChangeAuditLog;
 import com.hsbc.ccaas.sapi.entity.PendingChange;
@@ -19941,12 +20037,8 @@ public class PendingChangeService {
     }
 
     @Transactional
-    public void directSave(String targetGroupId, Map<String, Object> currentState,
-            Map<String, Object> proposedState, PendingChange.ChangeType changeType,
-            String superAdminId, String superAdminName, Long configVersion,
-            List<String> superAdminAdGroups) {
-        approvalService.directSave(targetGroupId, currentState, proposedState,
-                changeType, superAdminId, superAdminName, configVersion, superAdminAdGroups);
+    public void directSave(DirectSaveCommand command) {
+        approvalService.directSave(command);
     }
 
     // Query delegation
@@ -19982,6 +20074,7 @@ import com.hsbc.ccaas.sapi.repository.AdGroupLayoutAssignmentRepository;
 import com.hsbc.ccaas.sapi.repository.PendingChangeRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20011,16 +20104,26 @@ public class PendingChangeSubmissionService {
     private final AdGroupLayoutAssignmentRepository adGroupRepository;
     private final ApprovalRuleService approvalRuleService;
     private final ChangeAuditLogService auditLogService;
+    private PendingChangeSubmissionService self;
 
     public PendingChangeSubmissionService(
             PendingChangeRepository pendingChangeRepository,
             AdGroupLayoutAssignmentRepository adGroupRepository,
             ApprovalRuleService approvalRuleService,
-            ChangeAuditLogService auditLogService) {
+            ChangeAuditLogService auditLogService,
+            @Lazy PendingChangeSubmissionService self) {
         this.pendingChangeRepository = pendingChangeRepository;
         this.adGroupRepository = adGroupRepository;
         this.approvalRuleService = approvalRuleService;
         this.auditLogService = auditLogService;
+        this.self = self;
+    }
+
+    /**
+     * Sets the self-reference for transactional proxy dispatch. Used by tests when not using Spring container.
+     */
+    void setSelf(PendingChangeSubmissionService self) {
+        this.self = self;
     }
 
     // Context record bundling extracted submission metadata for criticality evaluation
@@ -20154,7 +20257,7 @@ public class PendingChangeSubmissionService {
             }
         }
 
-        SubmitResult result = submitChange(
+        SubmitResult result = self.submitChange(
                 targetGroupIdentifier, targetGroupName, changeType,
                 currentState, proposedState, changedFieldsMap,
                 changedApps, changedFunctions, appFunctionPairs,
@@ -20190,7 +20293,7 @@ public class PendingChangeSubmissionService {
                 .map(AdGroupLayoutAssignment::getLogicalName)
                 .orElse(null);
 
-        return submitChange(
+        return self.submitChange(
                 targetGroupId, resolvedGroupName,
                 PendingChange.ChangeType.CONFIG_UPDATE,
                 Map.of(), proposedState,
@@ -21015,7 +21118,7 @@ public class AdGroupCopyService {
 
         for (EmbeddedAppAccess sourceAccess : sourceApps) {
             List<String> marketAvailableFunctions = resolveMarketAvailableFunctions(sourceAccess.appKey(), targetMarket);
-            if (marketAvailableFunctions == null) {
+            if (marketAvailableFunctions.isEmpty()) {
                 filteredAssignments.add(sourceAccess);
                 continue;
             }
@@ -21042,7 +21145,7 @@ public class AdGroupCopyService {
     private List<String> resolveMarketAvailableFunctions(String appKey, String targetMarket) {
         EmbeddedAppDto app = embeddedAppAdminService.getEmbeddedAppByKey(appKey);
         if (app == null || app.getRegionalUrls() == null || app.getRegionalUrls().isEmpty()) {
-            return null;
+            return Collections.emptyList();
         }
 
         RegionalConfigDto marketConfig = app.getRegionalUrls().get(targetMarket);
@@ -21050,7 +21153,7 @@ public class AdGroupCopyService {
             marketConfig = app.getRegionalUrls().get(MarketResolver.DEFAULT_MARKET);
         }
         if (marketConfig == null || marketConfig.getAvailableFunctionValues() == null) {
-            return null;
+            return Collections.emptyList();
         }
 
         return marketConfig.getAvailableFunctionValues();
@@ -21111,10 +21214,14 @@ public class AdGroupCopyService {
     }
 
     private WorkflowMode resolveWorkflowMode(CopyOptions copyOptions) {
-        if (copyOptions == null || copyOptions.getCopyWorkflowModeCode() == null) {
+        if (copyOptions == null) {
             return WorkflowMode.SUBMIT_FOR_APPROVAL;
         }
-        String modeCode = copyOptions.getCopyWorkflowModeCode().toString();
+        Object modeCodeObj = copyOptions.getCopyWorkflowModeCode();
+        if (modeCodeObj == null) {
+            return WorkflowMode.SUBMIT_FOR_APPROVAL;
+        }
+        String modeCode = modeCodeObj.toString();
         if ("DIRECT_SAVE".equalsIgnoreCase(modeCode)) {
             return WorkflowMode.DIRECT_SAVE;
         }
@@ -21122,10 +21229,14 @@ public class AdGroupCopyService {
     }
 
     private FunctionMismatchPolicy resolveMismatchPolicy(CopyOptions copyOptions) {
-        if (copyOptions == null || copyOptions.getFunctionMismatchPolicyCode() == null) {
+        if (copyOptions == null) {
             return FunctionMismatchPolicy.FAIL_ON_MISMATCH;
         }
-        String policyCode = copyOptions.getFunctionMismatchPolicyCode().toString();
+        Object policyCodeObj = copyOptions.getFunctionMismatchPolicyCode();
+        if (policyCodeObj == null) {
+            return FunctionMismatchPolicy.FAIL_ON_MISMATCH;
+        }
+        String policyCode = policyCodeObj.toString();
         if ("SKIP_UNAVAILABLE".equalsIgnoreCase(policyCode)) {
             return FunctionMismatchPolicy.SKIP_UNAVAILABLE;
         }
@@ -21675,12 +21786,14 @@ public class DefaultAdminNoticeService implements AdminNoticeService {
             return fallback;
         }
 
-        if (initiator.getEmailText() != null && !initiator.getEmailText().isBlank()) {
-            return initiator.getEmailText();
+        String emailText = initiator.getEmailText();
+        if (emailText != null && !emailText.isBlank()) {
+            return emailText;
         }
 
-        if (initiator.getUserIdentifier() != null && !initiator.getUserIdentifier().isBlank()) {
-            return initiator.getUserIdentifier();
+        String userIdentifier = initiator.getUserIdentifier();
+        if (userIdentifier != null && !userIdentifier.isBlank()) {
+            return userIdentifier;
         }
 
         return fallback;
@@ -21700,6 +21813,61 @@ public class DefaultAdminNoticeService implements AdminNoticeService {
             return null;
         }
         return value.toLocalDateTime();
+    }
+}
+===ENDFILE
+===FILE: ./src/main/java/com/hsbc/ccaas/sapi/service/impl/DefaultDebugService.java
+package com.hsbc.ccaas.sapi.service.impl;
+
+import com.hsbc.ccaas.sapi.entity.UserRoleAssignment;
+import com.hsbc.ccaas.sapi.repository.UserLayoutConfigurationRepository;
+import com.hsbc.ccaas.sapi.repository.UserRoleAssignmentRepository;
+import com.hsbc.ccaas.sapi.service.DebugService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
+import java.util.List;
+
+@Service
+public class DefaultDebugService implements DebugService {
+
+    private static final Logger logger = LoggerFactory.getLogger(DefaultDebugService.class);
+
+    private final UserRoleAssignmentRepository userRoleAssignmentRepository;
+    private final UserLayoutConfigurationRepository userLayoutConfigurationRepository;
+
+    public DefaultDebugService(UserRoleAssignmentRepository userRoleAssignmentRepository,
+                              UserLayoutConfigurationRepository userLayoutConfigurationRepository) {
+        this.userRoleAssignmentRepository = userRoleAssignmentRepository;
+        this.userLayoutConfigurationRepository = userLayoutConfigurationRepository;
+    }
+
+    @Override
+    @Transactional
+    public ResetResult resetPrimaryAndLayout(String userId, String roleName) {
+        logger.info("[DEBUG] Resetting primary and layout for user: {}, role: {}",
+                userId.replaceAll("[\\r\\n\\t]", "_"), roleName.replaceAll("[\\r\\n\\t]", "_"));
+
+        List<UserRoleAssignment> assignments = userRoleAssignmentRepository
+                .findByUserIdAndRoleNameOrderByAssignmentPriorityAsc(userId, roleName);
+
+        int cleared = 0;
+        for (UserRoleAssignment a : assignments) {
+            if (Boolean.TRUE.equals(a.getIsPrimaryAssignment())) {
+                a.setIsPrimaryAssignment(false);
+                a.setUpdatedBy("debug-reset");
+                a.setUpdatedAt(LocalDateTime.now());
+                userRoleAssignmentRepository.save(a);
+                cleared++;
+            }
+        }
+
+        int deletedLayouts = userLayoutConfigurationRepository.deleteByUserIdAndRoleName(userId, roleName);
+
+        return new ResetResult(true, userId, roleName, cleared, deletedLayouts);
     }
 }
 ===ENDFILE
@@ -22438,8 +22606,12 @@ public class DefaultRoleTemplateEntitlementService implements RoleTemplateEntitl
                 .state(EntitlementStateValue.StateEnum.ENABLED);
         }
         EntitlementStateValue local = new EntitlementStateValue();
-        if (dto.getStateText() != null) {
-            local.setState(EntitlementStateValue.StateEnum.fromValue(dto.getStateText().getValue()));
+        var stateText = dto.getStateText();
+        if (stateText != null) {
+            String value = stateText.getValue();
+            local.setState(value != null
+                ? EntitlementStateValue.StateEnum.fromValue(value)
+                : EntitlementStateValue.StateEnum.ENABLED);
         } else {
             local.setState(EntitlementStateValue.StateEnum.ENABLED);
         }
@@ -23649,7 +23821,6 @@ import com.hsbc.ccaas.sapi.controller.model.AdGroupListRequest;
 import com.hsbc.ccaas.sapi.controller.model.AdGroupWithAccessDto;
 import com.hsbc.ccaas.sapi.controller.model.CopyConfigRequest;
 import com.hsbc.ccaas.sapi.controller.model.CopyOptions;
-import com.hsbc.ccaas.sapi.controller.model.UserAccessCode;
 import com.hsbc.ccaas.sapi.dto.AdGroupLayoutAssignmentUpdateDTO;
 import com.hsbc.ccaas.sapi.dto.AdGroupPage;
 import com.hsbc.ccaas.sapi.dto.AdGroupSearchCriteria;
@@ -23974,11 +24145,11 @@ class DefaultAdGroupManagementFacadeTest {
         }
 
         @Test
-        @DisplayName("should resolve access code from request")
-        void shouldResolveAccessCode() {
+        @DisplayName("should resolve status code from request")
+        void shouldResolveStatusCode() {
             AdGroupListRequest request = new AdGroupListRequest()
                 .adminAdGroupValues(List.of("CN=Admin"))
-                .userAccessCode(UserAccessCode.MAKER);
+                .statusCode("ENABLED");
 
             AdGroupPage page = new AdGroupPage(List.of(), 0);
             when(adGroupLayoutAssignmentService.getAdGroups(any(AdGroupSearchCriteria.class)))
@@ -26847,6 +27018,7 @@ import static org.mockito.Mockito.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hsbc.ccaas.sapi.controller.model.DirectSaveRequestEnvelope;
 import com.hsbc.ccaas.sapi.controller.model.DirectSaveResponse;
+import com.hsbc.ccaas.sapi.dto.DirectSaveCommand;
 import com.hsbc.ccaas.sapi.entity.PendingChange;
 import com.hsbc.ccaas.sapi.exception.PendingChangeUnauthorizedException;
 import com.hsbc.ccaas.sapi.service.PendingChangeService;
@@ -26918,15 +27090,13 @@ class DirectSaveControllerTest {
             assertTrue(response.getBody().getData().getSuccessIndicator());
             assertEquals("Configuration applied successfully", response.getBody().getData().getMessageText());
 
-            verify(pendingChangeService).directSave(
-                    eq("CN=Voice_Agent_UK,OU=Groups,DC=hsbc,DC=com"),
-                    any(), // currentState
-                    eq(Map.of("roleName", "voice_agent")),
-                    eq(PendingChange.ChangeType.CONFIG_UPDATE),
-                    eq("EMP001"),
-                    eq("Super Admin User"),
-                    isNull(),
-                    any());
+            verify(pendingChangeService).directSave(argThat((DirectSaveCommand cmd) ->
+                    "CN=Voice_Agent_UK,OU=Groups,DC=hsbc,DC=com".equals(cmd.targetGroupId())
+                            && Map.of("roleName", "voice_agent").equals(cmd.proposedState())
+                            && PendingChange.ChangeType.CONFIG_UPDATE == cmd.changeType()
+                            && "EMP001".equals(cmd.superAdminId())
+                            && "Super Admin User".equals(cmd.superAdminName())
+                            && cmd.configVersion() == null));
         }
 
         @Test
@@ -26945,10 +27115,8 @@ class DirectSaveControllerTest {
             ResponseEntity<DirectSaveResponse> response = controller.createDirectSave(rc);
 
             assertEquals(HttpStatus.OK, response.getStatusCode());
-            verify(pendingChangeService).directSave(
-                    anyString(), any(), any(),
-                    eq(PendingChange.ChangeType.APP_UPDATE),
-                    anyString(), any(), any(), any());
+            verify(pendingChangeService).directSave(argThat((DirectSaveCommand cmd) ->
+                    PendingChange.ChangeType.APP_UPDATE == cmd.changeType()));
         }
 
         @Test
@@ -26967,8 +27135,8 @@ class DirectSaveControllerTest {
             ResponseEntity<DirectSaveResponse> response = controller.createDirectSave(rc);
 
             assertEquals(HttpStatus.OK, response.getStatusCode());
-            verify(pendingChangeService).directSave(
-                    anyString(), any(), any(), any(), anyString(), any(), eq(5L), any());
+            verify(pendingChangeService).directSave(argThat((DirectSaveCommand cmd) ->
+                    Long.valueOf(5L).equals(cmd.configVersion())));
         }
 
         @Test
@@ -26982,7 +27150,7 @@ class DirectSaveControllerTest {
 
             doThrow(new org.springframework.orm.ObjectOptimisticLockingFailureException(
                     "Object was updated by another transaction", new RuntimeException()))
-                    .when(pendingChangeService).directSave(anyString(), any(), any(), any(), anyString(), any(), any(), any());
+                    .when(pendingChangeService).directSave(any(DirectSaveCommand.class));
 
             RequestContext<DirectSaveRequestEnvelope> rc = mockRequestContext();
             when(rc.getBody()).thenReturn(Optional.of(createBody(innerData)));
@@ -27008,7 +27176,8 @@ class DirectSaveControllerTest {
             );
 
             doThrow(new PendingChangeUnauthorizedException("Not authorized as super admin for this AD group"))
-                    .when(pendingChangeService).directSave(anyString(), any(), any(), any(), anyString(), any(), any(), eq(wrongAdGroups));
+                    .when(pendingChangeService).directSave(argThat((DirectSaveCommand cmd) ->
+                            wrongAdGroups.equals(cmd.superAdminAdGroups())));
 
             RequestContext<DirectSaveRequestEnvelope> rc = mockRequestContext();
             when(rc.getBody()).thenReturn(Optional.of(createBody(innerData)));
@@ -27033,7 +27202,7 @@ class DirectSaveControllerTest {
             when(rc.getBody()).thenReturn(Optional.of(createBody(innerData)));
 
             assertThrows(IllegalArgumentException.class, () -> controller.createDirectSave(rc));
-            verify(pendingChangeService, never()).directSave(any(), any(), any(), any(), any(), any(), any(), any());
+            verify(pendingChangeService, never()).directSave(any(DirectSaveCommand.class));
         }
 
         @Test
@@ -32703,6 +32872,8 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.PreparedStatementCreator;
+import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 
 @ExtendWith(MockitoExtension.class)
@@ -32846,15 +33017,15 @@ class ConfigApplyServiceTest {
             Map<String, Object> proposedState = Map.of("applications", List.of(app1));
             PendingChange pc = buildApprovedChange(PendingChange.ChangeType.APP_UPDATE, proposedState);
 
-            // Simulate existing functions via RowCallbackHandler: TRADEP exists, TRAWD is new
+            // Simulate existing functions via RowCallbackHandler: TRADEP exists, TRAWD is new (NamedParameterJdbcTemplate uses query(PreparedStatementCreator, RowCallbackHandler))
             doAnswer(invocation -> {
-                org.springframework.jdbc.core.RowCallbackHandler handler = invocation.getArgument(1);
+                RowCallbackHandler handler = invocation.getArgument(1);
                 java.sql.ResultSet rs = mock(java.sql.ResultSet.class);
                 when(rs.getString("app_key")).thenReturn("TELLER");
                 when(rs.getString("function_key")).thenReturn("TRADEP");
                 handler.processRow(rs);
                 return null;
-            }).when(jdbcTemplate).query(anyString(), any(org.springframework.jdbc.core.RowCallbackHandler.class), any(Object[].class));
+            }).when(jdbcTemplate).query(any(PreparedStatementCreator.class), any(RowCallbackHandler.class));
             when(jdbcTemplate.batchUpdate(anyString(), any(List.class))).thenReturn(new int[]{1});
 
             service.applyChange(pc, "CHK001");
@@ -33254,10 +33425,7 @@ class ConfigApplyServiceTest {
             PendingChange pc = buildApprovedChange(PendingChange.ChangeType.APP_UPDATE, proposedState);
 
             // Simulate no existing functions
-            doAnswer(invocation -> {
-                // No rows returned (empty existing set)
-                return null;
-            }).when(jdbcTemplate).query(anyString(), any(org.springframework.jdbc.core.RowCallbackHandler.class), any(Object[].class));
+            doAnswer(invocation -> null).when(jdbcTemplate).query(any(PreparedStatementCreator.class), any(RowCallbackHandler.class));
 
             service.applyChange(pc, "CHK001");
 
@@ -33279,18 +33447,15 @@ class ConfigApplyServiceTest {
 
             // Simulate existing functions: TRADEP + EXISTING_FUNC
             doAnswer(invocation -> {
-                org.springframework.jdbc.core.RowCallbackHandler handler = invocation.getArgument(1);
+                RowCallbackHandler handler = invocation.getArgument(1);
                 java.sql.ResultSet rs = mock(java.sql.ResultSet.class);
-
                 when(rs.getString("app_key")).thenReturn("TELLER");
                 when(rs.getString("function_key")).thenReturn("TRADEP");
                 handler.processRow(rs);
-
                 when(rs.getString("function_key")).thenReturn("EXISTING_FUNC");
                 handler.processRow(rs);
-
                 return null;
-            }).when(jdbcTemplate).query(anyString(), any(org.springframework.jdbc.core.RowCallbackHandler.class), any(Object[].class));
+            }).when(jdbcTemplate).query(any(PreparedStatementCreator.class), any(RowCallbackHandler.class));
             when(jdbcTemplate.batchUpdate(anyString(), any(List.class))).thenReturn(new int[]{1});
 
             service.applyChange(pc, "CHK001");
@@ -33396,13 +33561,13 @@ class ConfigApplyServiceTest {
 
             // Simulate existing functions: EXISTING_FUNC
             doAnswer(invocation -> {
-                org.springframework.jdbc.core.RowCallbackHandler handler = invocation.getArgument(1);
+                RowCallbackHandler handler = invocation.getArgument(1);
                 java.sql.ResultSet rs = mock(java.sql.ResultSet.class);
                 when(rs.getString("app_key")).thenReturn("TELLER");
                 when(rs.getString("function_key")).thenReturn("EXISTING_FUNC");
                 handler.processRow(rs);
                 return null;
-            }).when(jdbcTemplate).query(anyString(), any(org.springframework.jdbc.core.RowCallbackHandler.class), any(Object[].class));
+            }).when(jdbcTemplate).query(any(PreparedStatementCreator.class), any(RowCallbackHandler.class));
             when(jdbcTemplate.batchUpdate(anyString(), any(List.class))).thenReturn(new int[]{1});
 
             service.applyChange(pc, "CHK001");
@@ -34716,6 +34881,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 import com.hsbc.ccaas.sapi.dto.ApproveResult;
+import com.hsbc.ccaas.sapi.dto.DirectSaveCommand;
 import com.hsbc.ccaas.sapi.entity.AdGroupLayoutAssignment;
 import com.hsbc.ccaas.sapi.entity.ChangeAuditLog;
 import com.hsbc.ccaas.sapi.entity.PendingChange;
@@ -34758,7 +34924,8 @@ class PendingChangeApprovalServiceTest {
     @BeforeEach
     void setUp() {
         service = new PendingChangeApprovalService(
-                pendingChangeRepository, adGroupRepository, auditLogService, configApplyService);
+                pendingChangeRepository, adGroupRepository, auditLogService, configApplyService, null);
+        service.setSelf(service);
     }
 
     // ========================================================================
@@ -35434,13 +35601,13 @@ class PendingChangeApprovalServiceTest {
             when(adGroupRepository.findByGroupIdentifier(TARGET_GROUP))
                     .thenReturn(Optional.of(ag));
 
-            service.directSave(
+            service.directSave(new DirectSaveCommand(
                     TARGET_GROUP,
                     Map.of("market", "UK"),
                     Map.of("market", "HK"),
                     PendingChange.ChangeType.CONFIG_UPDATE,
                     "SA001", "Super Admin", 42L,
-                    TEST_AD_GROUPS);
+                    TEST_AD_GROUPS));
 
             verify(configApplyService).applyChange(any(PendingChange.class), eq("SA001"));
             verify(auditLogService).logDirectSave(any(ChangeAuditLogService.DirectSaveContext.class));
@@ -35455,13 +35622,13 @@ class PendingChangeApprovalServiceTest {
             when(adGroupRepository.findByGroupIdentifier(TARGET_GROUP))
                     .thenReturn(Optional.of(ag));
 
-            service.directSave(
+            service.directSave(new DirectSaveCommand(
                     TARGET_GROUP,
                     Map.of("market", "UK"),
                     Map.of("market", "HK"),
                     PendingChange.ChangeType.CONFIG_UPDATE,
                     "SA001", "Super Admin", null,
-                    TEST_AD_GROUPS);
+                    TEST_AD_GROUPS));
 
             verify(configApplyService).applyChange(argThat(pc ->
                     pc.getConfigVersion() != null && pc.getConfigVersion() == 15L), eq("SA001"));
@@ -35475,13 +35642,13 @@ class PendingChangeApprovalServiceTest {
             when(adGroupRepository.findByGroupIdentifier(TARGET_GROUP))
                     .thenReturn(Optional.of(ag));
 
-            service.directSave(
+            service.directSave(new DirectSaveCommand(
                     TARGET_GROUP,
                     null,
                     Map.of("market", "HK"),
                     PendingChange.ChangeType.CONFIG_UPDATE,
                     "SA001", "Super Admin", 42L,
-                    TEST_AD_GROUPS);
+                    TEST_AD_GROUPS));
 
             verify(configApplyService).applyChange(argThat(pc ->
                     pc.getCurrentState() != null && pc.getCurrentState().isEmpty()), eq("SA001"));
@@ -35498,12 +35665,12 @@ class PendingChangeApprovalServiceTest {
 
             List<String> wrongGroups = List.of("CN=Other_Group,DC=hsbc");
             assertThrows(PendingChangeUnauthorizedException.class, () ->
-                    service.directSave(
+                    service.directSave(new DirectSaveCommand(
                             TARGET_GROUP,
                             Map.of(), Map.of("market", "HK"),
                             PendingChange.ChangeType.CONFIG_UPDATE,
                             "SA001", "Super Admin", 42L,
-                            wrongGroups));
+                            wrongGroups)));
         }
 
         @Test
@@ -35514,12 +35681,12 @@ class PendingChangeApprovalServiceTest {
             when(adGroupRepository.findByGroupIdentifier(TARGET_GROUP))
                     .thenReturn(Optional.of(ag));
 
-            service.directSave(
+            service.directSave(new DirectSaveCommand(
                     TARGET_GROUP,
                     Map.of(), Map.of("market", "HK"),
                     PendingChange.ChangeType.CONFIG_UPDATE,
                     "SA001", "Super Admin", 42L,
-                    TEST_AD_GROUPS);
+                    TEST_AD_GROUPS));
 
             verify(auditLogService).logDirectSave(argThat(ctx ->
                     TARGET_GROUP.equals(ctx.targetGroupIdentifier()) &&
@@ -35540,12 +35707,12 @@ class PendingChangeApprovalServiceTest {
             when(adGroupRepository.findByGroupIdentifier(TARGET_GROUP))
                     .thenReturn(Optional.of(ag));
 
-            service.directSave(
+            service.directSave(new DirectSaveCommand(
                     TARGET_GROUP,
                     Map.of(), Map.of("market", "HK"),
                     PendingChange.ChangeType.CONFIG_UPDATE,
                     "SA001", "Super Admin", 42L,
-                    TEST_AD_GROUPS);
+                    TEST_AD_GROUPS));
 
             verify(configApplyService).applyChange(argThat(pc ->
                     pc.getStatus() == PendingChange.Status.APPROVED &&
@@ -36255,9 +36422,11 @@ class PendingChangeServiceAdvancedTest {
     @BeforeEach
     void setUp() {
         PendingChangeSubmissionService submissionService = new PendingChangeSubmissionService(
-            pendingChangeRepository, adGroupRepository, approvalRuleService, auditLogService);
+            pendingChangeRepository, adGroupRepository, approvalRuleService, auditLogService, null);
+        submissionService.setSelf(submissionService);
         PendingChangeApprovalService approvalService = new PendingChangeApprovalService(
-            pendingChangeRepository, adGroupRepository, auditLogService, configApplyService);
+            pendingChangeRepository, adGroupRepository, auditLogService, configApplyService, null);
+        approvalService.setSelf(approvalService);
         PendingChangeQueryService queryService = new PendingChangeQueryService(pendingChangeRepository);
         pendingChangeService = new PendingChangeService(submissionService, approvalService, queryService);
     }
@@ -36842,6 +37011,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 import com.hsbc.ccaas.sapi.dto.ApproveResult;
+import com.hsbc.ccaas.sapi.dto.DirectSaveCommand;
 import com.hsbc.ccaas.sapi.dto.SubmitResult;
 import com.hsbc.ccaas.sapi.entity.AdGroupLayoutAssignment;
 import com.hsbc.ccaas.sapi.entity.ChangeAuditLog;
@@ -36888,9 +37058,11 @@ class PendingChangeServiceTest {
     @BeforeEach
     void setUp() {
         PendingChangeSubmissionService submissionService = new PendingChangeSubmissionService(
-            pendingChangeRepository, adGroupRepository, approvalRuleService, auditLogService);
+            pendingChangeRepository, adGroupRepository, approvalRuleService, auditLogService, null);
+        submissionService.setSelf(submissionService);
         PendingChangeApprovalService approvalService = new PendingChangeApprovalService(
-            pendingChangeRepository, adGroupRepository, auditLogService, configApplyService);
+            pendingChangeRepository, adGroupRepository, auditLogService, configApplyService, null);
+        approvalService.setSelf(approvalService);
         PendingChangeQueryService queryService = new PendingChangeQueryService(pendingChangeRepository);
         service = new PendingChangeService(submissionService, approvalService, queryService);
     }
@@ -37944,13 +38116,13 @@ class PendingChangeServiceTest {
             when(adGroupRepository.findByGroupIdentifier(targetGroup))
                     .thenReturn(Optional.of(ag));
 
-            service.directSave(
+            service.directSave(new DirectSaveCommand(
                     targetGroup,
                     Map.of("market", "UK"),
                     Map.of("market", "HK"),
                     PendingChange.ChangeType.CONFIG_UPDATE,
                     "SA001", "Super Admin", 42L,
-                    TEST_AD_GROUPS);
+                    TEST_AD_GROUPS));
 
             verify(configApplyService).applyChange(any(PendingChange.class), eq("SA001"));
             verify(auditLogService).logDirectSave(any(ChangeAuditLogService.DirectSaveContext.class));
@@ -37966,13 +38138,13 @@ class PendingChangeServiceTest {
             when(adGroupRepository.findByGroupIdentifier(targetGroup))
                     .thenReturn(Optional.of(ag));
 
-            service.directSave(
+            service.directSave(new DirectSaveCommand(
                     targetGroup,
                     Map.of("market", "UK"),
                     Map.of("market", "HK"),
                     PendingChange.ChangeType.CONFIG_UPDATE,
                     "SA001", "Super Admin", null,
-                    TEST_AD_GROUPS);
+                    TEST_AD_GROUPS));
 
             verify(configApplyService).applyChange(argThat(pc ->
                     pc.getConfigVersion() != null && pc.getConfigVersion() == 15L), eq("SA001"));
@@ -37987,13 +38159,13 @@ class PendingChangeServiceTest {
             when(adGroupRepository.findByGroupIdentifier(targetGroup))
                     .thenReturn(Optional.of(ag));
 
-            service.directSave(
+            service.directSave(new DirectSaveCommand(
                     targetGroup,
                     null, // null currentState
                     Map.of("market", "HK"),
                     PendingChange.ChangeType.CONFIG_UPDATE,
                     "SA001", "Super Admin", 42L,
-                    TEST_AD_GROUPS);
+                    TEST_AD_GROUPS));
 
             verify(configApplyService).applyChange(argThat(pc ->
                     pc.getCurrentState() != null && pc.getCurrentState().isEmpty()), eq("SA001"));
@@ -38011,12 +38183,12 @@ class PendingChangeServiceTest {
 
             List<String> wrongGroups = List.of("CN=Other_Group,DC=hsbc");
             assertThrows(PendingChangeUnauthorizedException.class, () ->
-                    service.directSave(
+                    service.directSave(new DirectSaveCommand(
                             targetGroup,
                             Map.of(), Map.of("market", "HK"),
                             PendingChange.ChangeType.CONFIG_UPDATE,
                             "SA001", "Super Admin", 42L,
-                            wrongGroups));
+                            wrongGroups)));
         }
 
         @Test
@@ -38028,12 +38200,12 @@ class PendingChangeServiceTest {
             when(adGroupRepository.findByGroupIdentifier(targetGroup))
                     .thenReturn(Optional.of(ag));
 
-            service.directSave(
+            service.directSave(new DirectSaveCommand(
                     targetGroup,
                     Map.of(), Map.of("market", "HK"),
                     PendingChange.ChangeType.CONFIG_UPDATE,
                     "SA001", "Super Admin", 42L,
-                    TEST_AD_GROUPS);
+                    TEST_AD_GROUPS));
 
             verify(auditLogService).logDirectSave(argThat(ctx ->
                     "CN=Voice_Agent,DC=hsbc".equals(ctx.targetGroupIdentifier()) &&
@@ -38400,7 +38572,8 @@ class PendingChangeSubmissionServiceTest {
     @BeforeEach
     void setUp() {
         service = new PendingChangeSubmissionService(
-                pendingChangeRepository, adGroupRepository, approvalRuleService, auditLogService);
+                pendingChangeRepository, adGroupRepository, approvalRuleService, auditLogService, null);
+        service.setSelf(service);
     }
 
     // ========================================================================
