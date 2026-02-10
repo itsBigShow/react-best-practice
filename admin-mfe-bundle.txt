@@ -1,7 +1,7 @@
 # CCaaS Admin MFE - Source Bundle
-# Generated: 2026-02-10 13:17:50
-# Total files: 238
-# Categories: 93 TypeScript, 99 React (TSX), 1 CSS, 5 Config, 2 Docs, 38 Other
+# Generated: 2026-02-10 16:13:48
+# Total files: 241
+# Categories: 95 TypeScript, 99 React (TSX), 1 CSS, 5 Config, 3 Docs, 38 Other
 # Note: node_modules and dist NOT included - run 'npm install && npm run build' after extraction
 ===FILE: ./.env.example
 VITE_PAPI_PROXY_TARGET=http://localhost:8095
@@ -140,6 +140,124 @@ const AdminMFE = React.lazy(() => import('adminMfeRemote/AdminMFE'))
   />
 </Suspense>
 ```
+
+Detailed host integration guide:
+
+- `docs/HOST_APP_INTEGRATION.md`
+===ENDFILE
+===FILE: ./docs/HOST_APP_INTEGRATION.md
+# Admin MFE Host App Integration
+
+This document explains how a host application should integrate `ccaas-admin-mfe` using Module Federation.
+
+## Remote Contract
+
+Admin MFE exposes:
+
+- Remote name: `adminMfeRemote`
+- Exposed module: `./AdminMFE`
+- Entry file (local preview): `http://localhost:5185/assets/remoteEntry.js`
+
+Source:
+
+- `vite.config.ts`
+
+## Props Required By AdminMFE
+
+`AdminMFE` accepts:
+
+- `authToken: string` (required)
+- `language?: 'en' | 'zh-CN' | 'zh-HK' | 'zh-TW' | 'ar' | 'es' | 'fr' | 'fil' | 'hi' | 'pl' | 'ms'`
+- `permissions?: AdminPermissions`
+- `currentRole?: string`
+- `onNavigate?: (path: string) => void`
+- `onError?: (error: { code: string; message: string; context?: Record<string, unknown> }) => void`
+
+Source:
+
+- `src/types/index.ts`
+
+Important behavior:
+
+- If `authToken` is empty, Admin MFE emits `MISSING_AUTH_TOKEN` through `onError`.
+- Unsupported `language` emits `INVALID_LANGUAGE`.
+- If `permissions` is not passed, Admin MFE defaults all permissions to `false` (no access).
+
+Source:
+
+- `src/AdminMFE.tsx`
+
+## Host Federation Configuration
+
+Example host config:
+
+```ts
+// host vite config
+federation({
+  remotes: {
+    adminMfeRemote: 'http://localhost:5185/assets/remoteEntry.js'
+  }
+})
+```
+
+## Host Usage Example
+
+```tsx
+import React, { Suspense } from 'react'
+
+const AdminMFE = React.lazy(() => import('adminMfeRemote/AdminMFE'))
+
+export function AdminPage() {
+  return (
+    <Suspense fallback={<div>Loading admin panel...</div>}>
+      <AdminMFE
+        authToken={token}
+        language="en"
+        currentRole="admin"
+        permissions={adminPermissions}
+        onError={(error) => {
+          console.error('[AdminMFE]', error.code, error.message, error.context)
+        }}
+      />
+    </Suspense>
+  )
+}
+```
+
+## API / Auth Expectations
+
+Admin MFE calls backend endpoints under `/papi/*` (relative path).
+
+- It sets `AMToken` header on API calls.
+- It also writes `AMToken` cookie for proxy-based routing.
+
+Host/proxy must route `/papi/*` correctly (typically to entitlement PAPI/proxy).
+
+Source:
+
+- `src/services/core/api-client.ts`
+
+## Local Integration Checklist
+
+1. Start admin MFE preview (required for `remoteEntry.js`):
+   - `npm run build && npm run preview`
+2. Confirm remote entry is reachable:
+   - `http://localhost:5185/assets/remoteEntry.js`
+3. Ensure host remotes config includes `adminMfeRemote`.
+4. Ensure host passes a non-empty `authToken`.
+5. Ensure host routes `/papi/*` to a live backend.
+6. Open admin surface and confirm no federation or auth errors.
+
+## Troubleshooting
+
+- `Failed to fetch dynamically imported module`:
+  - Wrong remote URL, remote not running, or CORS/proxy issue.
+- `MISSING_AUTH_TOKEN`:
+  - Host passed empty/undefined token.
+- Admin loads but shows no views:
+  - `permissions` missing or all false.
+- `/papi/*` returns HTML/404:
+  - Host proxy not forwarding to backend API.
 ===ENDFILE
 ===FILE: ./index.html
 <!DOCTYPE html>
@@ -14784,6 +14902,7 @@ vi.mock('../../../hooks/admin/use-ad-group-form', () => ({
   useAdGroupForm: () => ({
     formData: { logicalName: 'Test Group', groupIdentifier: 'CN=test', roleName: 'voice_agent' },
     roleTemplate: { name: 'voice_agent', permissions: {} },
+    isLoadingRoleTemplate: false,
     permissionOverrides: {},
     pendingChanges: { permissions: {} },
     isLoadingAdGroup: false,
@@ -15013,6 +15132,7 @@ export function AdGroupConfigModal({
   const {
     formData,
     roleTemplate,
+    isLoadingRoleTemplate,
     permissionOverrides,
     pendingChanges,
     isLoadingAdGroup,
@@ -15094,7 +15214,7 @@ export function AdGroupConfigModal({
   return (
     <>
       <Dialog open={open} onOpenChange={handleClose}>
-        <DialogContent className="!h-[100dvh] !max-h-[100dvh] !w-screen !max-w-none flex flex-col rounded-none px-4 py-5 sm:!h-[95dvh] sm:!max-h-[95dvh] sm:!w-[95vw] sm:!max-w-[95vw] sm:rounded-lg sm:p-6">
+        <DialogContent className="!h-[100dvh] !max-h-[100dvh] !w-screen !max-w-none min-h-0 flex flex-col rounded-none p-4 sm:p-6">
           <DialogHeader className="shrink-0">
             <DialogTitle className="flex items-center gap-2">
               <Building2 className="h-5 w-5" />
@@ -15121,8 +15241,8 @@ export function AdGroupConfigModal({
             </div>
           </DialogHeader>
 
-          <div className="mt-4 flex-1 overflow-hidden">
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="flex h-full flex-col">
+          <div className="mt-4 min-h-0 flex-1 overflow-hidden">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="flex h-full min-h-0 flex-col">
               {/* Dynamic grid layout based on visible tabs */}
               <TabsList className={`grid w-full ${
                 ({ 3: 'grid-cols-3', 2: 'grid-cols-2' } as Record<number, string>)[[canEditBusinessInfo, canEditPermissions, canEditApplications].filter(Boolean).length] ?? 'grid-cols-1'
@@ -15153,10 +15273,10 @@ export function AdGroupConfigModal({
                 )}
               </TabsList>
 
-              <div className="mt-6 flex-1 overflow-hidden">
+              <div className="mt-6 min-h-0 flex-1 overflow-hidden">
                 {canEditBusinessInfo && (
-                  <TabsContent value="basic" className="h-full overflow-hidden">
-                    <div className="h-full w-full overflow-y-auto pr-2">
+                  <TabsContent value="basic" className="mt-0 h-full min-h-0 overflow-hidden">
+                    <div className="h-full min-h-0 w-full overflow-y-auto pr-2 scrollbar-visible">
                       <BusinessInfoTab
                         formData={formData}
                         pendingChanges={pendingChanges}
@@ -15169,8 +15289,8 @@ export function AdGroupConfigModal({
                 )}
 
                 {canEditPermissions && (
-                  <TabsContent value="permissions" className="h-full overflow-hidden">
-                    <div className="h-full w-full overflow-y-auto pr-2">
+                  <TabsContent value="permissions" className="mt-0 h-full min-h-0 overflow-hidden">
+                    <div className="h-full min-h-0 w-full overflow-y-auto pr-2 scrollbar-visible">
                       <PermissionsTab
                         formData={formData}
                         roleTemplate={roleTemplate}
@@ -15178,6 +15298,7 @@ export function AdGroupConfigModal({
                         pendingChanges={pendingChanges}
                         searchTerm={searchTerm}
                         loadingPermission={loadingPermission}
+                        isLoadingTemplate={isLoadingRoleTemplate}
                         onSearchTermChange={setSearchTerm}
                         onTogglePermission={(level, key, value) => handleTogglePermission({ level, key, value })}
                         isReadOnly={isReadOnly}
@@ -15187,8 +15308,8 @@ export function AdGroupConfigModal({
                 )}
 
                 {canEditApplications && (
-                  <TabsContent value="applications" className="h-full overflow-hidden">
-                    <div className="h-full w-full overflow-y-auto pr-2">
+                  <TabsContent value="applications" className="mt-0 h-full min-h-0 overflow-hidden">
+                    <div className="h-full min-h-0 w-full overflow-y-auto pr-2 scrollbar-visible">
                       <ApplicationsTab
                         availableApps={filteredApps}
                         selectedApp={selectedApp}
@@ -15223,14 +15344,14 @@ export function AdGroupConfigModal({
               canDirectSave ? (
                 <Button
                   onClick={handleDirectSaveClick}
-                  disabled={isLoadingAdGroup}
+                  disabled={isLoadingAdGroup || isLoadingRoleTemplate}
                 >
                   {t('adGroupConfig.saveChanges')}
                 </Button>
               ) : (
                 <Button
                   onClick={handleSaveClick}
-                  disabled={isLoadingAdGroup}
+                  disabled={isLoadingAdGroup || isLoadingRoleTemplate}
                 >
                   {t('adGroupConfig.submitForApproval')}
                 </Button>
@@ -17349,7 +17470,7 @@ function AdGroupsTableComponent({
 
   return (
     <TooltipProvider delayDuration={150}>
-      <div ref={tableContainerRef} className="rounded-md border shadow-sm">
+      <div ref={tableContainerRef} className="h-[calc(100dvh-22rem)] min-h-[18rem] overflow-hidden rounded-md border shadow-sm sm:min-h-[20rem]">
         <Table className="w-full min-w-[1080px] table-auto xl:table-fixed">
         <TableHeader>
           <TableRow>
@@ -23146,7 +23267,8 @@ describe('WhatChangedDiff', () => {
     const proposed = { logicalName: 'Group' }
     const functionsChanges = {
       added: [{ app: 'banking-app', function: 'view-balance' }],
-      removed: [{ app: 'banking-app', function: 'edit-profile' }]
+      removed: [{ app: 'banking-app', function: 'edit-profile' }],
+      unchanged: []
     }
     render(
       <WhatChangedDiff
@@ -24874,7 +24996,8 @@ describe('ApplicationsTab', () => {
     appSearchTerm: '',
     groupDisplayName: 'Test Group',
     isLoadingApps: false,
-    onAppSearchChange: vi.fn(),
+    isSavingAppAssignment: false,
+    onAppSearchTermChange: vi.fn(),
     onAppSelect: vi.fn(),
     onAppSave: vi.fn(),
   }
@@ -25194,8 +25317,8 @@ export function BusinessInfoTab({
   isReadOnly = false
 }: BusinessInfoTabProps) {
   const { t } = useTranslation('admin')
-  const dropdownOptions = useDropdownOptions()
-  const { regions, businessUnits, getMarketsForRegion, getCountriesForMarket, isLoading, error } = useReferenceData()
+  const { regions, businessUnits, roleTemplates, getMarketsForRegion, getCountriesForMarket, isLoading, error } = useReferenceData()
+  const dropdownOptions = useDropdownOptions({ roleTemplates })
   const [filteredMarkets, setFilteredMarkets] = useState<MarketDto[]>([])
   const [filteredCountries, setFilteredCountries] = useState<CountryDto[]>([])
   const [loadingMarkets, setLoadingMarkets] = useState(false)
@@ -25565,6 +25688,17 @@ describe('PermissionsTab', () => {
     expect(screen.getByText('permissions.selectRoleDescription')).toBeInTheDocument()
   })
 
+  it('shows loading message when template is being fetched', () => {
+    render(
+      <PermissionsTab
+        {...defaultProps}
+        roleTemplate={null}
+        isLoadingTemplate
+      />
+    )
+    expect(screen.getByText('permissions.loadingRoleTemplate')).toBeInTheDocument()
+  })
+
   it('renders search input', () => {
     render(<PermissionsTab {...defaultProps} />)
     expect(screen.getByTestId('search-input')).toBeInTheDocument()
@@ -25708,6 +25842,7 @@ function PermissionRow({
 interface PermissionsTabProps {
   formData: AdGroup
   roleTemplate: RoleTemplate | null
+  isLoadingTemplate?: boolean
   permissionOverrides: PermissionOverrides
   pendingChanges: PendingChanges
   searchTerm: string
@@ -25720,6 +25855,7 @@ interface PermissionsTabProps {
 export function PermissionsTab({
   formData,
   roleTemplate,
+  isLoadingTemplate = false,
   permissionOverrides,
   pendingChanges,
   searchTerm,
@@ -25747,6 +25883,15 @@ export function PermissionsTab({
     isPermissionEnabled
   })
 
+  if (formData.roleName && isLoadingTemplate) {
+    return (
+      <Card>
+        <CardContent className="flex flex-col items-center justify-center py-8">
+          <p className="text-muted-foreground">{t('permissions.loadingRoleTemplate')}</p>
+        </CardContent>
+      </Card>
+    )
+  }
 
   if (!formData.roleName || !roleTemplate) {
     return (
@@ -25768,7 +25913,9 @@ export function PermissionsTab({
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <CheckCircle className="h-5 w-5 text-green-500" />
-            {t('permissions.inheritedFrom', { role: dropdownOptions.roles.find(r => r.value === formData.roleName)?.label })}
+            {t('permissions.inheritedFrom', {
+              role: dropdownOptions.roles.find(r => r.value === formData.roleName)?.label || formData.roleName
+            })}
           </CardTitle>
           <CardDescription>
             {t('permissions.inheritedDescription')}
@@ -27226,7 +27373,7 @@ function getDialogPortalContainer(): HTMLElement | undefined {
     return undefined
   }
 
-  return document.querySelector('.admin-mfe-root') ?? undefined
+  return document.querySelector<HTMLElement>('.admin-mfe-root') ?? undefined
 }
 
 const DialogOverlay = React.forwardRef<
@@ -27408,6 +27555,7 @@ const ScrollArea = React.forwardRef<
   <ScrollAreaPrimitive.Root
     ref={ref}
     className={cn("relative overflow-hidden", className)}
+    type="always"
     {...props}
   >
     <ScrollAreaPrimitive.Viewport className="h-full w-full rounded-[inherit]">
@@ -27435,7 +27583,7 @@ const ScrollBar = React.forwardRef<
       orientation === "vertical" &&
         "h-full w-2.5 border-l border-l-transparent p-[1px]",
       orientation === "horizontal" &&
-        "h-2.5 flex-col border-t border-t-transparent p-[1px]",
+        "h-2.5 flex-col border-t border-t-border/60 bg-background/95 p-[1px]",
       className
     )}
     {...props}
@@ -27820,18 +27968,20 @@ export { Switch }
 import * as React from "react"
 
 import { cn } from "../../lib/utils"
+import { ScrollArea, ScrollBar } from "./scroll-area"
 
 const Table = React.forwardRef<
   HTMLTableElement,
   React.HTMLAttributes<HTMLTableElement>
 >(({ className, ...props }, ref) => (
-  <div className="relative w-full overflow-x-scroll overflow-y-visible scrollbar-visible">
+  <ScrollArea className="relative h-full w-full">
     <table
       ref={ref}
       className={cn("w-full caption-bottom text-sm", className)}
       {...props}
     />
-  </div>
+    <ScrollBar orientation="horizontal" />
+  </ScrollArea>
 ))
 Table.displayName = "Table"
 
@@ -28667,12 +28817,14 @@ vi.mock('react', () => ({
     }
     return [stateStore.get(idx), setState]
   },
-  useEffect: (fn: () => void) => fn()
+  useEffect: (fn: () => void) => fn(),
+  useCallback: (fn: (...args: unknown[]) => unknown) => fn
 }))
 
 const mockFetchAdGroupData = vi.fn()
 const mockUpdateAdGroupConfig = vi.fn()
 const mockApplyRoleTemplate = vi.fn()
+const mockGetRoleTemplateByName = vi.fn()
 
 vi.mock('../api/use-ad-group-api', () => ({
   useAdGroupApi: () => ({
@@ -28683,22 +28835,17 @@ vi.mock('../api/use-ad-group-api', () => ({
   })
 }))
 
-vi.mock('../../constants/permission-levels', () => ({
-  permissionLevels: {
-    columns: { businessNames: { kms: 'KMS', search: 'Search' } },
-    widgets: { businessNames: { timer: 'Timer' } },
-    features: { businessNames: { chat: 'Chat' } },
-    settings_tabs: { businessNames: { help: 'Help' } },
-    settings_options: { businessNames: {} }
-  }
+vi.mock('../../services/api/role-template.service', () => ({
+  getRoleTemplateByName: (...args: unknown[]) => mockGetRoleTemplateByName(...args)
 }))
 
-vi.mock('../../components/admin/business-relevant-toggles', () => ({
-  businessRelevantToggles: {
-    micro_frontends: {
-      toggles: { mediaBbar: 'Media Bar', copilot: 'Copilot' }
-    }
-  }
+vi.mock('../../utils/core/debug', () => ({
+  createLogger: () => ({
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn()
+  })
 }))
 
 const { useAdGroupForm } = await import('./use-ad-group-form')
@@ -28712,6 +28859,17 @@ const baseGroup = {
   market: 'HK',
   region: 'APAC',
   country: 'HK'
+}
+
+const roleTemplateResponse = {
+  roleNameCode: 'voice_agent',
+  roleDisplayName: 'Voice Agent',
+  columns: { kms: { stateText: 'enabled' } },
+  widgets: { timer: { stateText: 'disabled' } },
+  features: { 'search.knowledgeBase': { stateText: 'enabled' } },
+  settingsTabs: { help: { stateText: 'enabled' } },
+  settingsOptions: { 'calls.autoAccept': { stateText: 'disabled' } },
+  microFrontends: { mediaBar: { stateText: 'enabled' } }
 }
 
 function callHook(overrides: Record<string, unknown> = {}) {
@@ -28728,6 +28886,7 @@ describe('useAdGroupForm', () => {
     resetState()
     vi.clearAllMocks()
     mockFetchAdGroupData.mockResolvedValue(null)
+    mockGetRoleTemplateByName.mockResolvedValue(roleTemplateResponse)
   })
 
   it('initializes form data from initialGroup', () => {
@@ -28746,47 +28905,26 @@ describe('useAdGroupForm', () => {
     expect(result.pendingChanges).toEqual({ permissions: {} })
   })
 
-  it('builds role template when roleName is set', () => {
-    callHook() // first call triggers useEffect which sets roleTemplate
-    const result = callHook() // second call reads updated state
-    expect(result.roleTemplate).not.toBeNull()
+  it('loads and transforms role template when roleName is set', async () => {
+    callHook()
+
+    await vi.waitFor(() => {
+      expect(callHook().roleTemplate?.roleName).toBe('voice_agent')
+    })
+
+    const result = callHook()
     expect(result.roleTemplate?.roleName).toBe('voice_agent')
-    expect(result.roleTemplate?.columns).toBeDefined()
-    expect(result.roleTemplate?.widgets).toBeDefined()
-    expect(result.roleTemplate?.features).toBeDefined()
-    expect(result.roleTemplate?.micro_frontends).toBeDefined()
+    expect(result.roleTemplate?.roleDisplayName).toBe('Voice Agent')
+    expect(result.roleTemplate?.columns?.kms?.state).toBe('enabled')
+    expect(result.roleTemplate?.widgets?.timer?.state).toBe('disabled')
+    expect(result.roleTemplate?.settings_tabs?.help?.state).toBe('enabled')
+    expect(result.roleTemplate?.settings_options?.['calls.autoAccept']?.state).toBe('disabled')
+    expect(result.roleTemplate?.micro_frontends?.mediaBar?.state).toBe('enabled')
   })
 
   it('sets roleTemplate to null when no roleName', () => {
     const result = callHook({ roleName: undefined })
     expect(result.roleTemplate).toBeNull()
-  })
-
-  it('template sections have all keys from permissionLevels', () => {
-    callHook()
-    const result = callHook()
-    expect(result.roleTemplate?.columns).toHaveProperty('kms')
-    expect(result.roleTemplate?.columns).toHaveProperty('search')
-    expect(result.roleTemplate?.widgets).toHaveProperty('timer')
-    expect(result.roleTemplate?.features).toHaveProperty('chat')
-    expect(result.roleTemplate?.settings_tabs).toHaveProperty('help')
-  })
-
-  it('template micro_frontends section uses businessRelevantToggles', () => {
-    callHook()
-    const result = callHook()
-    expect(result.roleTemplate?.micro_frontends).toHaveProperty('mediaBbar')
-    expect(result.roleTemplate?.micro_frontends).toHaveProperty('copilot')
-  })
-
-  it('all template permissions default to enabled', () => {
-    callHook()
-    const result = callHook()
-    if (result.roleTemplate) {
-      Object.values(result.roleTemplate.columns).forEach(perm => {
-        expect(perm.state).toBe('enabled')
-      })
-    }
   })
 
   describe('updateFormData', () => {
@@ -28823,6 +28961,11 @@ describe('useAdGroupForm', () => {
   describe('handleApplyRoleTemplate', () => {
     it('clears overrides and pending changes on success', async () => {
       mockApplyRoleTemplate.mockResolvedValue({ groupIdentifier: 'CN=test-group' })
+      mockGetRoleTemplateByName.mockResolvedValue({
+        ...roleTemplateResponse,
+        roleNameCode: 'chat_agent',
+        roleDisplayName: 'Chat Agent'
+      })
 
       callHook()
       const { updatePermissionOverrides } = callHook()
@@ -28830,9 +28973,16 @@ describe('useAdGroupForm', () => {
       const { handleApplyRoleTemplate } = callHook()
       await handleApplyRoleTemplate('chat_agent')
 
+      await vi.waitFor(() => {
+        callHook()
+        expect(mockGetRoleTemplateByName).toHaveBeenCalledWith('chat_agent')
+      })
+
       const result = callHook()
+      expect(result.formData.roleName).toBe('chat_agent')
       expect(result.permissionOverrides).toEqual({})
       expect(result.pendingChanges).toEqual({ permissions: {} })
+      expect(result.roleTemplate?.roleName).toBe('chat_agent')
     })
 
     it('does not clear overrides when apply returns null', async () => {
@@ -28853,6 +29003,7 @@ describe('useAdGroupForm', () => {
     it('loads saved group data and converts assignments to overrides', async () => {
       mockFetchAdGroupData.mockResolvedValue({
         ...baseGroup,
+        roleName: 'chat_agent',
         columnAssignments: {
           kms: { state: 'enabled' },
           search: { state: 'disabled' }
@@ -28862,9 +29013,8 @@ describe('useAdGroupForm', () => {
         }
       })
 
-      // useEffect runs synchronously in our mock
       callHook()
-      // Wait for async fetchAdGroupData
+
       await vi.waitFor(() => {
         expect(mockFetchAdGroupData).toHaveBeenCalledWith('CN=test-group')
       })
@@ -28878,8 +29028,10 @@ describe('useAdGroupForm', () => {
 })
 ===ENDFILE
 ===FILE: ./src/hooks/admin/use-ad-group-form.ts
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useAdGroupApi } from '../api/use-ad-group-api'
+import { getRoleTemplateByName, type RoleTemplateDto } from '../../services/api/role-template.service'
+import { createLogger } from '../../utils/core/debug'
 import type {
   AdGroup,
   PermissionOverrides,
@@ -28887,17 +29039,46 @@ import type {
   RoleTemplate,
   PermissionState
 } from '../../types/features/ad-group-config'
-import { permissionLevels } from '../../constants/permission-levels'
-import { businessRelevantToggles } from '../../components/admin/business-relevant-toggles'
 
 interface UseAdGroupFormProps {
   initialGroup: AdGroup
   open: boolean
 }
 
+const logger = createLogger('useAdGroupForm')
+
+function toPermissionStateMap(
+  section: Record<string, { stateText: string } | undefined> | undefined
+): Record<string, PermissionState> {
+  if (!section) {
+    return {}
+  }
+
+  return Object.fromEntries(
+    Object.entries(section).map(([key, value]) => {
+      const normalizedState = value?.stateText?.toLowerCase() === 'enabled' ? 'enabled' : 'disabled'
+      return [key, { state: normalizedState }]
+    })
+  )
+}
+
+function transformApiTemplate(dto: RoleTemplateDto): RoleTemplate {
+  return {
+    roleName: dto.roleNameCode,
+    roleDisplayName: dto.roleDisplayName,
+    columns: toPermissionStateMap(dto.columns),
+    widgets: toPermissionStateMap(dto.widgets),
+    features: toPermissionStateMap(dto.features),
+    settings_tabs: toPermissionStateMap(dto.settingsTabs),
+    settings_options: toPermissionStateMap(dto.settingsOptions),
+    micro_frontends: toPermissionStateMap(dto.microFrontends)
+  }
+}
+
 export function useAdGroupForm({ initialGroup, open }: UseAdGroupFormProps) {
   const [formData, setFormData] = useState<AdGroup>({ ...initialGroup })
   const [roleTemplate, setRoleTemplate] = useState<RoleTemplate | null>(null)
+  const [isLoadingRoleTemplate, setIsLoadingRoleTemplate] = useState(false)
   const [permissionOverrides, setPermissionOverrides] = useState<PermissionOverrides>({})
   const [pendingChanges, setPendingChanges] = useState<PendingChanges>({ permissions: {} })
 
@@ -28908,15 +29089,47 @@ export function useAdGroupForm({ initialGroup, open }: UseAdGroupFormProps) {
     applyRoleTemplate: applyRoleTemplateApi
   } = useAdGroupApi()
 
-  // Build local role template from known toggle keys to avoid runtime
-  // dependency on the deprecated templates API endpoint.
+  const loadRoleTemplate = useCallback(async (roleNameCode: string): Promise<RoleTemplate> => {
+    const templateDto = await getRoleTemplateByName(roleNameCode)
+    return transformApiTemplate(templateDto)
+  }, [])
+
   useEffect(() => {
-    if (!formData.roleName) {
+    const roleNameCode = formData.roleName
+
+    if (!roleNameCode) {
       setRoleTemplate(null)
+      setIsLoadingRoleTemplate(false)
       return
     }
-    setRoleTemplate(buildFallbackTemplate(formData.roleName))
-  }, [formData.roleName])
+
+    let active = true
+
+    const fetchTemplate = async () => {
+      setIsLoadingRoleTemplate(true)
+      try {
+        const template = await loadRoleTemplate(roleNameCode)
+        if (active) {
+          setRoleTemplate(template)
+        }
+      } catch (error) {
+        logger.error('Failed to load role template', { roleNameCode, error })
+        if (active) {
+          setRoleTemplate(null)
+        }
+      } finally {
+        if (active) {
+          setIsLoadingRoleTemplate(false)
+        }
+      }
+    }
+
+    fetchTemplate()
+
+    return () => {
+      active = false
+    }
+  }, [formData.roleName, loadRoleTemplate])
 
   // Fetch saved AD group data when modal opens
   useEffect(() => {
@@ -28952,8 +29165,6 @@ export function useAdGroupForm({ initialGroup, open }: UseAdGroupFormProps) {
           })
 
           setPermissionOverrides(overrides)
-
-          setRoleTemplate(buildFallbackTemplate(savedData.roleName || ''))
         }
     }
 
@@ -28981,15 +29192,17 @@ export function useAdGroupForm({ initialGroup, open }: UseAdGroupFormProps) {
     const result = await applyRoleTemplateApi(formData.groupIdentifier, roleName)
 
     if (result) {
+      setFormData(prev => ({ ...prev, roleName }))
       setPermissionOverrides({})
       setPendingChanges({ permissions: {} })
-      setRoleTemplate(buildFallbackTemplate(roleName))
+      setRoleTemplate(null)
     }
   }
 
   return {
     formData,
     roleTemplate,
+    isLoadingRoleTemplate,
     permissionOverrides,
     pendingChanges,
     isLoadingAdGroup,
@@ -28998,46 +29211,6 @@ export function useAdGroupForm({ initialGroup, open }: UseAdGroupFormProps) {
     setPendingChanges,
     handleApplyRoleTemplate,
     updateAdGroupConfig,
-  }
-}
-
-/**
- * Build a default RoleTemplate from the known permission keys when the
- * templates API endpoint is unavailable. Uses permissionLevels and
- * businessRelevantToggles as the source of truth for all toggle keys,
- * defaulting every permission to 'enabled'.
- */
-function buildFallbackTemplate(roleName: string): RoleTemplate {
-  const enabled: PermissionState = { state: 'enabled' }
-
-  const makeSection = (levelKey: string): Record<string, PermissionState> => {
-    const level = permissionLevels[levelKey]
-    if (!level?.businessNames) return {}
-    const section: Record<string, PermissionState> = {}
-    Object.keys(level.businessNames).forEach(key => {
-      section[key] = { ...enabled }
-    })
-    return section
-  }
-
-  const makeMfes = (): Record<string, PermissionState> => {
-    const mfeConfig = businessRelevantToggles['micro_frontends']
-    if (!mfeConfig?.toggles) return {}
-    const section: Record<string, PermissionState> = {}
-    Object.keys(mfeConfig.toggles).forEach(key => {
-      section[key] = { ...enabled }
-    })
-    return section
-  }
-
-  return {
-    roleName,
-    columns: makeSection('columns'),
-    widgets: makeSection('widgets'),
-    features: makeSection('features'),
-    settings_tabs: makeSection('settings_tabs'),
-    settings_options: makeSection('settings_options'),
-    micro_frontends: makeMfes()
   }
 }
 
@@ -30007,8 +30180,8 @@ describe('useAdGroupsSelection', () => {
           copyRoleAndPermissionsFlag: true,
           copyBusinessInfoFlag: true,
           copyApplicationsFlag: false,
-          copyWorkflowModeCode: 'DIRECT',
-          functionMismatchPolicyCode: 'SKIP'
+          copyWorkflowModeCode: 'DIRECT_SAVE',
+          functionMismatchPolicyCode: 'SKIP_UNAVAILABLE'
         }
       )
 
@@ -30031,8 +30204,8 @@ describe('useAdGroupsSelection', () => {
           copyRoleAndPermissionsFlag: true,
           copyBusinessInfoFlag: true,
           copyApplicationsFlag: false,
-          copyWorkflowModeCode: 'DIRECT',
-          functionMismatchPolicyCode: 'SKIP'
+          copyWorkflowModeCode: 'DIRECT_SAVE',
+          functionMismatchPolicyCode: 'SKIP_UNAVAILABLE'
         }
       )
 
@@ -34697,6 +34870,7 @@ vi.mock('react', () => ({
 const mockGetAllRegions = vi.fn()
 const mockGetAllBusinessUnits = vi.fn()
 const mockGetAllCountries = vi.fn()
+const mockGetAllRoleTemplates = vi.fn()
 const mockGetCountriesByRegion = vi.fn()
 const mockGetMarketsByRegion = vi.fn()
 const mockGetCountriesByMarket = vi.fn()
@@ -34708,6 +34882,10 @@ vi.mock('../../services/api/reference-data.service', () => ({
   getCountriesByRegion: (...args: unknown[]) => mockGetCountriesByRegion(...args),
   getMarketsByRegion: (...args: unknown[]) => mockGetMarketsByRegion(...args),
   getCountriesByMarket: (...args: unknown[]) => mockGetCountriesByMarket(...args)
+}))
+
+vi.mock('../../services/api/role-template.service', () => ({
+  getAllRoleTemplates: (...args: unknown[]) => mockGetAllRoleTemplates(...args)
 }))
 
 vi.mock('../../utils/core/debug', () => ({
@@ -34737,6 +34915,7 @@ describe('useReferenceData', () => {
     expect(result.regions).toEqual([])
     expect(result.businessUnits).toEqual([])
     expect(result.countries).toEqual([])
+    expect(result.roleTemplates).toEqual([])
     expect(result.isLoading).toBe(false)
     expect(result.error).toBeNull()
   })
@@ -34745,10 +34924,12 @@ describe('useReferenceData', () => {
     const mockRegions = [{ regionCode: 'APAC', regionName: 'Asia Pacific', displayOrder: 1, isActive: true }]
     const mockBUs = [{ unitCode: 'WPB', unitName: 'Wealth', description: '', effectiveDate: '', displayOrder: 1, isActive: true }]
     const mockCountries = [{ countryCode: 'HK', countryName: 'Hong Kong', regionCode: 'APAC', marketCode: 'HK', displayOrder: 1, isActive: true }]
+    const mockRoleTemplates = [{ roleNameCode: 'voice_agent', roleDisplayName: 'Voice Agent' }]
 
     mockGetAllRegions.mockResolvedValue(mockRegions)
     mockGetAllBusinessUnits.mockResolvedValue(mockBUs)
     mockGetAllCountries.mockResolvedValue(mockCountries)
+    mockGetAllRoleTemplates.mockResolvedValue(mockRoleTemplates)
 
     // Call refetch which clears module caches and calls fetchAllData
     const { refetch } = callHook()
@@ -34758,12 +34939,14 @@ describe('useReferenceData', () => {
     expect(result.regions).toEqual(mockRegions)
     expect(result.businessUnits).toEqual(mockBUs)
     expect(result.countries).toEqual(mockCountries)
+    expect(result.roleTemplates).toEqual(mockRoleTemplates)
   })
 
   it('fetchAllData sets error on failure', async () => {
     mockGetAllRegions.mockRejectedValue(new Error('Network error'))
     mockGetAllBusinessUnits.mockResolvedValue([])
     mockGetAllCountries.mockResolvedValue([])
+    mockGetAllRoleTemplates.mockResolvedValue([])
 
     const { refetch } = callHook()
     await refetch()
@@ -34777,6 +34960,7 @@ describe('useReferenceData', () => {
     mockGetAllRegions.mockResolvedValue(mockRegions)
     mockGetAllBusinessUnits.mockResolvedValue([])
     mockGetAllCountries.mockResolvedValue([])
+    mockGetAllRoleTemplates.mockResolvedValue([])
 
     const { refetch } = callHook()
     await refetch()
@@ -34844,13 +35028,16 @@ describe('useReferenceData', () => {
 ===FILE: ./src/hooks/api/use-reference-data.ts
 import { useState, useEffect, useCallback } from 'react'
 import { getAllRegions, getAllBusinessUnits, getAllCountries, getCountriesByRegion, getMarketsByRegion, getCountriesByMarket } from '../../services/api/reference-data.service'
+import { getAllRoleTemplates } from '../../services/api/role-template.service'
 import { createLogger } from '../../utils/core/debug'
 import type { RegionDto, BusinessUnitDto, CountryDto, MarketDto } from '../../services/api/reference-data.service'
+import type { RoleTemplateSummaryDto } from '../../services/api/role-template.service'
 
 interface UseReferenceDataReturn {
   regions: RegionDto[]
   businessUnits: BusinessUnitDto[]
   countries: CountryDto[]
+  roleTemplates: RoleTemplateSummaryDto[]
   isLoading: boolean
   error: string | null
   getCountriesForRegion: (regionNameOrCode: string) => Promise<CountryDto[]>
@@ -34862,6 +35049,7 @@ interface UseReferenceDataReturn {
 let cachedRegions: RegionDto[] | null = null
 let cachedBusinessUnits: BusinessUnitDto[] | null = null
 let cachedCountries: CountryDto[] | null = null
+let cachedRoleTemplates: RoleTemplateSummaryDto[] | null = null
 const cachedCountriesByRegion = new Map<string, CountryDto[]>()
 const cachedMarketsByRegion = new Map<string, MarketDto[]>()
 const cachedCountriesByMarket = new Map<string, CountryDto[]>()
@@ -34871,11 +35059,12 @@ export function useReferenceData(): UseReferenceDataReturn {
   const [regions, setRegions] = useState<RegionDto[]>(cachedRegions || [])
   const [businessUnits, setBusinessUnits] = useState<BusinessUnitDto[]>(cachedBusinessUnits || [])
   const [countries, setCountries] = useState<CountryDto[]>(cachedCountries || [])
+  const [roleTemplates, setRoleTemplates] = useState<RoleTemplateSummaryDto[]>(cachedRoleTemplates || [])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const fetchAllData = useCallback(async () => {
-    if (cachedRegions && cachedBusinessUnits && cachedCountries) {
+    if (cachedRegions && cachedBusinessUnits && cachedCountries && cachedRoleTemplates) {
       return
     }
 
@@ -34883,19 +35072,29 @@ export function useReferenceData(): UseReferenceDataReturn {
     setError(null)
 
     try {
-      const [regionsData, businessUnitsData, countriesData] = await Promise.all([
+      const roleTemplatesPromise = cachedRoleTemplates
+        ? Promise.resolve(cachedRoleTemplates)
+        : getAllRoleTemplates().catch((roleTemplateError) => {
+          logger.warn('Role templates fetch failed; continuing with empty list', roleTemplateError)
+          return [] as RoleTemplateSummaryDto[]
+        })
+
+      const [regionsData, businessUnitsData, countriesData, roleTemplatesData] = await Promise.all([
         cachedRegions ? Promise.resolve(cachedRegions) : getAllRegions(),
         cachedBusinessUnits ? Promise.resolve(cachedBusinessUnits) : getAllBusinessUnits(),
-        cachedCountries ? Promise.resolve(cachedCountries) : getAllCountries()
+        cachedCountries ? Promise.resolve(cachedCountries) : getAllCountries(),
+        roleTemplatesPromise
       ])
 
       cachedRegions = regionsData
       cachedBusinessUnits = businessUnitsData
       cachedCountries = countriesData
+      cachedRoleTemplates = roleTemplatesData
 
       setRegions(regionsData)
       setBusinessUnits(businessUnitsData)
       setCountries(countriesData)
+      setRoleTemplates(roleTemplatesData)
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch reference data'
       setError(errorMessage)
@@ -34957,6 +35156,7 @@ export function useReferenceData(): UseReferenceDataReturn {
     cachedRegions = null
     cachedBusinessUnits = null
     cachedCountries = null
+    cachedRoleTemplates = null
     cachedCountriesByRegion.clear()
     cachedMarketsByRegion.clear()
     cachedCountriesByMarket.clear()
@@ -34971,6 +35171,7 @@ export function useReferenceData(): UseReferenceDataReturn {
     regions,
     businessUnits,
     countries,
+    roleTemplates,
     isLoading,
     error,
     getCountriesForRegion,
@@ -35351,7 +35552,11 @@ export const getBusinessField = (technicalField: string): string => {
 }
 ===ENDFILE
 ===FILE: ./src/hooks/features/use-dropdown-options.test.ts
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+const mockUseReferenceData = vi.fn(() => ({
+  roleTemplates: [] as Array<{ roleNameCode: string; roleDisplayName: string }>
+}))
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -35363,10 +35568,34 @@ vi.mock('react', () => ({
   useMemo: (fn: () => unknown) => fn()
 }))
 
+vi.mock('../api/use-reference-data', () => ({
+  useReferenceData: () => mockUseReferenceData()
+}))
+
 const { useDropdownOptions } = await import('./use-dropdown-options')
 
 describe('useDropdownOptions', () => {
-  it('returns roles dropdown options', () => {
+  beforeEach(() => {
+    mockUseReferenceData.mockReturnValue({ roleTemplates: [] })
+  })
+
+  it('returns API roles and filters admin role', () => {
+    mockUseReferenceData.mockReturnValue({
+      roleTemplates: [
+        { roleNameCode: 'chat_agent', roleDisplayName: 'Chat Agent' },
+        { roleNameCode: 'admin', roleDisplayName: 'Administrator' },
+        { roleNameCode: 'voice_agent', roleDisplayName: 'Voice Agent' }
+      ]
+    })
+
+    const options = useDropdownOptions()
+    expect(options.roles).toHaveLength(2)
+    expect(options.roles.map(r => r.value)).toEqual(['chat_agent', 'voice_agent'])
+  })
+
+  it('falls back to static roles when API roles are unavailable', () => {
+    mockUseReferenceData.mockReturnValue({ roleTemplates: [] })
+
     const options = useDropdownOptions()
     expect(options.roles).toHaveLength(3)
     expect(options.roles.map(r => r.value)).toEqual(['chat_agent', 'voice_agent', 'supervisor'])
@@ -35401,6 +35630,8 @@ describe('useDropdownOptions', () => {
 ===FILE: ./src/hooks/features/use-dropdown-options.ts
 import { useTranslation } from 'react-i18next'
 import { useMemo } from 'react'
+import { useReferenceData } from '../api/use-reference-data'
+import type { RoleTemplateSummaryDto } from '../../services/api/role-template.service'
 
 interface DropdownOption {
   value: string
@@ -35415,15 +35646,36 @@ interface DropdownOptions {
   countries: DropdownOption[]
 }
 
-export function useDropdownOptions(): DropdownOptions {
-  const { t } = useTranslation('common')
+interface UseDropdownOptionsParams {
+  roleTemplates?: RoleTemplateSummaryDto[]
+}
 
-  return useMemo(() => ({
-    roles: [
+export function useDropdownOptions(params: UseDropdownOptionsParams = {}): DropdownOptions {
+  const { t } = useTranslation('common')
+  const { roleTemplates } = useReferenceData()
+  const resolvedRoleTemplates = params.roleTemplates ?? roleTemplates
+
+  const roles = useMemo(() => {
+    const apiRoles = resolvedRoleTemplates
+      .filter(template => template.roleNameCode.toLowerCase() !== 'admin')
+      .map(template => ({
+        value: template.roleNameCode,
+        label: template.roleDisplayName || template.roleNameCode
+      }))
+
+    if (apiRoles.length > 0) {
+      return apiRoles
+    }
+
+    return [
       { value: 'chat_agent', label: t('roles.chatAgent') },
       { value: 'voice_agent', label: t('roles.voiceAgent') },
       { value: 'supervisor', label: t('roles.supervisor') }
-    ],
+    ]
+  }, [resolvedRoleTemplates, t])
+
+  return useMemo(() => ({
+    roles,
     markets: [],
     regions: [
       { value: 'EMEA', label: t('regions.emea') },
@@ -35445,7 +35697,7 @@ export function useDropdownOptions(): DropdownOptions {
       { value: 'Germany', label: t('countries.germany') },
       { value: 'France', label: t('countries.france') }
     ]
-  }), [t])
+  }), [roles, t])
 }
 ===ENDFILE
 ===FILE: ./src/hooks/features/use-feature-mapping.test.ts
@@ -35941,7 +36193,6 @@ export default i18n
   .admin-mfe-root .scrollbar-visible {
     scrollbar-width: thin;
     scrollbar-color: hsl(var(--border)) transparent;
-    scrollbar-gutter: stable both-edges;
   }
 
   .admin-mfe-root .scrollbar-visible::-webkit-scrollbar {
@@ -35957,7 +36208,7 @@ export default i18n
   }
 
   .admin-mfe-root .scrollbar-visible::-webkit-scrollbar-track {
-    background-color: hsl(var(--muted) / 0.35);
+    background-color: transparent;
     border-radius: 9999px;
   }
 }
@@ -36226,6 +36477,8 @@ describe('AdminApprovalService', () => {
       } as Response)
 
       const result = await adminApprovalService.submitChange('CN=GROUP', {
+        changeType: 'CONFIG_UPDATE',
+        currentState: {},
         changeDescription: 'Test change',
         proposedState: { logicalName: 'New Name' }
       })
@@ -36242,7 +36495,11 @@ describe('AdminApprovalService', () => {
       } as unknown as Response)
 
       await expect(
-        adminApprovalService.submitChange('CN=GROUP', { proposedState: {} })
+        adminApprovalService.submitChange('CN=GROUP', {
+          changeType: 'CONFIG_UPDATE',
+          currentState: {},
+          proposedState: {}
+        })
       ).rejects.toThrow('A pending change already exists')
     })
 
@@ -36253,7 +36510,11 @@ describe('AdminApprovalService', () => {
       } as unknown as Response)
 
       await expect(
-        adminApprovalService.submitChange('CN=GROUP', { proposedState: {} })
+        adminApprovalService.submitChange('CN=GROUP', {
+          changeType: 'CONFIG_UPDATE',
+          currentState: {},
+          proposedState: {}
+        })
       ).rejects.toThrow('modified by another user')
     })
 
@@ -36264,7 +36525,11 @@ describe('AdminApprovalService', () => {
       } as unknown as Response)
 
       await expect(
-        adminApprovalService.submitChange('CN=GROUP', { proposedState: {} })
+        adminApprovalService.submitChange('CN=GROUP', {
+          changeType: 'CONFIG_UPDATE',
+          currentState: {},
+          proposedState: {}
+        })
       ).rejects.toThrow('invalid input')
     })
   })
@@ -36591,7 +36856,13 @@ describe('AdminApprovalService', () => {
     it('throws when no token available', async () => {
       vi.mocked(getAuthToken).mockReturnValue(null)
 
-      await expect(adminApprovalService.submitChange('CN=X', { proposedState: {} })).rejects.toThrow('No authentication token found')
+      await expect(
+        adminApprovalService.submitChange('CN=X', {
+          changeType: 'CONFIG_UPDATE',
+          currentState: {},
+          proposedState: {}
+        })
+      ).rejects.toThrow('No authentication token found')
     })
   })
 })
@@ -38570,6 +38841,112 @@ export async function getCountriesByMarket(marketCode: string): Promise<CountryD
   return all.filter((c) => c.marketCode === marketCode)
 }
 ===ENDFILE
+===FILE: ./src/services/api/role-template.service.test.ts
+import { describe, expect, it, vi, beforeEach } from 'vitest'
+
+const mockApiFetchJson = vi.fn()
+
+vi.mock('../core/api-client', () => ({
+  apiFetchJson: (...args: unknown[]) => mockApiFetchJson(...args)
+}))
+
+const {
+  getAllRoleTemplates,
+  getRoleTemplateByName
+} = await import('./role-template.service')
+
+describe('role-template.service', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('getAllRoleTemplates returns list from envelope', async () => {
+    mockApiFetchJson.mockResolvedValue({
+      data: {
+        roleLayoutTemplates: [
+          { roleNameCode: 'voice_agent', roleDisplayName: 'Voice Agent' },
+          { roleNameCode: 'chat_agent', roleDisplayName: 'Chat Agent' }
+        ]
+      }
+    })
+
+    const result = await getAllRoleTemplates()
+    expect(result).toHaveLength(2)
+    expect(result[0].roleNameCode).toBe('voice_agent')
+    expect(mockApiFetchJson).toHaveBeenCalledWith('/papi/v1/role-layout-templates')
+  })
+
+  it('getAllRoleTemplates returns empty array when payload missing', async () => {
+    mockApiFetchJson.mockResolvedValue({ data: {} })
+    const result = await getAllRoleTemplates()
+    expect(result).toEqual([])
+  })
+
+  it('getRoleTemplateByName returns template from envelope', async () => {
+    mockApiFetchJson.mockResolvedValue({
+      data: {
+        roleNameCode: 'voice_agent',
+        roleDisplayName: 'Voice Agent',
+        columns: { chat: { stateText: 'ENABLED' } },
+        widgets: {},
+        features: {},
+        settingsTabs: {},
+        settingsOptions: {},
+        microFrontends: {}
+      }
+    })
+
+    const result = await getRoleTemplateByName('voice_agent')
+    expect(result.roleNameCode).toBe('voice_agent')
+    expect(result.columns.chat.stateText).toBe('ENABLED')
+    expect(mockApiFetchJson).toHaveBeenCalledWith('/papi/v1/role-layout-templates/voice_agent')
+  })
+
+  it('getRoleTemplateByName URL-encodes role name code', async () => {
+    mockApiFetchJson.mockResolvedValue({ data: {} })
+    await getRoleTemplateByName('voice/agent')
+    expect(mockApiFetchJson).toHaveBeenCalledWith('/papi/v1/role-layout-templates/voice%2Fagent')
+  })
+})
+===ENDFILE
+===FILE: ./src/services/api/role-template.service.ts
+import { apiFetchJson } from '../core/api-client'
+
+export interface RoleTemplateStateDto {
+  stateText: string
+  reasonText?: string
+}
+
+export interface RoleTemplateSummaryDto {
+  roleNameCode: string
+  roleDisplayName: string
+}
+
+export interface RoleTemplateDto {
+  roleNameCode: string
+  roleDisplayName: string
+  columns: Record<string, RoleTemplateStateDto>
+  widgets: Record<string, RoleTemplateStateDto>
+  features: Record<string, RoleTemplateStateDto>
+  settingsTabs: Record<string, RoleTemplateStateDto>
+  settingsOptions: Record<string, RoleTemplateStateDto>
+  microFrontends: Record<string, RoleTemplateStateDto>
+}
+
+export async function getAllRoleTemplates(): Promise<RoleTemplateSummaryDto[]> {
+  const raw = await apiFetchJson<{ data?: { roleLayoutTemplates?: RoleTemplateSummaryDto[] } }>(
+    '/papi/v1/role-layout-templates'
+  )
+  return raw.data?.roleLayoutTemplates ?? []
+}
+
+export async function getRoleTemplateByName(roleNameCode: string): Promise<RoleTemplateDto> {
+  const raw = await apiFetchJson<{ data: RoleTemplateDto }>(
+    `/papi/v1/role-layout-templates/${encodeURIComponent(roleNameCode)}`
+  )
+  return raw.data
+}
+===ENDFILE
 ===FILE: ./src/services/core/api-client.test.ts
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -39231,6 +39608,17 @@ export const mockApi = {
 ===ENDFILE
 ===FILE: ./src/test-setup.ts
 import '@testing-library/jest-dom'
+
+if (typeof globalThis.ResizeObserver === 'undefined') {
+  class ResizeObserverMock {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+
+  // Radix ScrollArea relies on ResizeObserver; jsdom does not provide it.
+  globalThis.ResizeObserver = ResizeObserverMock as unknown as typeof ResizeObserver
+}
 ===ENDFILE
 ===FILE: ./src/types/features/ad-group-config.ts
 // User access level for approval workflow
@@ -40916,14 +41304,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { logErrorToTracking } from './error-tracking'
 
 describe('logErrorToTracking', () => {
+  const windowWithTracking = window as unknown as Record<string, unknown>
+
   beforeEach(() => {
     // Clean up any mock service
-    delete (window as Record<string, unknown>).errorTrackingService
+    delete windowWithTracking.errorTrackingService
   })
 
   it('calls service logError when available', () => {
     const logError = vi.fn()
-    ;(window as Record<string, unknown>).errorTrackingService = { logError }
+    windowWithTracking.errorTrackingService = { logError }
 
     logErrorToTracking('TEST_ERROR', { key: 'value' })
 
@@ -40936,7 +41326,7 @@ describe('logErrorToTracking', () => {
   })
 
   it('does nothing when logError method missing', () => {
-    ;(window as Record<string, unknown>).errorTrackingService = {}
+    windowWithTracking.errorTrackingService = {}
     expect(() => logErrorToTracking('TEST', {})).not.toThrow()
   })
 })
