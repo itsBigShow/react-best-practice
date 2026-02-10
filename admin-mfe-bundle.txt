@@ -1,5 +1,5 @@
 # CCaaS Admin MFE - Source Bundle
-# Generated: 2026-02-10 20:23:56
+# Generated: 2026-02-10 20:41:55
 # Total files: 207
 # Categories: 93 TypeScript, 99 React (TSX), 1 CSS, 5 Config, 4 Docs, 5 Other
 # Note: node_modules and dist NOT included - run 'npm install && npm run build' after extraction
@@ -19637,6 +19637,7 @@ import { Button } from './button'
 import { Label } from './label'
 import { ScrollArea } from './scroll-area'
 import { cn } from '../../lib/utils'
+import { getDialogPortalContainer } from './dialog'
 
 const DEFAULT_TIME_SLOTS = [
   { time: '09:00', available: false },
@@ -19834,7 +19835,7 @@ export function DateTimePicker({
             </span>
           </Button>
         </PopoverPrimitive.Trigger>
-        <PopoverPrimitive.Portal>
+        <PopoverPrimitive.Portal container={getDialogPortalContainer()}>
           <PopoverPrimitive.Content
             align="start"
             sideOffset={8}
@@ -20227,6 +20228,7 @@ import * as SelectPrimitive from "@radix-ui/react-select"
 import { Check, ChevronDown, ChevronUp } from "lucide-react"
 
 import { cn } from "../../lib/utils"
+import { getDialogPortalContainer } from "./dialog"
 
 const Select = SelectPrimitive.Root
 
@@ -20290,8 +20292,11 @@ SelectScrollDownButton.displayName =
 const SelectContent = React.forwardRef<
   React.ComponentRef<typeof SelectPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Content>
->(({ className, children, position = "popper", ...props }, ref) => (
-  <SelectPrimitive.Portal>
+>(({ className, children, position = "popper", ...props }, ref) => {
+  const portalContainer = getDialogPortalContainer()
+
+  return (
+  <SelectPrimitive.Portal container={portalContainer}>
     <SelectPrimitive.Content
       ref={ref}
       className={cn(
@@ -20316,7 +20321,8 @@ const SelectContent = React.forwardRef<
       <SelectScrollDownButton />
     </SelectPrimitive.Content>
   </SelectPrimitive.Portal>
-))
+  )
+})
 SelectContent.displayName = SelectPrimitive.Content.displayName
 
 const SelectLabel = React.forwardRef<
@@ -20411,12 +20417,11 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { X } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { getDialogPortalContainer } from "./dialog"
 
 const Sheet = SheetPrimitive.Root
 
 const SheetTrigger = SheetPrimitive.Trigger
-
-const SheetPortal = SheetPrimitive.Portal
 
 const SheetOverlay = React.forwardRef<
   React.ComponentRef<typeof SheetPrimitive.Overlay>,
@@ -20460,8 +20465,10 @@ const SheetContent = React.forwardRef<
   React.ComponentRef<typeof SheetPrimitive.Content>,
   SheetContentProps
 >(({ side = "right", className, children, ...props }, ref) => {
+  const portalContainer = getDialogPortalContainer()
+
   return (
-    <SheetPortal>
+    <SheetPrimitive.Portal container={portalContainer}>
       <SheetOverlay />
       <SheetPrimitive.Content
         ref={ref}
@@ -20474,7 +20481,7 @@ const SheetContent = React.forwardRef<
           <span className="sr-only">Close</span>
         </SheetPrimitive.Close>
       </SheetPrimitive.Content>
-    </SheetPortal>
+    </SheetPrimitive.Portal>
   )
 })
 SheetContent.displayName = SheetPrimitive.Content.displayName
