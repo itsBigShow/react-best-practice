@@ -1,5 +1,5 @@
 # CCaaS Admin MFE - Source Bundle
-# Generated: 2026-02-10 20:41:55
+# Generated: 2026-02-10 21:10:17
 # Total files: 207
 # Categories: 93 TypeScript, 99 React (TSX), 1 CSS, 5 Config, 4 Docs, 5 Other
 # Note: node_modules and dist NOT included - run 'npm install && npm run build' after extraction
@@ -34380,7 +34380,14 @@ export default defineConfig(({ mode }) => {
     preview: {
       port: 5185,
       cors: true,
-      host: true
+      host: true,
+      proxy: {
+        '/papi': {
+          target: papiProxyTarget,
+          changeOrigin: true,
+          secure: false
+        }
+      }
     },
     test: {
       environment: 'jsdom',
