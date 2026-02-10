@@ -1,5 +1,5 @@
 # CCaaS Entitlement SAPI - Source Bundle
-# Generated: 2026-02-10 16:12:45
+# Generated: 2026-02-10 17:56:29
 # Total files: 352
 # Categories: 1 pom.xml, 2 CLAUDE.md, 2 docs, 2 resources, 125 YAML specs, 139 main Java, 68 test Java, 13 other
 # Note: target/generated-sources NOT included - run 'mvn generate-sources' after extraction
@@ -18194,7 +18194,9 @@ public class ConfigApplyService {
         adGroupRepository.save(adGroup);
 
         // Copy/approval flows may include app updates in the same proposed state payload.
-        if (proposedState.containsKey("applications")) {
+        if (proposedState.containsKey("applications")
+                || proposedState.containsKey("applicationChanges")
+                || proposedState.containsKey("appFunctionChanges")) {
             applyAppUpdate(targetGroup, proposedState, appliedBy);
         }
 
@@ -18270,13 +18272,29 @@ public class ConfigApplyService {
      *   - Batch-inserts new functions, batch-updates existing, batch-deletes removed
      */
     private void applyAppUpdate(String targetGroup, Map<String, Object> proposedState, String appliedBy) {
+        // Try "applications" key first (copy/direct-save format)
         Object appsRaw = proposedState.get("applications");
-        if (!(appsRaw instanceof List<?> appsList)) {
-            log.debug("No applications in proposed state, skipping APP_UPDATE");
+        if (appsRaw instanceof List<?> appsList) {
+            applyAppUpdateFromApplicationsList(targetGroup, appsList, appliedBy);
             return;
         }
 
-        // Type-safe extraction of application entries from the raw list
+        // Try "applicationChanges" + "appFunctionChanges" (pending changes format from MFE)
+        Object appChangesRaw = proposedState.get("applicationChanges");
+        Object funcChangesRaw = proposedState.get("appFunctionChanges");
+        if (appChangesRaw instanceof List<?> || funcChangesRaw instanceof List<?>) {
+            applyAppUpdateFromChangesFormat(targetGroup, appChangesRaw, funcChangesRaw, appliedBy);
+            return;
+        }
+
+        log.debug("No applications in proposed state, skipping APP_UPDATE");
+    }
+
+    /**
+     * Apply APP_UPDATE from the "applications" key format (copy/direct-save).
+     * Each entry: {appKey, assignedIndicator, functionKeys: [...]}
+     */
+    private void applyAppUpdateFromApplicationsList(String targetGroup, List<?> appsList, String appliedBy) {
         List<Map<String, Object>> applications = new ArrayList<>();
         for (Object item : appsList) {
             if (item instanceof Map<?, ?> mapItem) {
@@ -18290,7 +18308,6 @@ public class ConfigApplyService {
             return;
         }
 
-        // Collect all app keys that need existing function lookups (assigned apps only)
         List<String> assignedAppKeys = applications.stream()
                 .filter(app -> Boolean.TRUE.equals(app.get("assignedIndicator")))
                 .map(app -> app.get("appKey") instanceof String s ? s : null)
@@ -18299,12 +18316,73 @@ public class ConfigApplyService {
 
         Map<String, Set<String>> existingByApp = prefetchExistingFunctions(targetGroup, assignedAppKeys);
 
-        // Process each application: assigned apps get upserted, unassigned apps get cleared
         for (Map<String, Object> app : applications) {
             processApplicationEntry(app, targetGroup, appliedBy, existingByApp);
         }
 
         log.debug("APP_UPDATE applied to AD group: {}", targetGroup);
+    }
+
+    /**
+     * Apply APP_UPDATE from the "applicationChanges"/"appFunctionChanges" format (pending changes).
+     * applicationChanges: [{appCode, proposedStateIndicator, currentStateIndicator}]
+     * appFunctionChanges: [{appCode, functionCode, enabledIndicator}]
+     */
+    @SuppressWarnings("unchecked")
+    private void applyAppUpdateFromChangesFormat(String targetGroup, Object appChangesRaw,
+                                                  Object funcChangesRaw, String appliedBy) {
+        // Build map of appCode -> list of enabled function codes from appFunctionChanges
+        Map<String, List<String>> enabledFunctionsByApp = new HashMap<>();
+        if (funcChangesRaw instanceof List<?> funcList) {
+            for (Object item : funcList) {
+                if (item instanceof Map<?, ?> mapItem) {
+                    Map<String, Object> func = (Map<String, Object>) mapItem;
+                    String appCode = func.get("appCode") instanceof String s ? s : null;
+                    String functionCode = func.get("functionCode") instanceof String s ? s : null;
+                    Boolean enabled = func.get("enabledIndicator") instanceof Boolean b ? b : null;
+                    if (appCode != null && functionCode != null && Boolean.TRUE.equals(enabled)) {
+                        enabledFunctionsByApp.computeIfAbsent(appCode, k -> new ArrayList<>()).add(functionCode);
+                    }
+                }
+            }
+        }
+
+        // Process applicationChanges to determine which apps are assigned/unassigned
+        Set<String> assignedApps = new HashSet<>();
+        Set<String> unassignedApps = new HashSet<>();
+        if (appChangesRaw instanceof List<?> appList) {
+            for (Object item : appList) {
+                if (item instanceof Map<?, ?> mapItem) {
+                    Map<String, Object> app = (Map<String, Object>) mapItem;
+                    String appCode = app.get("appCode") instanceof String s ? s : null;
+                    Boolean proposed = app.get("proposedStateIndicator") instanceof Boolean b ? b : null;
+                    if (appCode != null) {
+                        if (Boolean.TRUE.equals(proposed)) {
+                            assignedApps.add(appCode);
+                        } else if (Boolean.FALSE.equals(proposed)) {
+                            unassignedApps.add(appCode);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Pre-fetch existing functions for assigned apps
+        Map<String, Set<String>> existingByApp = prefetchExistingFunctions(targetGroup, new ArrayList<>(assignedApps));
+
+        // Apply assigned apps: upsert their enabled functions
+        for (String appCode : assignedApps) {
+            List<String> functionKeys = enabledFunctionsByApp.getOrDefault(appCode, Collections.emptyList());
+            Set<String> existingSet = existingByApp.getOrDefault(appCode, Collections.emptySet());
+            applyAppFunctions(targetGroup, appCode, functionKeys, appliedBy, existingSet);
+        }
+
+        // Apply unassigned apps: delete all their functions
+        for (String appCode : unassignedApps) {
+            deleteAllFunctionsForApp(targetGroup, appCode);
+        }
+
+        log.debug("APP_UPDATE (changes format) applied to AD group: {}", targetGroup);
     }
 
     // Pre-fetch all existing functions for assigned apps in one query (avoids N+1)
