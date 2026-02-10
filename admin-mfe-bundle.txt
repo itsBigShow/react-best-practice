@@ -1,7 +1,7 @@
 # CCaaS Admin MFE - Source Bundle
-# Generated: 2026-02-10 12:52:23
-# Total files: 237
-# Categories: 92 TypeScript, 99 React (TSX), 1 CSS, 5 Config, 2 Docs, 38 Other
+# Generated: 2026-02-10 13:17:50
+# Total files: 238
+# Categories: 93 TypeScript, 99 React (TSX), 1 CSS, 5 Config, 2 Docs, 38 Other
 # Note: node_modules and dist NOT included - run 'npm install && npm run build' after extraction
 ===FILE: ./.env.example
 VITE_PAPI_PROXY_TARGET=http://localhost:8095
@@ -27185,6 +27185,28 @@ export function DateTimePicker({
   )
 }
 ===ENDFILE
+===FILE: ./src/components/ui/dialog.test.ts
+import { beforeEach, describe, expect, it } from 'vitest'
+import { getDialogPortalContainer } from './dialog'
+
+describe('getDialogPortalContainer', () => {
+  beforeEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  it('returns undefined when admin root is missing', () => {
+    expect(getDialogPortalContainer()).toBeUndefined()
+  })
+
+  it('returns the admin root element when present', () => {
+    const root = document.createElement('div')
+    root.className = 'admin-mfe-root'
+    document.body.appendChild(root)
+
+    expect(getDialogPortalContainer()).toBe(root)
+  })
+})
+===ENDFILE
 ===FILE: ./src/components/ui/dialog.tsx
 import * as React from "react"
 import { useTranslation } from 'react-i18next'
@@ -27198,6 +27220,14 @@ const Dialog = DialogPrimitive.Root
 const DialogTrigger = DialogPrimitive.Trigger
 
 const DialogPortal = DialogPrimitive.Portal
+
+function getDialogPortalContainer(): HTMLElement | undefined {
+  if (typeof document === 'undefined') {
+    return undefined
+  }
+
+  return document.querySelector('.admin-mfe-root') ?? undefined
+}
 
 const DialogOverlay = React.forwardRef<
   React.ComponentRef<typeof DialogPrimitive.Overlay>,
@@ -27219,9 +27249,10 @@ const DialogContent = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
 >(({ className, children, ...props }, ref) => {
   const { t } = useTranslation('common')
+  const portalContainer = getDialogPortalContainer()
 
   return (
-    <DialogPortal>
+    <DialogPortal container={portalContainer}>
       <DialogOverlay />
       <DialogPrimitive.Content
         ref={ref}
@@ -27305,6 +27336,7 @@ export {
   DialogFooter,
   DialogTitle,
   DialogDescription,
+  getDialogPortalContainer,
 }
 ===ENDFILE
 ===FILE: ./src/components/ui/input.tsx
@@ -27365,10 +27397,14 @@ import * as ScrollAreaPrimitive from "@radix-ui/react-scroll-area"
 
 import { cn } from "../../lib/utils"
 
+interface ScrollAreaProps extends React.ComponentPropsWithoutRef<typeof ScrollAreaPrimitive.Root> {
+  showVerticalScrollbar?: boolean
+}
+
 const ScrollArea = React.forwardRef<
   React.ComponentRef<typeof ScrollAreaPrimitive.Root>,
-  React.ComponentPropsWithoutRef<typeof ScrollAreaPrimitive.Root>
->(({ className, children, ...props }, ref) => (
+  ScrollAreaProps
+>(({ className, children, showVerticalScrollbar = true, ...props }, ref) => (
   <ScrollAreaPrimitive.Root
     ref={ref}
     className={cn("relative overflow-hidden", className)}
@@ -27377,8 +27413,12 @@ const ScrollArea = React.forwardRef<
     <ScrollAreaPrimitive.Viewport className="h-full w-full rounded-[inherit]">
       {children}
     </ScrollAreaPrimitive.Viewport>
-    <ScrollBar />
-    <ScrollAreaPrimitive.Corner />
+    {showVerticalScrollbar ? (
+      <>
+        <ScrollBar />
+        <ScrollAreaPrimitive.Corner />
+      </>
+    ) : null}
   </ScrollAreaPrimitive.Root>
 ))
 ScrollArea.displayName = ScrollAreaPrimitive.Root.displayName
@@ -27405,7 +27445,7 @@ const ScrollBar = React.forwardRef<
 ))
 ScrollBar.displayName = ScrollAreaPrimitive.ScrollAreaScrollbar.displayName
 
-export { ScrollArea }
+export { ScrollArea, ScrollBar }
 ===ENDFILE
 ===FILE: ./src/components/ui/select.tsx
 import * as React from "react"
