@@ -1,7 +1,7 @@
 # CCaaS Entitlement PAPI - Source Bundle
-# Generated: 2026-02-10 12:52:22
-# Total files: 278
-# Categories: 1 pom.xml, 2 CLAUDE.md, 3 docs, 1 resources, 125 YAML specs, 86 main Java, 52 test Java, 8 other
+# Generated: 2026-02-10 16:12:57
+# Total files: 284
+# Categories: 1 pom.xml, 2 CLAUDE.md, 3 docs, 1 resources, 131 YAML specs, 86 main Java, 52 test Java, 8 other
 # Note: target/generated-sources NOT included - run 'mvn generate-sources' after extraction
 ===FILE: ./.claude/settings.local.json
 {
@@ -1866,6 +1866,82 @@ curl -X GET http://localhost:8094/papi/v1/regions-markets/APAC \
 - `200 OK` - List retrieved successfully
 - `401 Unauthorized` - Missing or invalid X-HSBC-E2E-Trust-Token
 - `404 Not Found` - Region does not exist
+
+---
+
+#### Get Role Layout Template Summaries
+Retrieves role template options for AD group role selection.
+
+**Endpoint:** `GET /papi/v1/role-layout-templates`
+
+**Authentication:** Required (admin role)
+
+**Request Example:**
+```bash
+curl -X GET http://localhost:8094/papi/v1/role-layout-templates \
+  -H "X-HSBC-E2E-Trust-Token: ADMIN_GLOBAL_DEMO"
+```
+
+**Response (200 OK):**
+```json
+{
+  "data": {
+    "roleLayoutTemplates": [
+      { "roleNameCode": "voice_agent", "roleDisplayName": "Voice Agent" },
+      { "roleNameCode": "chat_agent", "roleDisplayName": "Chat Agent" },
+      { "roleNameCode": "supervisor", "roleDisplayName": "Supervisor" }
+    ]
+  }
+}
+```
+
+**Response Codes:**
+- `200 OK` - List retrieved successfully
+- `401 Unauthorized` - Missing or invalid X-HSBC-E2E-Trust-Token
+- `404 Not Found` - Resource not found
+
+---
+
+#### Get Role Layout Template by Name
+Retrieves full role layout permissions for the selected role.
+
+**Endpoint:** `GET /papi/v1/role-layout-templates/{roleNameCode}`
+
+**Authentication:** Required (admin role)
+
+**Path Parameters:**
+- `roleNameCode` (string, required): Role code (for example `voice_agent`)
+
+**Request Example:**
+```bash
+curl -X GET http://localhost:8094/papi/v1/role-layout-templates/voice_agent \
+  -H "X-HSBC-E2E-Trust-Token: ADMIN_GLOBAL_DEMO"
+```
+
+**Response (200 OK):**
+```json
+{
+  "data": {
+    "roleNameCode": "voice_agent",
+    "roleDisplayName": "Voice Agent",
+    "columns": {
+      "kms": { "stateText": "ENABLED" },
+      "embeddedApps": { "stateText": "ENABLED" },
+      "chat": { "stateText": "DISABLED" }
+    },
+    "widgets": {},
+    "features": {},
+    "settingsTabs": {},
+    "settingsOptions": {},
+    "microFrontends": {}
+  }
+}
+```
+
+**Response Codes:**
+- `200 OK` - Template retrieved successfully
+- `401 Unauthorized` - Missing or invalid X-HSBC-E2E-Trust-Token
+- `404 Not Found` - Role template not found
 
 ---
 
@@ -3868,8 +3944,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             ],
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/sessions",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "sessions"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "sessions"
+              ]
             },
             "description": "Retrieve session layout for a voice agent user. Returns 200 with computed layout including role template + AD group overrides. Verified working."
           }
@@ -3887,8 +3969,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             ],
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/user-apps",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "user-apps"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "user-apps"
+              ]
             },
             "description": "Get embedded apps available to the current user based on their roles and AD groups. Returns 200. Verified working."
           }
@@ -3914,8 +4002,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             },
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/notices",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "notices"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "notices"
+              ]
             },
             "description": "Acknowledge an admin notice for the current user. Any user can call this. Returns 200. Verified working."
           }
@@ -3940,8 +4034,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             },
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/notices",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "notices"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "notices"
+              ]
             },
             "description": "Expected: 400 - missing required fields (userIdentifier, noticeIdentifier, stateCode)."
           }
@@ -3962,8 +4062,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
                 ],
                 "url": {
                   "raw": "{{papi_base_url}}/papi/v1/sessions",
-                  "host": ["{{papi_base_url}}"],
-                  "path": ["papi", "v1", "sessions"]
+                  "host": [
+                    "{{papi_base_url}}"
+                  ],
+                  "path": [
+                    "papi",
+                    "v1",
+                    "sessions"
+                  ]
                 },
                 "description": "Session layout for a voice-only agent. Returns 200."
               }
@@ -3980,8 +4086,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
                 ],
                 "url": {
                   "raw": "{{papi_base_url}}/papi/v1/sessions",
-                  "host": ["{{papi_base_url}}"],
-                  "path": ["papi", "v1", "sessions"]
+                  "host": [
+                    "{{papi_base_url}}"
+                  ],
+                  "path": [
+                    "papi",
+                    "v1",
+                    "sessions"
+                  ]
                 },
                 "description": "Session layout for a chat-only agent."
               }
@@ -3998,8 +4110,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
                 ],
                 "url": {
                   "raw": "{{papi_base_url}}/papi/v1/sessions",
-                  "host": ["{{papi_base_url}}"],
-                  "path": ["papi", "v1", "sessions"]
+                  "host": [
+                    "{{papi_base_url}}"
+                  ],
+                  "path": [
+                    "papi",
+                    "v1",
+                    "sessions"
+                  ]
                 },
                 "description": "Session layout for a user with voice, chat, and supervisor roles."
               }
@@ -4016,8 +4134,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
                 ],
                 "url": {
                   "raw": "{{papi_base_url}}/papi/v1/sessions",
-                  "host": ["{{papi_base_url}}"],
-                  "path": ["papi", "v1", "sessions"]
+                  "host": [
+                    "{{papi_base_url}}"
+                  ],
+                  "path": [
+                    "papi",
+                    "v1",
+                    "sessions"
+                  ]
                 },
                 "description": "Session layout for a supervisor."
               }
@@ -4034,8 +4158,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
                 ],
                 "url": {
                   "raw": "{{papi_base_url}}/papi/v1/sessions",
-                  "host": ["{{papi_base_url}}"],
-                  "path": ["papi", "v1", "sessions"]
+                  "host": [
+                    "{{papi_base_url}}"
+                  ],
+                  "path": [
+                    "papi",
+                    "v1",
+                    "sessions"
+                  ]
                 },
                 "description": "Session layout for a voice agent + supervisor."
               }
@@ -4052,8 +4182,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
                 ],
                 "url": {
                   "raw": "{{papi_base_url}}/papi/v1/sessions",
-                  "host": ["{{papi_base_url}}"],
-                  "path": ["papi", "v1", "sessions"]
+                  "host": [
+                    "{{papi_base_url}}"
+                  ],
+                  "path": [
+                    "papi",
+                    "v1",
+                    "sessions"
+                  ]
                 },
                 "description": "Session layout for a chat agent + supervisor."
               }
@@ -4070,8 +4206,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
                 ],
                 "url": {
                   "raw": "{{papi_base_url}}/papi/v1/sessions",
-                  "host": ["{{papi_base_url}}"],
-                  "path": ["papi", "v1", "sessions"]
+                  "host": [
+                    "{{papi_base_url}}"
+                  ],
+                  "path": [
+                    "papi",
+                    "v1",
+                    "sessions"
+                  ]
                 },
                 "description": "Session layout for a global administrator."
               }
@@ -4088,8 +4230,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
                 ],
                 "url": {
                   "raw": "{{papi_base_url}}/papi/v1/sessions",
-                  "host": ["{{papi_base_url}}"],
-                  "path": ["papi", "v1", "sessions"]
+                  "host": [
+                    "{{papi_base_url}}"
+                  ],
+                  "path": [
+                    "papi",
+                    "v1",
+                    "sessions"
+                  ]
                 },
                 "description": "Session layout for a regional administrator."
               }
@@ -4106,8 +4254,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
                 ],
                 "url": {
                   "raw": "{{papi_base_url}}/papi/v1/sessions",
-                  "host": ["{{papi_base_url}}"],
-                  "path": ["papi", "v1", "sessions"]
+                  "host": [
+                    "{{papi_base_url}}"
+                  ],
+                  "path": [
+                    "papi",
+                    "v1",
+                    "sessions"
+                  ]
                 },
                 "description": "Session layout for a team-level administrator."
               }
@@ -4124,8 +4278,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
                 ],
                 "url": {
                   "raw": "{{papi_base_url}}/papi/v1/sessions",
-                  "host": ["{{papi_base_url}}"],
-                  "path": ["papi", "v1", "sessions"]
+                  "host": [
+                    "{{papi_base_url}}"
+                  ],
+                  "path": [
+                    "papi",
+                    "v1",
+                    "sessions"
+                  ]
                 },
                 "description": "Session layout for an admin with all roles assigned."
               }
@@ -4142,8 +4302,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
                 ],
                 "url": {
                   "raw": "{{papi_base_url}}/papi/v1/sessions",
-                  "host": ["{{papi_base_url}}"],
-                  "path": ["papi", "v1", "sessions"]
+                  "host": [
+                    "{{papi_base_url}}"
+                  ],
+                  "path": [
+                    "papi",
+                    "v1",
+                    "sessions"
+                  ]
                 },
                 "description": "Session layout for an admin with Maker access."
               }
@@ -4160,8 +4326,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
                 ],
                 "url": {
                   "raw": "{{papi_base_url}}/papi/v1/sessions",
-                  "host": ["{{papi_base_url}}"],
-                  "path": ["papi", "v1", "sessions"]
+                  "host": [
+                    "{{papi_base_url}}"
+                  ],
+                  "path": [
+                    "papi",
+                    "v1",
+                    "sessions"
+                  ]
                 },
                 "description": "Session layout for an admin with Checker access."
               }
@@ -4178,8 +4350,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
                 ],
                 "url": {
                   "raw": "{{papi_base_url}}/papi/v1/sessions",
-                  "host": ["{{papi_base_url}}"],
-                  "path": ["papi", "v1", "sessions"]
+                  "host": [
+                    "{{papi_base_url}}"
+                  ],
+                  "path": [
+                    "papi",
+                    "v1",
+                    "sessions"
+                  ]
                 },
                 "description": "Session layout for an admin with Super Admin access."
               }
@@ -4196,8 +4374,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
                 ],
                 "url": {
                   "raw": "{{papi_base_url}}/papi/v1/sessions",
-                  "host": ["{{papi_base_url}}"],
-                  "path": ["papi", "v1", "sessions"]
+                  "host": [
+                    "{{papi_base_url}}"
+                  ],
+                  "path": [
+                    "papi",
+                    "v1",
+                    "sessions"
+                  ]
                 },
                 "description": "Session layout for an admin with mixed access levels."
               }
@@ -4214,8 +4398,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
                 ],
                 "url": {
                   "raw": "{{papi_base_url}}/papi/v1/sessions",
-                  "host": ["{{papi_base_url}}"],
-                  "path": ["papi", "v1", "sessions"]
+                  "host": [
+                    "{{papi_base_url}}"
+                  ],
+                  "path": [
+                    "papi",
+                    "v1",
+                    "sessions"
+                  ]
                 },
                 "description": "Error persona - user exists but has no platform access."
               }
@@ -4232,8 +4422,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
                 ],
                 "url": {
                   "raw": "{{papi_base_url}}/papi/v1/sessions",
-                  "host": ["{{papi_base_url}}"],
-                  "path": ["papi", "v1", "sessions"]
+                  "host": [
+                    "{{papi_base_url}}"
+                  ],
+                  "path": [
+                    "papi",
+                    "v1",
+                    "sessions"
+                  ]
                 },
                 "description": "Error persona - user has platform access but no roles."
               }
@@ -4250,8 +4446,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
                 ],
                 "url": {
                   "raw": "{{papi_base_url}}/papi/v1/sessions",
-                  "host": ["{{papi_base_url}}"],
-                  "path": ["papi", "v1", "sessions"]
+                  "host": [
+                    "{{papi_base_url}}"
+                  ],
+                  "path": [
+                    "papi",
+                    "v1",
+                    "sessions"
+                  ]
                 },
                 "description": "Error persona - user has no access at all."
               }
@@ -4277,8 +4479,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             ],
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/ad-groups?offset=0&limit=5",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "ad-groups"],
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "ad-groups"
+              ],
               "query": [
                 {
                   "key": "offset",
@@ -4307,8 +4515,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             ],
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/ad-groups?offset=0&limit=20&search=Voice",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "ad-groups"],
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "ad-groups"
+              ],
               "query": [
                 {
                   "key": "offset",
@@ -4340,8 +4554,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             ],
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/ad-groups?offset=0&limit=20&role=voice_agent",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "ad-groups"],
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "ad-groups"
+              ],
               "query": [
                 {
                   "key": "offset",
@@ -4373,8 +4593,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             ],
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/ad-groups?offset=0&limit=20&status=ACTIVE&market=HK&region=APAC&country=HK&businessUnit=WPB",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "ad-groups"],
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "ad-groups"
+              ],
               "query": [
                 {
                   "key": "offset",
@@ -4426,8 +4652,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             ],
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/ad-groups?offset=0&limit=5",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "ad-groups"],
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "ad-groups"
+              ],
               "query": [
                 {
                   "key": "offset",
@@ -4462,8 +4694,15 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             },
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/ad-groups/lookup",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "ad-groups", "lookup"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "ad-groups",
+                "lookup"
+              ]
             },
             "description": "Look up a specific AD group configuration by its full DN. Body uses groupIdentifier (not adGroupDnText). Returns 200. Verified working."
           }
@@ -4488,8 +4727,15 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             },
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/ad-groups/lookup",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "ad-groups", "lookup"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "ad-groups",
+                "lookup"
+              ]
             },
             "description": "Expected: 400 - missing groupIdentifier in body."
           }
@@ -4514,8 +4760,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             },
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/copy-ad-group-configurations",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "copy-ad-group-configurations"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "copy-ad-group-configurations"
+              ]
             },
             "description": "Copy configuration from source AD group to target AD group. Uses sourceGroupIdentifier and targetGroupIdentifier (not sourceDn/targetDn). Returns 200. Verified working."
           }
@@ -4540,8 +4792,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             },
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/copy-ad-group-configurations",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "copy-ad-group-configurations"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "copy-ad-group-configurations"
+              ]
             },
             "description": "Expected: 400 - missing targetGroupIdentifier."
           }
@@ -4566,8 +4824,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             },
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/copy-ad-group-configurations",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "copy-ad-group-configurations"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "copy-ad-group-configurations"
+              ]
             },
             "description": "Expected: 400 - source and target identifiers are identical."
           }
@@ -4599,8 +4863,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             },
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/pending-changes",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "pending-changes"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "pending-changes"
+              ]
             },
             "description": "Maker submits a change for approval. Returns 201 with changeIdentifier for tracking. Verified working."
           }
@@ -4625,8 +4895,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             },
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/pending-changes",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "pending-changes"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "pending-changes"
+              ]
             },
             "description": "Expected: 400 - missing required fields (targetGroupIdentifier, changePayload)."
           }
@@ -4644,8 +4920,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             ],
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/pending-changes?offset=0&limit=5",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "pending-changes"],
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "pending-changes"
+              ],
               "query": [
                 {
                   "key": "offset",
@@ -4674,8 +4956,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             ],
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/pending-changes?offset=0&limit=5&statusCode=PENDING",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "pending-changes"],
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "pending-changes"
+              ],
               "query": [
                 {
                   "key": "offset",
@@ -4707,8 +4995,15 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             ],
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/pending-changes/{{change_identifier}}",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "pending-changes", "{{change_identifier}}"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "pending-changes",
+                "{{change_identifier}}"
+              ]
             },
             "description": "Get specific pending change details by identifier. Returns 200. Verified working."
           }
@@ -4725,8 +5020,15 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             ],
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/pending-changes/99999",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "pending-changes", "99999"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "pending-changes",
+                "99999"
+              ]
             },
             "description": "Expected: 404 - non-existent changeIdentifier."
           }
@@ -4752,8 +5054,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             },
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/change-approvals",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "change-approvals"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "change-approvals"
+              ]
             },
             "description": "Checker approves a pending change. Returns 200 with {\"data\":{\"approval\":{\"statusCode\":\"APPROVED\",\"approvedByText\":\"Admin Checker\",...}}}. Verified working."
           }
@@ -4778,8 +5086,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             },
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/change-approvals",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "change-approvals"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "change-approvals"
+              ]
             },
             "description": "Expected: 400 - missing changeIdentifier in body."
           }
@@ -4805,8 +5119,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             },
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/change-approvals",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "change-approvals"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "change-approvals"
+              ]
             },
             "description": "Expected: 403 - Maker role cannot approve changes (requires Checker/Super Admin)."
           }
@@ -4832,8 +5152,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             },
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/change-rejections",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "change-rejections"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "change-rejections"
+              ]
             },
             "description": "Checker rejects a pending change with reason. Returns 200 with {\"data\":{\"rejection\":{\"statusCode\":\"REJECTED\",\"rejectedByText\":\"Admin Checker\",...}}}. Verified working."
           }
@@ -4858,8 +5184,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             },
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/change-rejections",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "change-rejections"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "change-rejections"
+              ]
             },
             "description": "Expected: 400 - missing rejectionReasonText."
           }
@@ -4877,8 +5209,15 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             ],
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/pending-changes/{{change_identifier}}",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "pending-changes", "{{change_identifier}}"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "pending-changes",
+                "{{change_identifier}}"
+              ]
             },
             "description": "Maker cancels their own pending change before approval/rejection. Returns 200. Verified working."
           }
@@ -4895,8 +5234,15 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             ],
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/pending-changes/99999",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "pending-changes", "99999"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "pending-changes",
+                "99999"
+              ]
             },
             "description": "Expected: 404 - trying to cancel non-existent change."
           }
@@ -4920,8 +5266,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             ],
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/embedded-apps",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "embedded-apps"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "embedded-apps"
+              ]
             },
             "description": "List all registered embedded applications. Returns 200. Verified working."
           }
@@ -4939,8 +5291,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             ],
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/user-apps",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "user-apps"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "user-apps"
+              ]
             },
             "description": "Get embedded apps for the current user based on their roles and AD groups. Returns 200. Verified working."
           }
@@ -4965,8 +5323,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             },
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/embedded-apps-ad-groups",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "embedded-apps-ad-groups"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "embedded-apps-ad-groups"
+              ]
             },
             "description": "Get all embedded apps configured for a specific AD group. Returns 200. Verified working."
           }
@@ -4991,8 +5355,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             },
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/embedded-apps-ad-groups",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "embedded-apps-ad-groups"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "embedded-apps-ad-groups"
+              ]
             },
             "description": "Expected: 400 - missing groupIdentifier."
           }
@@ -5017,8 +5387,15 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             },
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/embedded-apps-ad-groups/{{app_key}}",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "embedded-apps-ad-groups", "{{app_key}}"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "embedded-apps-ad-groups",
+                "{{app_key}}"
+              ]
             },
             "description": "Get embedded app AD group configuration for a specific app key. Uses POST with groupIdentifier in body. Returns 200. Verified working."
           }
@@ -5043,8 +5420,15 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             },
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/embedded-apps-ad-groups/non-existent-app",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "embedded-apps-ad-groups", "non-existent-app"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "embedded-apps-ad-groups",
+                "non-existent-app"
+              ]
             },
             "description": "Expected: 404 - non-existent app key."
           }
@@ -5067,8 +5451,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             ],
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/regions",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "regions"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "regions"
+              ]
             },
             "description": "Get all available regions. Returns 200. Verified working."
           }
@@ -5085,8 +5475,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             ],
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/countries",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "countries"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "countries"
+              ]
             },
             "description": "Get all available countries. Returns 200. Verified working."
           }
@@ -5103,8 +5499,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             ],
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/business-units",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "business-units"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "business-units"
+              ]
             },
             "description": "Get all available business units. Returns 200. Verified working."
           }
@@ -5121,8 +5523,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             ],
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/markets",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "markets"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "markets"
+              ]
             },
             "description": "Get all available markets. Returns 200. Verified working."
           }
@@ -5139,8 +5547,15 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             ],
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/regions-countries/{{region_code}}",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "regions-countries", "{{region_code}}"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "regions-countries",
+                "{{region_code}}"
+              ]
             },
             "description": "Get countries for a specific region. Returns 200. Verified working."
           }
@@ -5157,8 +5572,15 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             ],
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/regions-countries/INVALID_REGION",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "regions-countries", "INVALID_REGION"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "regions-countries",
+                "INVALID_REGION"
+              ]
             },
             "description": "Expected: 404 or empty list for invalid region code."
           }
@@ -5175,8 +5597,15 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             ],
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/regions-markets/{{region_code}}",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "regions-markets", "{{region_code}}"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "regions-markets",
+                "{{region_code}}"
+              ]
             },
             "description": "Get markets for a specific region. Returns 200. Verified working."
           }
@@ -5193,10 +5622,66 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             ],
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/regions-markets/INVALID_REGION",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "regions-markets", "INVALID_REGION"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "regions-markets",
+                "INVALID_REGION"
+              ]
             },
             "description": "Expected: 404 or empty list for invalid region code."
+          }
+        },
+        {
+          "name": "Get Role Layout Templates - Success",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-HSBC-E2E-Trust-Token",
+                "value": "ADMIN_GLOBAL_DEMO"
+              }
+            ],
+            "url": {
+              "raw": "{{papi_base_url}}/papi/v1/role-layout-templates",
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "role-layout-templates"
+              ]
+            },
+            "description": "Get all role layout template summaries. Returns 200."
+          }
+        },
+        {
+          "name": "Get Role Layout Template by Name - Success",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-HSBC-E2E-Trust-Token",
+                "value": "ADMIN_GLOBAL_DEMO"
+              }
+            ],
+            "url": {
+              "raw": "{{papi_base_url}}/papi/v1/role-layout-templates/voice_agent",
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "role-layout-templates",
+                "voice_agent"
+              ]
+            },
+            "description": "Get full role layout template for voice_agent. Returns 200."
           }
         }
       ]
@@ -5226,8 +5711,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             },
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/create-notices",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "create-notices"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "create-notices"
+              ]
             },
             "description": "Create a new admin notice broadcast to all users. Body MUST include broadcastToAllFlag:true OR targetRoleValues/targetAdGroupValues. Returns 200. Verified working."
           }
@@ -5252,8 +5743,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             },
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/create-notices",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "create-notices"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "create-notices"
+              ]
             },
             "description": "Create a notice targeted to specific roles. Uses targetRoleValues array instead of broadcastToAllFlag."
           }
@@ -5278,8 +5775,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             },
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/create-notices",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "create-notices"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "create-notices"
+              ]
             },
             "description": "Create a notice in DRAFT status (not visible to users). Still requires targeting (broadcastToAllFlag or targetRoleValues/targetAdGroupValues)."
           }
@@ -5304,8 +5807,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             },
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/create-notices",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "create-notices"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "create-notices"
+              ]
             },
             "description": "Expected: 400 - missing required titleText field."
           }
@@ -5331,8 +5840,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             },
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/create-notices",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "create-notices"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "create-notices"
+              ]
             },
             "description": "Expected: 403 - agent token accessing admin-only endpoint."
           }
@@ -5349,8 +5864,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             ],
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/list-notices",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "list-notices"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "list-notices"
+              ]
             },
             "description": "List all admin notices without status filter. Returns 200. Verified working."
           }
@@ -5367,8 +5888,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             ],
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/list-notices?status=ACTIVE",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "list-notices"],
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "list-notices"
+              ],
               "query": [
                 {
                   "key": "status",
@@ -5392,8 +5919,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             ],
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/list-notices?status=ARCHIVED",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "list-notices"],
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "list-notices"
+              ],
               "query": [
                 {
                   "key": "status",
@@ -5424,8 +5957,15 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             },
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/update-notices/{{notice_identifier}}",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "update-notices", "{{notice_identifier}}"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "update-notices",
+                "{{notice_identifier}}"
+              ]
             },
             "description": "Update an existing notice content. Body must include valid targets: broadcastToAllFlag, targetRoleValues, or targetAdGroupValues. Returns 200. Verified working."
           }
@@ -5450,8 +5990,15 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             },
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/update-notices/99999",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "update-notices", "99999"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "update-notices",
+                "99999"
+              ]
             },
             "description": "Expected: 404 - non-existent notice identifier."
           }
@@ -5476,8 +6023,15 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             },
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/update-status/{{notice_identifier}}",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "update-status", "{{notice_identifier}}"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "update-status",
+                "{{notice_identifier}}"
+              ]
             },
             "description": "Archive a notice by updating its status to ARCHIVED. Returns 200. Verified working."
           }
@@ -5502,8 +6056,15 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             },
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/update-status/{{notice_identifier}}",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "update-status", "{{notice_identifier}}"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "update-status",
+                "{{notice_identifier}}"
+              ]
             },
             "description": "Activate a draft or archived notice."
           }
@@ -5528,8 +6089,15 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             },
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/update-status/99999",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "update-status", "99999"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "update-status",
+                "99999"
+              ]
             },
             "description": "Expected: 404 - non-existent notice identifier."
           }
@@ -5561,8 +6129,17 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             },
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/users/{{user_identifier}}/primaries/{{role_name}}",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "users", "{{user_identifier}}", "primaries", "{{role_name}}"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "users",
+                "{{user_identifier}}",
+                "primaries",
+                "{{role_name}}"
+              ]
             },
             "description": "Set a user's primary role assignment. Known pre-existing issue: currently returns 400 'Request body is required' -- the endpoint expects body in a different format than documented."
           }
@@ -5587,8 +6164,17 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             },
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/users/INVALID_USER_123/primaries/{{role_name}}",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "users", "INVALID_USER_123", "primaries", "{{role_name}}"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "users",
+                "INVALID_USER_123",
+                "primaries",
+                "{{role_name}}"
+              ]
             },
             "description": "Expected: 404 - non-existent user identifier."
           }
@@ -5613,8 +6199,17 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             },
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/users/{{user_identifier}}/primaries/{{role_name}}",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "users", "{{user_identifier}}", "primaries", "{{role_name}}"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "users",
+                "{{user_identifier}}",
+                "primaries",
+                "{{role_name}}"
+              ]
             },
             "description": "Expected: 400 - missing required adGroupIdentifier in body."
           }
@@ -5639,8 +6234,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             },
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/bulk-primaries",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "bulk-primaries"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "bulk-primaries"
+              ]
             },
             "description": "Bulk set primary role assignments. Known pre-existing issue: endpoint expects a raw JSON array (not wrapped in {\"data\":{\"assignments\":[...]}}). The object-envelope format returns 500."
           }
@@ -5665,8 +6266,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             },
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/bulk-primaries",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "bulk-primaries"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "bulk-primaries"
+              ]
             },
             "description": "Expected: 400 - empty assignments array."
           }
@@ -5684,8 +6291,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             "header": [],
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/sessions",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "sessions"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "sessions"
+              ]
             },
             "description": "Observed 2026-02-10: HTTP 200 without token. Intended contract is to block missing or invalid tokens."
           }
@@ -5702,8 +6315,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             ],
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/sessions",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "sessions"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "sessions"
+              ]
             },
             "description": "Observed 2026-02-10: HTTP 200 with empty token value."
           }
@@ -5720,8 +6339,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             ],
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/sessions",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "sessions"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "sessions"
+              ]
             },
             "description": "Observed 2026-02-10: HTTP 200 with invalid token."
           }
@@ -5733,8 +6358,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             "header": [],
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/pending-changes?offset=0&limit=2",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "pending-changes"],
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "pending-changes"
+              ],
               "query": [
                 {
                   "key": "offset",
@@ -5756,8 +6387,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             "header": [],
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/ad-groups?offset=0&limit=2",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "ad-groups"],
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "ad-groups"
+              ],
               "query": [
                 {
                   "key": "offset",
@@ -5779,8 +6416,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             "header": [],
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/audit-logs?offset=0&limit=2",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "audit-logs"],
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "audit-logs"
+              ],
               "query": [
                 {
                   "key": "offset",
@@ -5808,8 +6451,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             "header": [],
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/regions",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "regions"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "regions"
+              ]
             },
             "description": "Observed 2026-02-10: HTTP 200 without token."
           }
@@ -5826,8 +6475,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             ],
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/embedded-apps",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "embedded-apps"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "embedded-apps"
+              ]
             },
             "description": "Observed 2026-02-10: HTTP 200 with invalid token."
           }
@@ -5848,8 +6503,15 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             },
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/embedded-apps-ad-groups/{{app_key}}",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "embedded-apps-ad-groups", "{{app_key}}"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "embedded-apps-ad-groups",
+                "{{app_key}}"
+              ]
             },
             "description": "Observed 2026-02-10: HTTP 200 without token."
           }
@@ -5870,8 +6532,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             },
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/notices",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "notices"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "notices"
+              ]
             },
             "description": "Observed 2026-02-10: request reaches validation and returns 400 instead of auth challenge."
           }
@@ -5883,8 +6551,14 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             "header": [],
             "url": {
               "raw": "{{papi_base_url}}/papi/v1/pending-changes?offset=0&limit=2",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "pending-changes"],
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "papi",
+                "v1",
+                "pending-changes"
+              ],
               "query": [
                 {
                   "key": "offset",
@@ -5912,8 +6586,13 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
             "header": [],
             "url": {
               "raw": "{{papi_base_url}}/actuator/health",
-              "host": ["{{papi_base_url}}"],
-              "path": ["actuator", "health"]
+              "host": [
+                "{{papi_base_url}}"
+              ],
+              "path": [
+                "actuator",
+                "health"
+              ]
             },
             "description": "Spring Boot Actuator health check. No X-HSBC-E2E-Trust-Token required."
           }
@@ -6079,6 +6758,8 @@ tags:
     description: HSBC markets
   - name: regions-markets
     description: Markets filtered by region
+  - name: role-layout-templates
+    description: Role layout template summaries and full template details
   - name: users
     description: User role management and primary assignment
   - name: notices
@@ -6144,6 +6825,10 @@ paths:
     $ref: 'paths/reference-data/get-all-markets.yaml'
   /regions-markets/{regionCode}:
     $ref: 'paths/reference-data/get-markets-by-region.yaml'
+  /role-layout-templates:
+    $ref: 'paths/reference-data/get-all-role-layout-templates.yaml'
+  /role-layout-templates/{roleNameCode}:
+    $ref: 'paths/reference-data/get-role-layout-template-by-name.yaml'
 
   # User Roles
   /users/{userIdentifier}/primaries:
@@ -6346,6 +7031,10 @@ components:
       $ref: 'components/schemas/reference-data/Country.yaml'
     Market:
       $ref: 'components/schemas/reference-data/Market.yaml'
+    RoleLayoutTemplateSummary:
+      $ref: 'components/schemas/reference-data/RoleLayoutTemplateSummary.yaml'
+    RoleLayoutTemplate:
+      $ref: 'components/schemas/reference-data/RoleLayoutTemplate.yaml'
 
     # DataResponse Envelopes
     DataResponseLayoutData:
@@ -6380,6 +7069,10 @@ components:
       $ref: 'components/schemas/common/DataResponseBulkPrimaryData.yaml'
     DataResponseRegionsData:
       $ref: 'components/schemas/common/DataResponseRegionsData.yaml'
+    DataResponseRoleLayoutTemplatesData:
+      $ref: 'components/schemas/common/DataResponseRoleLayoutTemplatesData.yaml'
+    DataResponseRoleLayoutTemplateData:
+      $ref: 'components/schemas/common/DataResponseRoleLayoutTemplateData.yaml'
     DataResponseBusinessUnitsData:
       $ref: 'components/schemas/common/DataResponseBusinessUnitsData.yaml'
     DataResponseCountriesData:
@@ -6736,6 +7429,15 @@ regionCode:
     type: string
     minLength: 1
     maxLength: 50
+roleNameCode:
+  name: roleNameCode
+  in: path
+  required: true
+  description: Role name code for selecting a role layout template.
+  schema:
+    type: string
+    minLength: 1
+    maxLength: 100
 ===ENDFILE
 ===FILE: ./src/main/api/components/responses/common-responses.yaml
 default:
@@ -7970,6 +8672,32 @@ properties:
       rejection:
         description: Rejection action result
         $ref: '../approval/ApprovalResultResponse.yaml'
+===ENDFILE
+===FILE: ./src/main/api/components/schemas/common/DataResponseRoleLayoutTemplateData.yaml
+title: DataResponseRoleLayoutTemplateData
+description: Response envelope containing a full role layout template.
+type: object
+properties:
+  data:
+    description: Role layout template details
+    $ref: '../reference-data/RoleLayoutTemplate.yaml'
+===ENDFILE
+===FILE: ./src/main/api/components/schemas/common/DataResponseRoleLayoutTemplatesData.yaml
+title: DataResponseRoleLayoutTemplatesData
+description: Response envelope containing role layout template summaries.
+type: object
+properties:
+  data:
+    type: object
+    description: Response data container
+    properties:
+      roleLayoutTemplates:
+        type: array
+        description: List of role layout template summaries
+        minItems: 0
+        maxItems: 1000
+        items:
+          $ref: '../reference-data/RoleLayoutTemplateSummary.yaml'
 ===ENDFILE
 ===FILE: ./src/main/api/components/schemas/common/EntitlementStateValue.yaml
 title: EntitlementStateValue
@@ -9607,6 +10335,74 @@ properties:
     description: Whether the region is currently active.
     example: true
 ===ENDFILE
+===FILE: ./src/main/api/components/schemas/reference-data/RoleLayoutTemplate.yaml
+title: RoleLayoutTemplate
+description: Full role layout template including entitlement sections.
+type: object
+additionalProperties: false
+properties:
+  roleNameCode:
+    type: string
+    description: Role name code identifier (for example, voice_agent).
+    minLength: 1
+    maxLength: 100
+    example: voice_agent
+  roleDisplayName:
+    type: string
+    description: User-facing role display name.
+    minLength: 1
+    maxLength: 150
+    example: Voice Agent
+  columns:
+    type: object
+    description: Column-level entitlements.
+    additionalProperties:
+      $ref: '../common/EntitlementStateValue.yaml'
+  widgets:
+    type: object
+    description: Widget-level entitlements.
+    additionalProperties:
+      $ref: '../common/EntitlementStateValue.yaml'
+  features:
+    type: object
+    description: Feature-level entitlements.
+    additionalProperties:
+      $ref: '../common/EntitlementStateValue.yaml'
+  settingsTabs:
+    type: object
+    description: Settings tab entitlements.
+    additionalProperties:
+      $ref: '../common/EntitlementStateValue.yaml'
+  settingsOptions:
+    type: object
+    description: Settings option entitlements.
+    additionalProperties:
+      $ref: '../common/EntitlementStateValue.yaml'
+  microFrontends:
+    type: object
+    description: Micro-frontend entitlements.
+    additionalProperties:
+      $ref: '../common/EntitlementStateValue.yaml'
+===ENDFILE
+===FILE: ./src/main/api/components/schemas/reference-data/RoleLayoutTemplateSummary.yaml
+title: RoleLayoutTemplateSummary
+description: Summary details for a role layout template.
+type: object
+additionalProperties: false
+properties:
+  roleNameCode:
+    type: string
+    description: Role name code identifier (for example, voice_agent).
+    minLength: 1
+    maxLength: 100
+    example: voice_agent
+  roleDisplayName:
+    type: string
+    description: User-facing role display name.
+    minLength: 1
+    maxLength: 150
+    example: Voice Agent
+===ENDFILE
 ===FILE: ./src/main/api/components/schemas/user-role/BulkPrimaryAssignmentData.yaml
 title: BulkPrimaryAssignmentData
 description: Container for bulk primary assignment requests.
@@ -10634,6 +11430,25 @@ get:
     default:
       $ref: '../../components/responses/common-responses.yaml#/default'
 ===ENDFILE
+===FILE: ./src/main/api/paths/reference-data/get-all-role-layout-templates.yaml
+description: |
+  API endpoint to retrieve role layout templates for admin reference data.
+get:
+  tags:
+    - role-layout-templates
+  summary: Get all role layout templates
+  description: Retrieves summary details for all role layout templates.
+  operationId: get-all-role-layout-templates
+  responses:
+    '200':
+      description: Successfully retrieved role layout templates
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/common/DataResponseRoleLayoutTemplatesData.yaml'
+    default:
+      $ref: '../../components/responses/common-responses.yaml#/default'
+===ENDFILE
 ===FILE: ./src/main/api/paths/reference-data/get-countries-by-region.yaml
 description: |
   API endpoint to retrieve countries filtered by a specific region code.
@@ -10673,6 +11488,27 @@ get:
         application/json:
           schema:
             $ref: '../../components/schemas/common/DataResponseMarketsData.yaml'
+    default:
+      $ref: '../../components/responses/common-responses.yaml#/default'
+===ENDFILE
+===FILE: ./src/main/api/paths/reference-data/get-role-layout-template-by-name.yaml
+description: |
+  API endpoint to retrieve a full role layout template by role name code.
+get:
+  tags:
+    - role-layout-templates
+  summary: Get role layout template by role name
+  description: Retrieves the complete role layout template for a role name code.
+  operationId: get-role-layout-template-by-name
+  parameters:
+    - $ref: '../../components/parameters/path-params.yaml#/roleNameCode'
+  responses:
+    '200':
+      description: Successfully retrieved role layout template
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/common/DataResponseRoleLayoutTemplateData.yaml'
     default:
       $ref: '../../components/responses/common-responses.yaml#/default'
 ===ENDFILE
@@ -11032,6 +11868,8 @@ import com.hsbc.ccaas.papi.controller.model.BusinessUnit;
 import com.hsbc.ccaas.papi.controller.model.Country;
 import com.hsbc.ccaas.papi.controller.model.Market;
 import com.hsbc.ccaas.papi.controller.model.Region;
+import com.hsbc.ccaas.papi.controller.model.RoleLayoutTemplate;
+import com.hsbc.ccaas.papi.controller.model.RoleLayoutTemplateSummary;
 import java.util.List;
 import org.springframework.stereotype.Component;
 
@@ -11072,6 +11910,16 @@ public class DefaultReferenceDataFacade implements ReferenceDataFacade {
     @Override
     public List<Market> getMarketsByRegion(String regionCode) {
         return sapiReferenceDataClient.getMarketsByRegion(regionCode);
+    }
+
+    @Override
+    public List<RoleLayoutTemplateSummary> getAllRoleLayoutTemplates() {
+        return sapiReferenceDataClient.getAllRoleLayoutTemplates();
+    }
+
+    @Override
+    public RoleLayoutTemplate getRoleLayoutTemplateByName(String roleNameCode) {
+        return sapiReferenceDataClient.getRoleLayoutTemplateByName(roleNameCode);
     }
 }
 ===ENDFILE
@@ -11184,6 +12032,8 @@ import com.hsbc.ccaas.papi.controller.model.BusinessUnit;
 import com.hsbc.ccaas.papi.controller.model.Country;
 import com.hsbc.ccaas.papi.controller.model.Market;
 import com.hsbc.ccaas.papi.controller.model.Region;
+import com.hsbc.ccaas.papi.controller.model.RoleLayoutTemplate;
+import com.hsbc.ccaas.papi.controller.model.RoleLayoutTemplateSummary;
 import java.util.List;
 
 public interface ReferenceDataFacade {
@@ -11199,6 +12049,10 @@ public interface ReferenceDataFacade {
     List<Market> getAllMarkets();
 
     List<Market> getMarketsByRegion(String regionCode);
+
+    List<RoleLayoutTemplateSummary> getAllRoleLayoutTemplates();
+
+    RoleLayoutTemplate getRoleLayoutTemplateByName(String roleNameCode);
 }
 ===ENDFILE
 ===FILE: ./src/main/java/com/hsbc/ccaas/papi/application/SessionLayoutFacade.java
@@ -12301,24 +13155,28 @@ public class SapiLayoutClient {
 ===FILE: ./src/main/java/com/hsbc/ccaas/papi/client/SapiReferenceDataClient.java
 package com.hsbc.ccaas.papi.client;
 
+import com.hsbc.ccaas.papi.constants.SapiApiPaths;
 import com.hsbc.ccaas.papi.controller.model.*;
 import com.hsbc.ccaas.papi.dto.sapi.SapiDataResponse;
 import com.hsbc.ccaas.papi.dto.sapi.ReferenceDataPayloads;
 import com.hsbc.ccaas.papi.service.helper.SapiExceptionHandler;
 import java.util.Collections;
 import java.util.List;
+import org.springframework.http.HttpStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.web.server.ResponseStatusException;
 
 @Component
 public class SapiReferenceDataClient {
 
     private static final Logger logger = LoggerFactory.getLogger(SapiReferenceDataClient.class);
     private static final int MAX_CODE_LENGTH = 50;
+    private static final int MAX_ROLE_NAME_CODE_LENGTH = 100;
 
     private final RestClient sapiRestClient;
 
@@ -12412,8 +13270,70 @@ public class SapiReferenceDataClient {
         );
     }
 
+    public List<RoleLayoutTemplateSummary> getAllRoleLayoutTemplates() {
+        logger.debug("Fetching all role layout templates from SAPI");
+        return SapiExceptionHandler.executeWithExceptionHandling(
+            () -> {
+                SapiDataResponse<ReferenceDataPayloads.RoleLayoutTemplatesPayload> response = sapiRestClient.get()
+                    .uri(SapiApiPaths.REFERENCE_ROLE_LAYOUT_TEMPLATES)
+                    .retrieve()
+                    .body(new ParameterizedTypeReference<SapiDataResponse<ReferenceDataPayloads.RoleLayoutTemplatesPayload>>(){});
+                return response != null && response.getData() != null
+                    ? response.getData().roleLayoutTemplates()
+                    : Collections.emptyList();
+            },
+            "Fetch all role layout templates"
+        );
+    }
+
+    public RoleLayoutTemplate getRoleLayoutTemplateByName(String roleNameCode) {
+        validateRoleNameCode(roleNameCode);
+        logger.debug("Fetching role layout template for roleNameCode: {}", roleNameCode);
+        return SapiExceptionHandler.executeWithExceptionHandling(
+            () -> {
+                SapiDataResponse<ReferenceDataPayloads.RoleLayoutTemplatePayload> response = sapiRestClient.get()
+                    .uri(SapiApiPaths.REFERENCE_ROLE_LAYOUT_TEMPLATE_BY_NAME, roleNameCode)
+                    .retrieve()
+                    .body(new ParameterizedTypeReference<SapiDataResponse<ReferenceDataPayloads.RoleLayoutTemplatePayload>>(){});
+
+                if (response == null || response.getData() == null) {
+                    throw new ResponseStatusException(
+                        HttpStatus.SERVICE_UNAVAILABLE,
+                        "Fetch role layout template by role name failed - empty response"
+                    );
+                }
+                return toRoleLayoutTemplate(response.getData());
+            },
+            "Fetch role layout template by role name"
+        );
+    }
+
+    private RoleLayoutTemplate toRoleLayoutTemplate(ReferenceDataPayloads.RoleLayoutTemplatePayload payload) {
+        return new RoleLayoutTemplate()
+            .roleNameCode(payload.roleNameCode())
+            .roleDisplayName(payload.roleDisplayName())
+            .columns(payload.columns())
+            .widgets(payload.widgets())
+            .features(payload.features())
+            .settingsTabs(payload.settingsTabs())
+            .settingsOptions(payload.settingsOptions())
+            .microFrontends(payload.microFrontends());
+    }
+
     private void validateRegionCode(String regionCode) {
         validateCode(regionCode, "Region code");
+    }
+
+    private void validateRoleNameCode(String roleNameCode) {
+        if (roleNameCode == null || roleNameCode.isBlank()) {
+            logger.warn("Role name code is null or blank");
+            throw new IllegalArgumentException("Role name code cannot be null or blank");
+        }
+        if (roleNameCode.length() > MAX_ROLE_NAME_CODE_LENGTH) {
+            logger.warn("Role name code too long: {} characters", roleNameCode.length());
+            throw new IllegalArgumentException(
+                "Role name code cannot exceed " + MAX_ROLE_NAME_CODE_LENGTH + " characters");
+        }
     }
 
     private void validateCode(String code, String fieldName) {
@@ -12522,7 +13442,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @Configuration
 public class CorsConfig implements WebMvcConfigurer {
 
-    @Value("${cors.allowed-origins:http://localhost:5173,http://127.0.0.1:5173}")
+    @Value("${cors.allowed-origins:http://localhost:5173,http://127.0.0.1:5173,http://localhost:5185,http://127.0.0.1:5185}")
     private String allowedOrigins;
 
     @Override
@@ -13598,6 +14518,8 @@ public final class SapiApiPaths {
     public static final String REFERENCE_COUNTRIES = "/sapi/v1/countries";
     public static final String REFERENCE_COUNTRIES_BY_REGION = "/sapi/v1/regions-countries/{regionCode}";
     public static final String REFERENCE_BUSINESS_UNITS = "/sapi/v1/business-units";
+    public static final String REFERENCE_ROLE_LAYOUT_TEMPLATES = "/sapi/v1/role-layout-templates";
+    public static final String REFERENCE_ROLE_LAYOUT_TEMPLATE_BY_NAME = "/sapi/v1/role-layout-templates/{roleNameCode}";
 
     // ==================== Approval Workflow Endpoints ====================
     public static final String PENDING_CHANGES = "/sapi/v1/pending-changes";
@@ -14428,6 +15350,7 @@ import com.hsbc.ccaas.papi.controller.api.CountriesApi;
 import com.hsbc.ccaas.papi.controller.api.MarketsApi;
 import com.hsbc.ccaas.papi.controller.api.RegionsCountriesApi;
 import com.hsbc.ccaas.papi.controller.api.RegionsMarketsApi;
+import com.hsbc.ccaas.papi.controller.api.RoleLayoutTemplatesApi;
 import com.hsbc.ccaas.papi.controller.model.*;
 import com.hsbc.ccaas.papi.controller.helper.ReferenceDataResponseAssembler;
 import com.hsbc.ccaas.papi.application.ReferenceDataFacade;
@@ -14453,7 +15376,7 @@ import org.springframework.web.bind.annotation.RestController;
  * produces one per path) rather than representing distinct concerns.
  */
 @RestController
-public class ReferenceDataController implements RegionsApi, BusinessUnitsApi, CountriesApi, RegionsCountriesApi, MarketsApi, RegionsMarketsApi {
+public class ReferenceDataController implements RegionsApi, BusinessUnitsApi, CountriesApi, RegionsCountriesApi, MarketsApi, RegionsMarketsApi, RoleLayoutTemplatesApi {
 
     private final ReferenceDataFacade referenceDataFacade;
     private final ReferenceDataResponseAssembler responseAssembler;
@@ -14503,6 +15426,20 @@ public class ReferenceDataController implements RegionsApi, BusinessUnitsApi, Co
             RequestContext<Void> requestContext) throws Exception {
         String regionCode = requestContext.getPathVariable("regionCode").orElseThrow();
         return responseAssembler.buildMarketsResponse(referenceDataFacade.getMarketsByRegion(regionCode));
+    }
+
+    @Override
+    public ResponseEntity<DataResponseRoleLayoutTemplatesData> getAllRoleLayoutTemplates(
+            RequestContext<Void> requestContext) throws Exception {
+        return responseAssembler.buildRoleLayoutTemplatesResponse(referenceDataFacade.getAllRoleLayoutTemplates());
+    }
+
+    @Override
+    public ResponseEntity<DataResponseRoleLayoutTemplateData> getRoleLayoutTemplateByName(
+            RequestContext<Void> requestContext) throws Exception {
+        String roleNameCode = requestContext.getPathVariable("roleNameCode").orElseThrow();
+        return responseAssembler.buildRoleLayoutTemplateResponse(
+            referenceDataFacade.getRoleLayoutTemplateByName(roleNameCode));
     }
 }
 ===ENDFILE
@@ -15349,6 +16286,18 @@ public class ReferenceDataResponseAssembler {
         dataData.setMarkets(markets);
         return ResponseEntity.ok(new DataResponseMarketsData().data(dataData));
     }
+
+    public ResponseEntity<DataResponseRoleLayoutTemplatesData> buildRoleLayoutTemplatesResponse(
+            List<RoleLayoutTemplateSummary> roleLayoutTemplates) {
+        var dataData = new DataResponseRoleLayoutTemplatesDataData();
+        dataData.setRoleLayoutTemplates(roleLayoutTemplates);
+        return ResponseEntity.ok(new DataResponseRoleLayoutTemplatesData().data(dataData));
+    }
+
+    public ResponseEntity<DataResponseRoleLayoutTemplateData> buildRoleLayoutTemplateResponse(
+            RoleLayoutTemplate roleLayoutTemplate) {
+        return ResponseEntity.ok(new DataResponseRoleLayoutTemplateData().data(roleLayoutTemplate));
+    }
 }
 ===ENDFILE
 ===FILE: ./src/main/java/com/hsbc/ccaas/papi/controller/helper/RequestValidationHelper.java
@@ -15938,6 +16887,7 @@ public final class LayoutPayloads {
 package com.hsbc.ccaas.papi.dto.sapi;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Payload records for reference data SAPI responses.
@@ -15956,6 +16906,20 @@ public final class ReferenceDataPayloads {
     public record BusinessUnitsPayload(List<com.hsbc.ccaas.papi.controller.model.BusinessUnit> businessUnits) {}
 
     public record MarketsPayload(List<com.hsbc.ccaas.papi.controller.model.Market> markets) {}
+
+    public record RoleLayoutTemplatesPayload(
+        List<com.hsbc.ccaas.papi.controller.model.RoleLayoutTemplateSummary> roleLayoutTemplates) {}
+
+    public record RoleLayoutTemplatePayload(
+        String roleNameCode,
+        String roleDisplayName,
+        Map<String, com.hsbc.ccaas.papi.controller.model.EntitlementStateValue> columns,
+        Map<String, com.hsbc.ccaas.papi.controller.model.EntitlementStateValue> widgets,
+        Map<String, com.hsbc.ccaas.papi.controller.model.EntitlementStateValue> features,
+        Map<String, com.hsbc.ccaas.papi.controller.model.EntitlementStateValue> settingsTabs,
+        Map<String, com.hsbc.ccaas.papi.controller.model.EntitlementStateValue> settingsOptions,
+        Map<String, com.hsbc.ccaas.papi.controller.model.EntitlementStateValue> microFrontends
+    ) {}
 }
 ===ENDFILE
 ===FILE: ./src/main/java/com/hsbc/ccaas/papi/dto/sapi/SapiDataMetaResponse.java
@@ -18010,7 +18974,7 @@ server:
 
 # CORS Configuration
 cors:
-  allowed-origins: ${ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
+  allowed-origins: ${ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173,http://localhost:5185,http://127.0.0.1:5185}
 management:
   endpoints:
     web:
@@ -18406,7 +19370,10 @@ import static org.mockito.Mockito.*;
 import com.hsbc.ccaas.papi.client.SapiReferenceDataClient;
 import com.hsbc.ccaas.papi.controller.model.BusinessUnit;
 import com.hsbc.ccaas.papi.controller.model.Country;
+import com.hsbc.ccaas.papi.controller.model.Market;
 import com.hsbc.ccaas.papi.controller.model.Region;
+import com.hsbc.ccaas.papi.controller.model.RoleLayoutTemplate;
+import com.hsbc.ccaas.papi.controller.model.RoleLayoutTemplateSummary;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -18460,6 +19427,45 @@ class DefaultReferenceDataFacadeTest {
         when(sapiReferenceDataClient.getCountriesByRegion("APAC")).thenReturn(expected);
 
         assertThat(facade.getCountriesByRegion("APAC")).isEqualTo(expected);
+    }
+
+    @Test
+    @DisplayName("should delegate getAllMarkets")
+    void shouldDelegateGetAllMarkets() {
+        List<Market> expected = List.of();
+        when(sapiReferenceDataClient.getAllMarkets()).thenReturn(expected);
+
+        assertThat(facade.getAllMarkets()).isEqualTo(expected);
+    }
+
+    @Test
+    @DisplayName("should delegate getMarketsByRegion")
+    void shouldDelegateGetMarketsByRegion() {
+        List<Market> expected = List.of();
+        when(sapiReferenceDataClient.getMarketsByRegion("EMEA")).thenReturn(expected);
+
+        assertThat(facade.getMarketsByRegion("EMEA")).isEqualTo(expected);
+    }
+
+    @Test
+    @DisplayName("should delegate getAllRoleLayoutTemplates")
+    void shouldDelegateGetAllRoleLayoutTemplates() {
+        List<RoleLayoutTemplateSummary> expected = List.of(
+            new RoleLayoutTemplateSummary().roleNameCode("voice_agent").roleDisplayName("Voice Agent"));
+        when(sapiReferenceDataClient.getAllRoleLayoutTemplates()).thenReturn(expected);
+
+        assertThat(facade.getAllRoleLayoutTemplates()).isEqualTo(expected);
+    }
+
+    @Test
+    @DisplayName("should delegate getRoleLayoutTemplateByName")
+    void shouldDelegateGetRoleLayoutTemplateByName() {
+        RoleLayoutTemplate expected = new RoleLayoutTemplate()
+            .roleNameCode("chat_agent")
+            .roleDisplayName("Chat Agent");
+        when(sapiReferenceDataClient.getRoleLayoutTemplateByName("chat_agent")).thenReturn(expected);
+
+        assertThat(facade.getRoleLayoutTemplateByName("chat_agent")).isEqualTo(expected);
     }
 }
 ===ENDFILE
@@ -20419,6 +21425,91 @@ class SapiReferenceDataClientTest {
             assertThatThrownBy(() -> client.getCountriesByRegion(longCode))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("cannot exceed 50 characters");
+        }
+    }
+
+    @Nested
+    @DisplayName("getAllRoleLayoutTemplates tests")
+    class GetAllRoleLayoutTemplatesTests {
+
+        @Test
+        @DisplayName("should get role layout template summaries successfully")
+        void shouldGetRoleTemplateSummariesSuccessfully() throws InterruptedException {
+            mockWebServer.enqueue(new MockResponse()
+                .setHeader("Content-Type", "application/json")
+                .setBody("""
+                    {
+                      "data": {
+                        "roleLayoutTemplates": [
+                          {"roleNameCode": "voice_agent", "roleDisplayName": "Voice Agent"},
+                          {"roleNameCode": "chat_agent", "roleDisplayName": "Chat Agent"}
+                        ]
+                      }
+                    }
+                    """));
+
+            List<RoleLayoutTemplateSummary> summaries = client.getAllRoleLayoutTemplates();
+
+            assertThat(summaries).hasSize(2);
+            assertThat(summaries.get(0).getRoleNameCode()).isEqualTo("voice_agent");
+            assertThat(summaries.get(1).getRoleDisplayName()).isEqualTo("Chat Agent");
+
+            RecordedRequest recordedRequest = mockWebServer.takeRequest();
+            assertThat(recordedRequest.getPath()).isEqualTo("/sapi/v1/role-layout-templates");
+        }
+    }
+
+    @Nested
+    @DisplayName("getRoleLayoutTemplateByName tests")
+    class GetRoleLayoutTemplateByNameTests {
+
+        @Test
+        @DisplayName("should get role layout template by name successfully")
+        void shouldGetRoleTemplateByNameSuccessfully() throws InterruptedException {
+            mockWebServer.enqueue(new MockResponse()
+                .setHeader("Content-Type", "application/json")
+                .setBody("""
+                    {
+                      "data": {
+                        "roleNameCode": "voice_agent",
+                        "roleDisplayName": "Voice Agent",
+                        "columns": {
+                          "chat": {"stateText": "ENABLED"}
+                        },
+                        "widgets": {},
+                        "features": {},
+                        "settingsTabs": {},
+                        "settingsOptions": {},
+                        "microFrontends": {}
+                      }
+                    }
+                    """));
+
+            RoleLayoutTemplate template = client.getRoleLayoutTemplateByName("voice_agent");
+
+            assertThat(template.getRoleNameCode()).isEqualTo("voice_agent");
+            assertThat(template.getRoleDisplayName()).isEqualTo("Voice Agent");
+            assertThat(template.getColumns()).containsKey("chat");
+
+            RecordedRequest recordedRequest = mockWebServer.takeRequest();
+            assertThat(recordedRequest.getPath()).isEqualTo("/sapi/v1/role-layout-templates/voice_agent");
+        }
+
+        @Test
+        @DisplayName("should throw when role name code is blank")
+        void shouldThrowWhenRoleNameCodeBlank() {
+            assertThatThrownBy(() -> client.getRoleLayoutTemplateByName(" "))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("cannot be null or blank");
+        }
+
+        @Test
+        @DisplayName("should throw when role name code exceeds max length")
+        void shouldThrowWhenRoleNameCodeTooLong() {
+            String longCode = "A".repeat(101);
+            assertThatThrownBy(() -> client.getRoleLayoutTemplateByName(longCode))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("cannot exceed 100 characters");
         }
     }
 
@@ -25206,6 +26297,42 @@ class ReferenceDataControllerTest {
         assertThat(response.getBody().getData().getMarkets()).hasSize(1);
         assertThat(response.getBody().getData().getMarkets().get(0).getMarketCode()).isEqualTo("HK");
         verify(referenceDataFacade).getMarketsByRegion("APAC");
+    }
+
+    @Test
+    @DisplayName("GET /papi/v1/role-layout-templates returns summaries")
+    void getAllRoleLayoutTemplatesReturnsList() throws Exception {
+        RoleLayoutTemplateSummary summary = new RoleLayoutTemplateSummary()
+            .roleNameCode("voice_agent")
+            .roleDisplayName("Voice Agent");
+        when(referenceDataFacade.getAllRoleLayoutTemplates()).thenReturn(List.of(summary));
+
+        RequestContext<Void> requestContext = mockRequestContext();
+        ResponseEntity<DataResponseRoleLayoutTemplatesData> response = controller.getAllRoleLayoutTemplates(requestContext);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody().getData().getRoleLayoutTemplates()).hasSize(1);
+        assertThat(response.getBody().getData().getRoleLayoutTemplates().get(0).getRoleNameCode())
+            .isEqualTo("voice_agent");
+        verify(referenceDataFacade).getAllRoleLayoutTemplates();
+    }
+
+    @Test
+    @DisplayName("GET /papi/v1/role-layout-templates/{roleNameCode} returns template")
+    void getRoleLayoutTemplateByNameReturnsTemplate() throws Exception {
+        RoleLayoutTemplate template = new RoleLayoutTemplate()
+            .roleNameCode("chat_agent")
+            .roleDisplayName("Chat Agent");
+        when(referenceDataFacade.getRoleLayoutTemplateByName("chat_agent")).thenReturn(template);
+
+        RequestContext<Void> requestContext = mockRequestContext();
+        when(requestContext.getPathVariable("roleNameCode")).thenReturn(Optional.of("chat_agent"));
+        ResponseEntity<DataResponseRoleLayoutTemplateData> response =
+            controller.getRoleLayoutTemplateByName(requestContext);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody().getData().getRoleNameCode()).isEqualTo("chat_agent");
+        verify(referenceDataFacade).getRoleLayoutTemplateByName("chat_agent");
     }
 }
 ===ENDFILE
