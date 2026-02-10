@@ -1,5 +1,5 @@
 # CCaaS Entitlement PAPI - Source Bundle
-# Generated: 2026-02-10 22:19:46
+# Generated: 2026-02-11 02:46:48
 # Total files: 284
 # Categories: 1 pom.xml, 2 CLAUDE.md, 3 docs, 1 resources, 131 YAML specs, 86 main Java, 52 test Java, 8 other
 # Note: target/generated-sources NOT included - run 'mvn generate-sources' after extraction
@@ -12165,18 +12165,23 @@ public class SapiAdGroupClient {
                     items = Collections.emptyList();
                 }
 
+                AdGroupPayloads.AdGroupsPayload payload = sapiResponse.getData();
+
                 int resultOffset = criteria.getOffset();
                 int resultLimit = criteria.getLimit();
                 long resultTotal = 0;
                 boolean resultHasMore = false;
 
-                if (sapiResponse.getMeta() != null && sapiResponse.getMeta().getPagination() != null) {
-                    var p = sapiResponse.getMeta().getPagination();
-                    resultOffset = p.getOffset();
-                    resultLimit = p.getLimit();
-                    resultTotal = p.getTotal();
-                    resultHasMore = p.isHasMore();
+                if (payload.totalCount() != null) {
+                    resultTotal = payload.totalCount();
                 }
+                if (payload.offsetNumber() != null) {
+                    resultOffset = payload.offsetNumber();
+                }
+                if (payload.limitNumber() != null) {
+                    resultLimit = payload.limitNumber();
+                }
+                resultHasMore = (resultOffset + resultLimit) < resultTotal;
 
                 logger.debug("Successfully fetched {} AD groups (total: {})", items.size(), resultTotal);
 
@@ -12823,7 +12828,9 @@ public class SapiApprovalClient {
 package com.hsbc.ccaas.papi.client;
 
 import com.hsbc.ccaas.papi.constants.SapiApiPaths;
-import com.hsbc.ccaas.papi.dto.sapi.AuditPayloads;
+import com.hsbc.ccaas.papi.dto.sapi.AuditPayloads.ActivityLogData;
+import com.hsbc.ccaas.papi.dto.sapi.AuditPayloads.AuditLogData;
+import com.hsbc.ccaas.papi.dto.sapi.SapiDataMetaResponse;
 import com.hsbc.ccaas.papi.service.helper.SapiExceptionHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -12832,7 +12839,6 @@ import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
-import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -12853,7 +12859,7 @@ public class SapiAuditClient {
     /**
      * Get activity log for a specific user.
      */
-    public Map<String, Object> getMyActivity(String performedBy, int offset, int limit, String timeRange) {
+    public SapiDataMetaResponse<ActivityLogData> getMyActivity(String performedBy, int offset, int limit, String timeRange) {
         logger.debug("Getting my activity: performedBy={}, offset={}, limit={}, timeRange={}", performedBy, offset, limit, timeRange);
 
         return SapiExceptionHandler.executeWithExceptionHandling(
@@ -12869,7 +12875,7 @@ public class SapiAuditClient {
                         return uriBuilder.build();
                     })
                     .retrieve()
-                    .body(new ParameterizedTypeReference<Map<String, Object>>(){}),
+                    .body(new ParameterizedTypeReference<SapiDataMetaResponse<ActivityLogData>>(){}),
             "Get my activity"
         );
     }
@@ -12877,7 +12883,7 @@ public class SapiAuditClient {
     /**
      * Get audit logs with optional filters.
      */
-    public Map<String, Object> getAuditLogs(int offset, int limit, String action,
+    public SapiDataMetaResponse<AuditLogData> getAuditLogs(int offset, int limit, String action,
             String targetGroupIdentifier, String performedBy, String marketCode,
             String regionCode, String changeType, String startDate, String endDate,
             String criticalOnly) {
@@ -12901,7 +12907,7 @@ public class SapiAuditClient {
                         return uriBuilder.build();
                     })
                     .retrieve()
-                    .body(new ParameterizedTypeReference<Map<String, Object>>(){}),
+                    .body(new ParameterizedTypeReference<SapiDataMetaResponse<AuditLogData>>(){}),
             "Get audit logs"
         );
     }
@@ -13548,8 +13554,30 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(problem);
     }
 
-    @ExceptionHandler({HttpMessageNotReadableException.class, MethodArgumentTypeMismatchException.class,
-        ValueInstantiationException.class})
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ProblemDetail> handleTypeMismatch(
+        MethodArgumentTypeMismatchException ex, HttpServletRequest request) {
+
+        if (ex.getRequiredType() != null && java.util.UUID.class.isAssignableFrom(ex.getRequiredType())) {
+            ProblemDetail problem = problemDetailBuilder.buildProblem(HttpStatus.NOT_FOUND,
+                "Resource not found",
+                "not-found", request);
+
+            LOGGER.warn("Invalid UUID path variable '{}': {}", ex.getName(), ex.getValue());
+
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(problem);
+        }
+
+        ProblemDetail problem = problemDetailBuilder.buildProblem(HttpStatus.BAD_REQUEST,
+            CommonConstants.ErrorMessages.USER_MESSAGE_INVALID_REQUEST,
+            "malformed-request", request);
+
+        LOGGER.warn("Type mismatch: {}", ex.getMessage());
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(problem);
+    }
+
+    @ExceptionHandler({HttpMessageNotReadableException.class, ValueInstantiationException.class})
     public ResponseEntity<ProblemDetail> handleMalformedRequest(
         Exception ex, HttpServletRequest request) {
 
@@ -13586,7 +13614,7 @@ public class GlobalExceptionHandler {
         }
 
         ProblemDetail problem = problemDetailBuilder.buildProblem(status,
-            "Service error: " + ex.getMessage(),
+            "Downstream service error",
             "service-error", request);
 
         LOGGER.error("REST client error [{}]: {}", status.value(), ex.getMessage());
@@ -13599,7 +13627,7 @@ public class GlobalExceptionHandler {
         org.springframework.web.client.ResourceAccessException ex, HttpServletRequest request) {
 
         ProblemDetail problem = problemDetailBuilder.buildProblem(HttpStatus.SERVICE_UNAVAILABLE,
-            "Network error: " + ex.getMessage(),
+            "Service temporarily unavailable",
             "service-unavailable", request);
 
         LOGGER.error("Network error: {}", ex.getMessage());
@@ -14225,7 +14253,7 @@ public SecurityFilterChain securityFilterChain(
 
     http
         // Only secure the PAPI surface; the platform security auto-config provides the global chain.
-        .securityMatcher("/papi/**")
+        .securityMatcher("/**")
         .csrf(AbstractHttpConfigurer::disable)
         .sessionManagement(session ->
                 session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
@@ -14262,7 +14290,7 @@ public SecurityFilterChain securityFilterChain(
                              "/change-rejections").hasRole(ROLE_ADMIN)
 
             // Supervisor endpoints
-            .requestMatchers("/users//primaries/*").hasRole(ROLE_SUPERVISOR)
+            .requestMatchers("/users/*/primaries/*").hasRole(ROLE_SUPERVISOR)
             .requestMatchers("/users/primary-assignments").hasRole(ROLE_SUPERVISOR)
 
             // Authenticated endpoints
@@ -14691,6 +14719,7 @@ import com.hsbc.ccaas.papi.controller.model.*;
 import com.hsbc.ccaas.papi.application.AdminNoticeFacade;
 import com.hsbc.wpb.ef.ports.RequestContext;
 import java.util.UUID;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -14715,7 +14744,7 @@ public class AdminNoticeController implements NoticesApi {
         AdminNoticeResponse response = adminNoticeFacade.createNotice(request);
         var dataData = new DataResponseNoticeDataData();
         dataData.setNotice(response);
-        return ResponseEntity.ok(new DataResponseNoticeData().data(dataData));
+        return ResponseEntity.status(HttpStatus.CREATED).body(new DataResponseNoticeData().data(dataData));
     }
 
     @Override
@@ -14774,6 +14803,7 @@ import com.hsbc.ccaas.papi.dto.PaginatedResult;
 import com.hsbc.ccaas.papi.dto.sapi.ApprovalPayloads.SapiPendingChange;
 import com.hsbc.ccaas.identity.service.helper.IdentityContextAccessor;
 import com.hsbc.ccaas.papi.mapper.GeneratedModelMapper;
+import com.hsbc.ccaas.papi.service.AdminAuthorizationService;
 import com.hsbc.ccaas.papi.util.PaginationHelper;
 import com.hsbc.wpb.ef.ports.RequestContext;
 import java.util.*;
@@ -14809,14 +14839,17 @@ public class ApprovalWorkflowController implements PendingChangesApi, ChangeAppr
     private final IdentityContextAccessor identity;
     private final SapiApprovalClient sapiApprovalClient;
     private final ApprovalResponseAssembler responseAssembler;
+    private final AdminAuthorizationService authorizationService;
 
     public ApprovalWorkflowController(
             IdentityContextAccessor identity,
             SapiApprovalClient sapiApprovalClient,
-            ApprovalResponseAssembler responseAssembler) {
+            ApprovalResponseAssembler responseAssembler,
+            AdminAuthorizationService authorizationService) {
         this.identity = Objects.requireNonNull(identity, "IdentityContextAccessor must not be null");
         this.sapiApprovalClient = Objects.requireNonNull(sapiApprovalClient, "SapiApprovalClient must not be null");
         this.responseAssembler = Objects.requireNonNull(responseAssembler, "ApprovalResponseAssembler must not be null");
+        this.authorizationService = Objects.requireNonNull(authorizationService, "AdminAuthorizationService must not be null");
     }
 
     // ========================================================================
@@ -14827,6 +14860,7 @@ public class ApprovalWorkflowController implements PendingChangesApi, ChangeAppr
     public ResponseEntity<DataResponsePendingChangeData> submitChange(
             RequestContext<SubmitChangeRequestEnvelope> requestContext) throws Exception {
         Objects.requireNonNull(requestContext, "RequestContext must not be null");
+        authorizationService.requireAdminRole();
 
         var envelope = requestContext.getBody().orElseThrow(
             () -> new IllegalArgumentException(CommonConstants.REQUEST_BODY_REQUIRED));
@@ -14859,6 +14893,7 @@ public class ApprovalWorkflowController implements PendingChangesApi, ChangeAppr
     public ResponseEntity<DataMetaResponsePendingChangesData> listPendingChanges(
             RequestContext<Void> requestContext) throws Exception {
         Objects.requireNonNull(requestContext, "RequestContext must not be null");
+        authorizationService.requireAdminRole();
 
         String statusCode = requestContext.getQueryParameter("statusCode").orElse(null);
         String targetGroupIdentifier = requestContext.getQueryParameter("targetGroupIdentifier").orElse(null);
@@ -14885,6 +14920,7 @@ public class ApprovalWorkflowController implements PendingChangesApi, ChangeAppr
     public ResponseEntity<DataResponsePendingChangeData> getPendingChange(
             RequestContext<Void> requestContext) throws Exception {
         Objects.requireNonNull(requestContext, "RequestContext must not be null");
+        authorizationService.requireAdminRole();
 
         String id = requestContext.getPathVariable(CHANGE_IDENTIFIER).orElseThrow();
         log.info("Get pending change: id={}", id);
@@ -14901,6 +14937,7 @@ public class ApprovalWorkflowController implements PendingChangesApi, ChangeAppr
     public ResponseEntity<DataResponseApprovalData> approveChange(
             RequestContext<ApproveChangeRequestEnvelope> requestContext) throws Exception {
         Objects.requireNonNull(requestContext, "RequestContext must not be null");
+        authorizationService.requireAdminRole();
 
         var envelope = requestContext.getBody().orElseThrow(
             () -> new IllegalArgumentException(CommonConstants.REQUEST_BODY_REQUIRED));
@@ -14927,6 +14964,7 @@ public class ApprovalWorkflowController implements PendingChangesApi, ChangeAppr
     public ResponseEntity<DataResponseRejectionData> rejectChange(
             RequestContext<RejectChangeRequestEnvelope> requestContext) throws Exception {
         Objects.requireNonNull(requestContext, "RequestContext must not be null");
+        authorizationService.requireAdminRole();
 
         var envelope = requestContext.getBody().orElseThrow(
             () -> new IllegalArgumentException(CommonConstants.REQUEST_BODY_REQUIRED));
@@ -14960,6 +14998,7 @@ public class ApprovalWorkflowController implements PendingChangesApi, ChangeAppr
     public ResponseEntity<DataResponseCancellationData> cancelChange(
             RequestContext<Void> requestContext) throws Exception {
         Objects.requireNonNull(requestContext, "RequestContext must not be null");
+        authorizationService.requireAdminRole();
 
         String id = requestContext.getPathVariable(CHANGE_IDENTIFIER).orElseThrow();
         log.info("Cancel change: id={}", id);
@@ -14985,6 +15024,9 @@ import com.hsbc.ccaas.papi.controller.helper.RequestValidationHelper;
 import com.hsbc.ccaas.papi.controller.model.DataMetaResponseActivityData;
 import com.hsbc.ccaas.papi.controller.model.DataMetaResponseAuditData;
 import com.hsbc.ccaas.papi.client.SapiAuditClient;
+import com.hsbc.ccaas.papi.dto.sapi.AuditPayloads.ActivityLogData;
+import com.hsbc.ccaas.papi.dto.sapi.AuditPayloads.AuditLogData;
+import com.hsbc.ccaas.papi.dto.sapi.SapiDataMetaResponse;
 import com.hsbc.ccaas.identity.service.helper.IdentityContextAccessor;
 import com.hsbc.ccaas.papi.util.PaginationHelper;
 import com.hsbc.wpb.ef.ports.RequestContext;
@@ -14993,7 +15035,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -15032,7 +15073,7 @@ public class AuditController implements MyActivityApi, AuditLogsApi {
 
         log.info("Get my activity: userId={}, offset={}, limit={}, timeRange={}", userId, offset, limit, timeRange);
 
-        Map<String, Object> sapiResponse = sapiAuditClient.getMyActivity(userId, offset, limit, timeRange);
+        SapiDataMetaResponse<ActivityLogData> sapiResponse = sapiAuditClient.getMyActivity(userId, offset, limit, timeRange);
 
         return responseAssembler.buildActivityResponse(sapiResponse);
     }
@@ -15056,7 +15097,7 @@ public class AuditController implements MyActivityApi, AuditLogsApi {
 
         log.info("Get audit logs: action={}, group={}, performedBy={}", action, targetGroupIdentifier, performedBy);
 
-        Map<String, Object> sapiResponse = sapiAuditClient.getAuditLogs(
+        SapiDataMetaResponse<AuditLogData> sapiResponse = sapiAuditClient.getAuditLogs(
                 offset, limit, action, targetGroupIdentifier, performedBy,
                 marketCode, regionCode, changeType, startDate, endDate, criticalOnly);
 
@@ -15223,10 +15264,12 @@ import com.hsbc.ccaas.papi.controller.api.EmbeddedAppsAdGroupsApi;
 import com.hsbc.ccaas.papi.controller.model.*;
 import com.hsbc.ccaas.papi.controller.helper.EmbeddedAppResponseAssembler;
 import com.hsbc.ccaas.papi.application.EmbeddedAppFacade;
+import com.hsbc.ccaas.papi.service.AdminAuthorizationService;
 import com.hsbc.ccaas.identity.service.helper.IdentityContextAccessor;
 import com.hsbc.ccaas.papi.util.PaginationHelper;
 import com.hsbc.wpb.ef.ports.RequestContext;
 import java.util.List;
+import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -15242,18 +15285,22 @@ public class EmbeddedAppAdminController implements EmbeddedAppsApi, EmbeddedApps
     private final EmbeddedAppFacade embeddedAppFacade;
     private final IdentityContextAccessor identity;
     private final EmbeddedAppResponseAssembler responseAssembler;
+    private final AdminAuthorizationService authorizationService;
 
     public EmbeddedAppAdminController(EmbeddedAppFacade embeddedAppFacade,
                                        IdentityContextAccessor identity,
-                                       EmbeddedAppResponseAssembler responseAssembler) {
+                                       EmbeddedAppResponseAssembler responseAssembler,
+                                       AdminAuthorizationService authorizationService) {
         this.embeddedAppFacade = embeddedAppFacade;
         this.identity = identity;
         this.responseAssembler = responseAssembler;
+        this.authorizationService = Objects.requireNonNull(authorizationService, "AdminAuthorizationService must not be null");
     }
 
     @Override
     public ResponseEntity<DataResponseEmbeddedAppsData> getAllEmbeddedApps(
             RequestContext<Void> requestContext) throws Exception {
+        authorizationService.requireAdminRole();
         String adGroupIdentifier = requestContext.getQueryParameter("adGroupIdentifier").orElse(null);
         int offset = PaginationHelper.parseOffset(requestContext.getQueryParameter("offset").orElse(null));
         int limit = PaginationHelper.parseLimit(requestContext.getQueryParameter("limit").orElse(null), 0);
@@ -15265,6 +15312,7 @@ public class EmbeddedAppAdminController implements EmbeddedAppsApi, EmbeddedApps
     @Override
     public ResponseEntity<DataResponseEmbeddedAppData> getEmbeddedApp(
             RequestContext<Void> requestContext) throws Exception {
+        authorizationService.requireAdminRole();
         String appKey = requestContext.getPathVariable(APP_KEY).orElseThrow();
         EmbeddedAppResponse app = embeddedAppFacade.getEmbeddedAppByKey(appKey);
         return responseAssembler.buildSingleAppResponse(app);
@@ -15273,6 +15321,7 @@ public class EmbeddedAppAdminController implements EmbeddedAppsApi, EmbeddedApps
     @Override
     public ResponseEntity<DataResponseAppConfigData> getAppAdGroupConfiguration(
             RequestContext<GetAppAdGroupConfigurationRequest> requestContext) throws Exception {
+        authorizationService.requireAdminRole();
         String appKey = requestContext.getPathVariable(APP_KEY).orElseThrow();
         var body = requestContext.getBody().orElse(null);
         String groupIdentifier = null;
@@ -15300,6 +15349,7 @@ public class EmbeddedAppAdminController implements EmbeddedAppsApi, EmbeddedApps
     @Override
     public ResponseEntity<DataResponseAppConfigData> updateAppAdGroupConfiguration(
             RequestContext<UpdateAdGroupConfigRequestEnvelope> requestContext) throws Exception {
+        authorizationService.requireAdminRole();
         String appKey = requestContext.getPathVariable(APP_KEY).orElseThrow();
         var envelope = requestContext.getBody().orElseThrow(
             () -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Request body is required"));
@@ -15329,6 +15379,7 @@ public class EmbeddedAppAdminController implements EmbeddedAppsApi, EmbeddedApps
     @Override
     public ResponseEntity<DataResponseEmbeddedAppsData> getEmbeddedAppsForAdGroup(
             RequestContext<GetAppsForAdGroupRequestEnvelope> requestContext) throws Exception {
+        authorizationService.requireAdminRole();
         var body = requestContext.getBody().orElse(null);
         if (body == null || body.getData() == null) {
             throw new IllegalArgumentException("Request body with data is required");
@@ -15877,32 +15928,33 @@ public class ApprovalResponseMapper {
 package com.hsbc.ccaas.papi.controller.helper;
 
 import com.hsbc.ccaas.papi.controller.model.*;
+import com.hsbc.ccaas.papi.dto.sapi.AuditPayloads.ActivityLogData;
+import com.hsbc.ccaas.papi.dto.sapi.AuditPayloads.AuditLogData;
+import com.hsbc.ccaas.papi.dto.sapi.AuditPayloads.SapiActivityLogItem;
+import com.hsbc.ccaas.papi.dto.sapi.SapiDataMetaResponse;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 
-import java.time.OffsetDateTime;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Assembles HTTP responses for audit endpoints.
- * Maps raw SAPI response maps to generated PAPI DTOs.
+ * Maps typed SAPI response records to generated PAPI DTOs.
  */
 @Component
 public class AuditResponseAssembler {
 
-    @SuppressWarnings("unchecked")
-    public ResponseEntity<DataMetaResponseActivityData> buildActivityResponse(Map<String, Object> sapiResponse) {
+    public ResponseEntity<DataMetaResponseActivityData> buildActivityResponse(
+            SapiDataMetaResponse<ActivityLogData> sapiResponse) {
         if (sapiResponse == null) {
             return buildEmptyActivityResponse(0, 25);
         }
 
-        Map<String, Object> data = (Map<String, Object>) sapiResponse.get("data");
-        Map<String, Object> meta = (Map<String, Object>) sapiResponse.get("meta");
-
-        List<ActivityLogItem> items = mapActivityItems(data, "activityValues");
-        var pagination = mapPagination(meta);
+        List<ActivityLogItem> items = sapiResponse.getData() != null && sapiResponse.getData().activityValues() != null
+                ? sapiResponse.getData().activityValues().stream().map(this::mapItem).toList()
+                : Collections.emptyList();
+        var pagination = mapPagination(sapiResponse.getMeta());
 
         var dataObj = new DataMetaResponseActivityDataData();
         dataObj.setActivityValues(items);
@@ -15911,17 +15963,16 @@ public class AuditResponseAssembler {
         return ResponseEntity.ok(new DataMetaResponseActivityData().data(dataObj).meta(metaObj));
     }
 
-    @SuppressWarnings("unchecked")
-    public ResponseEntity<DataMetaResponseAuditData> buildAuditLogResponse(Map<String, Object> sapiResponse) {
+    public ResponseEntity<DataMetaResponseAuditData> buildAuditLogResponse(
+            SapiDataMetaResponse<AuditLogData> sapiResponse) {
         if (sapiResponse == null) {
             return buildEmptyAuditResponse(0, 25);
         }
 
-        Map<String, Object> data = (Map<String, Object>) sapiResponse.get("data");
-        Map<String, Object> meta = (Map<String, Object>) sapiResponse.get("meta");
-
-        List<ActivityLogItem> items = mapActivityItems(data, "auditValues");
-        var pagination = mapPagination(meta);
+        List<ActivityLogItem> items = sapiResponse.getData() != null && sapiResponse.getData().auditValues() != null
+                ? sapiResponse.getData().auditValues().stream().map(this::mapItem).toList()
+                : Collections.emptyList();
+        var pagination = mapPagination(sapiResponse.getMeta());
 
         var dataObj = new DataMetaResponseAuditDataData();
         dataObj.setAuditValues(items);
@@ -15948,72 +15999,44 @@ public class AuditResponseAssembler {
         return ResponseEntity.ok(new DataMetaResponseAuditData().data(dataObj).meta(metaObj));
     }
 
-    @SuppressWarnings("unchecked")
-    private List<ActivityLogItem> mapActivityItems(Map<String, Object> data, String key) {
-        if (data == null) return Collections.emptyList();
-
-        List<Map<String, Object>> rawItems = (List<Map<String, Object>>) data.get(key);
-        if (rawItems == null) return Collections.emptyList();
-
-        return rawItems.stream().map(this::mapItem).toList();
-    }
-
-    @SuppressWarnings("unchecked")
-    private ActivityLogItem mapItem(Map<String, Object> raw) {
+    private ActivityLogItem mapItem(SapiActivityLogItem raw) {
         ActivityLogItem item = new ActivityLogItem();
-        if (raw.get("actionCode") != null) {
-            item.setActionCode(ActivityLogItem.ActionCodeEnum.fromValue((String) raw.get("actionCode")));
+        if (raw.actionCode() != null) {
+            item.setActionCode(ActivityLogItem.ActionCodeEnum.fromValue(raw.actionCode()));
         }
-        if (raw.get("changeType") != null) {
+        if (raw.changeType() != null) {
             try {
-                item.setChangeType(ActivityLogItem.ChangeTypeEnum.fromValue((String) raw.get("changeType")));
+                item.setChangeType(ActivityLogItem.ChangeTypeEnum.fromValue(raw.changeType()));
             } catch (IllegalArgumentException ignored) {
                 // Skip unknown change types
             }
         }
-        item.setTargetGroupIdentifier((String) raw.get("targetGroupIdentifier"));
-        item.setTargetGroupName((String) raw.get("targetGroupName"));
-        item.setPerformedByText((String) raw.get("performedByText"));
-        item.setPerformedByNameText((String) raw.get("performedByNameText"));
-        if (raw.get("performedByRoleCode") != null) {
-            item.setPerformedByRoleCode(ActivityLogItem.PerformedByRoleCodeEnum.fromValue((String) raw.get("performedByRoleCode")));
+        item.setTargetGroupIdentifier(raw.targetGroupIdentifier());
+        item.setTargetGroupName(raw.targetGroupName());
+        item.setPerformedByText(raw.performedByText());
+        item.setPerformedByNameText(raw.performedByNameText());
+        if (raw.performedByRoleCode() != null) {
+            item.setPerformedByRoleCode(ActivityLogItem.PerformedByRoleCodeEnum.fromValue(raw.performedByRoleCode()));
         }
-        item.setMarketCode((String) raw.get("marketCode"));
-        item.setRegionCode((String) raw.get("regionCode"));
-        item.setIsCriticalIndicator((Boolean) raw.get("isCriticalIndicator"));
-        if (raw.get("createdAtDatetime") != null) {
-            item.setCreatedAtDatetime(OffsetDateTime.parse((String) raw.get("createdAtDatetime")));
-        }
-        item.setCompletionReasonText((String) raw.get("completionReasonText"));
+        item.setMarketCode(raw.marketCode());
+        item.setRegionCode(raw.regionCode());
+        item.setIsCriticalIndicator(raw.isCriticalIndicator());
+        item.setCreatedAtDatetime(raw.createdAtDatetime());
+        item.setCompletionReasonText(raw.completionReasonText());
         return item;
     }
 
-    @SuppressWarnings("unchecked")
-    private DataMetaResponseActivityDataMetaPagination mapPagination(Map<String, Object> meta) {
-        if (meta == null) {
+    private DataMetaResponseActivityDataMetaPagination mapPagination(SapiDataMetaResponse.SapiMeta meta) {
+        if (meta == null || meta.getPagination() == null) {
             return new DataMetaResponseActivityDataMetaPagination()
                     .offset(0).limit(25).total(0L).hasMore(false);
         }
-        Map<String, Object> pagination = (Map<String, Object>) meta.get("pagination");
-        if (pagination == null) {
-            return new DataMetaResponseActivityDataMetaPagination()
-                    .offset(0).limit(25).total(0L).hasMore(false);
-        }
+        var p = meta.getPagination();
         return new DataMetaResponseActivityDataMetaPagination()
-                .offset(toInt(pagination.get("offset")))
-                .limit(toInt(pagination.get("limit")))
-                .total(toLong(pagination.get("total")))
-                .hasMore(Boolean.TRUE.equals(pagination.get("hasMore")));
-    }
-
-    private int toInt(Object value) {
-        if (value instanceof Number n) return n.intValue();
-        return 0;
-    }
-
-    private long toLong(Object value) {
-        if (value instanceof Number n) return n.longValue();
-        return 0L;
+                .offset(p.getOffset())
+                .limit(p.getLimit())
+                .total(p.getTotal())
+                .hasMore(p.isHasMore());
     }
 }
 ===ENDFILE
@@ -16651,7 +16674,10 @@ public final class AdGroupPayloads {
 
     public record AdGroupsPayload(
             @com.fasterxml.jackson.annotation.JsonProperty("items")
-            List<com.hsbc.ccaas.papi.controller.model.AdGroupLayoutResponse> adGroups) {}
+            List<com.hsbc.ccaas.papi.controller.model.AdGroupLayoutResponse> adGroups,
+            Integer totalCount,
+            Integer offsetNumber,
+            Integer limitNumber) {}
 
     public record CopyResultPayload(com.hsbc.ccaas.papi.controller.model.AdGroupCopyResponse copyResult) {}
 
@@ -16684,7 +16710,7 @@ public final class AdGroupPayloads {
             int limitNumber,
             String groupIdentifier,
             String roleName,
-            String userAccessCode) {}
+            String statusCode) {}
 }
 ===ENDFILE
 ===FILE: ./src/main/java/com/hsbc/ccaas/papi/dto/sapi/ApprovalPayloads.java
@@ -16788,6 +16814,9 @@ import java.util.List;
 /**
  * Payload records for audit log SAPI responses.
  * Used by SapiAuditClient to deserialize SAPI response data.
+ *
+ * SAPI returns: {"data": {"activityValues": [...]}, "meta": {"pagination": {...}}}
+ * The top-level wrapper is SapiDataMetaResponse; these records model the "data" contents.
  */
 public final class AuditPayloads {
 
@@ -16809,22 +16838,11 @@ public final class AuditPayloads {
             OffsetDateTime createdAtDatetime,
             String completionReasonText) {}
 
-    public record ActivityLogPayload(
-            List<SapiActivityLogItem> activityValues,
-            ActivityLogMeta meta) {}
+    public record ActivityLogData(
+            List<SapiActivityLogItem> activityValues) {}
 
-    public record AuditLogPayload(
-            List<SapiActivityLogItem> auditValues,
-            ActivityLogMeta meta) {}
-
-    public record ActivityLogMeta(
-            PaginationMeta pagination) {}
-
-    public record PaginationMeta(
-            int offset,
-            int limit,
-            long total,
-            boolean hasMore) {}
+    public record AuditLogData(
+            List<SapiActivityLogItem> auditValues) {}
 }
 ===ENDFILE
 ===FILE: ./src/main/java/com/hsbc/ccaas/papi/dto/sapi/EmbeddedAppPayloads.java
@@ -17689,10 +17707,11 @@ public class BulkAssignmentProcessor {
                 return RequestOutcome.failure(userId, reason);
             }
         } catch (RestClientResponseException ex) {
-            // SAPI HTTP error -- include status code for troubleshooting
-            String reason = String.format("HTTP %d: %s", ex.getStatusCode().value(), ex.getResponseBodyAsString());
-            logger.error("SAPI error updating primary assignment for user {} (role: {}, adGroup: {}): {}",
-                    userId, request.getRoleNameText(), request.getAdGroupIdentifier(), reason);
+            // Log full details for troubleshooting, but return only the status code to the caller
+            logger.error("SAPI error updating primary assignment for user {} (role: {}, adGroup: {}): HTTP {} - {}",
+                    userId, request.getRoleNameText(), request.getAdGroupIdentifier(),
+                    ex.getStatusCode().value(), ex.getResponseBodyAsString());
+            String reason = "Service error (HTTP " + ex.getStatusCode().value() + ")";
             return RequestOutcome.failure(userId, reason);
         } catch (ResponseStatusException ex) {
             // Application-level error (e.g. authorization check failed)
@@ -17702,7 +17721,7 @@ public class BulkAssignmentProcessor {
             return RequestOutcome.failure(userId, reason);
         } catch (ResourceAccessException ex) {
             // Network-level failure -- SAPI unreachable or connection timeout
-            String reason = "Network error: " + ex.getMessage();
+            String reason = "Service temporarily unavailable";
             logger.error("Network error updating primary assignment for user {} (role: {}, adGroup: {}): {}",
                     userId, request.getRoleNameText(), request.getAdGroupIdentifier(), ex.getMessage());
             return RequestOutcome.failure(userId, reason);
@@ -17803,7 +17822,10 @@ public class SapiExceptionHandler {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Operation interrupted", e);
+        } catch (RuntimeException e) {
+            throw e;
         } catch (Exception e) {
+            // Checked exceptions from Callable.call() that don't match any specific handler above
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Unexpected error", e);
         }
     }
@@ -19590,9 +19612,11 @@ import com.tngtech.archunit.library.dependencies.SlicesRuleDefinition;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import static com.tngtech.archunit.core.domain.JavaClass.Predicates.belongToAnyOf;
 import static com.tngtech.archunit.core.domain.JavaClass.Predicates.resideInAnyPackage;
 import static com.tngtech.archunit.core.domain.JavaClass.Predicates.resideOutsideOfPackage;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
+import com.hsbc.ccaas.papi.service.AdminAuthorizationService;
 
 class ArchitectureTest {
 
@@ -19607,11 +19631,14 @@ class ArchitectureTest {
     void controllers_should_not_access_service_layer() {
         // Exclude the identity library's service.helper package — IdentityContextAccessor is a
         // cross-cutting identity concern used directly by controllers, not a service-layer class.
+        // Also exclude AdminAuthorizationService — it is a cross-cutting authorization concern
+        // used for defense-in-depth admin checks at the controller layer.
         ArchRule rule = noClasses()
             .that().resideInAPackage("..controller..")
             .should().dependOnClassesThat(
                 resideInAnyPackage("..service..")
-                    .and(resideOutsideOfPackage("com.hsbc.ccaas.identity.service..")))
+                    .and(resideOutsideOfPackage("com.hsbc.ccaas.identity.service.."))
+                    .and(com.tngtech.archunit.base.DescribedPredicate.not(belongToAnyOf(AdminAuthorizationService.class))))
             .because("Controllers should delegate via the application facade, not directly to services");
         rule.check(importedClasses());
     }
@@ -19713,15 +19740,7 @@ class SapiAdGroupClientTest {
         criteria.setLimit(10);
 
         SapiDataMetaResponse<AdGroupPayloads.AdGroupsPayload> sapiResponse = new SapiDataMetaResponse<>();
-        sapiResponse.setData(new AdGroupPayloads.AdGroupsPayload(List.of(new AdGroupLayoutResponse())));
-        SapiDataMetaResponse.SapiMeta meta = new SapiDataMetaResponse.SapiMeta();
-        SapiDataMetaResponse.SapiPagination pagination = new SapiDataMetaResponse.SapiPagination();
-        pagination.setOffset(0);
-        pagination.setLimit(10);
-        pagination.setTotal(1);
-        pagination.setHasMore(false);
-        meta.setPagination(pagination);
-        sapiResponse.setMeta(meta);
+        sapiResponse.setData(new AdGroupPayloads.AdGroupsPayload(List.of(new AdGroupLayoutResponse()), 1, 0, 10));
 
         when(sapiRestClient.post()).thenReturn(requestBodyUriSpec);
         when(requestBodyUriSpec.uri(anyString())).thenReturn(requestBodySpec);
@@ -21949,16 +21968,16 @@ class GlobalExceptionHandlerExtendedTest {
     }
 
     @Nested
-    @DisplayName("handleMalformedRequest Tests (MethodArgumentTypeMismatchException)")
+    @DisplayName("handleTypeMismatch Tests (MethodArgumentTypeMismatchException)")
     class HandleMethodArgumentTypeMismatchTests {
 
         @Test
-        @DisplayName("should handle type mismatch as malformed request")
+        @DisplayName("should handle non-UUID type mismatch as malformed request (400)")
         void shouldHandleTypeMismatchAsMalformedRequest() {
             MethodArgumentTypeMismatchException ex = new MethodArgumentTypeMismatchException(
                 "abc", Integer.class, "page", null, null);
 
-            ResponseEntity<ProblemDetail> response = handler.handleMalformedRequest(ex, request);
+            ResponseEntity<ProblemDetail> response = handler.handleTypeMismatch(ex, request);
 
             assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
             assertThat(response.getBody().getType().toString()).contains("malformed-request");
@@ -21970,7 +21989,7 @@ class GlobalExceptionHandlerExtendedTest {
             MethodArgumentTypeMismatchException ex = new MethodArgumentTypeMismatchException(
                 null, Integer.class, "page", null, null);
 
-            ResponseEntity<ProblemDetail> response = handler.handleMalformedRequest(ex, request);
+            ResponseEntity<ProblemDetail> response = handler.handleTypeMismatch(ex, request);
 
             assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
             assertThat(response.getBody().getType().toString()).contains("malformed-request");
@@ -21982,9 +22001,21 @@ class GlobalExceptionHandlerExtendedTest {
             MethodArgumentTypeMismatchException ex = new MethodArgumentTypeMismatchException(
                 "abc", null, "page", null, null);
 
-            ResponseEntity<ProblemDetail> response = handler.handleMalformedRequest(ex, request);
+            ResponseEntity<ProblemDetail> response = handler.handleTypeMismatch(ex, request);
 
             assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        }
+
+        @Test
+        @DisplayName("should return 404 when UUID type mismatch (invalid UUID path variable)")
+        void shouldReturn404ForUuidTypeMismatch() {
+            MethodArgumentTypeMismatchException ex = new MethodArgumentTypeMismatchException(
+                "not-a-uuid", java.util.UUID.class, "changeIdentifier", null, null);
+
+            ResponseEntity<ProblemDetail> response = handler.handleTypeMismatch(ex, request);
+
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+            assertThat(response.getBody().getType().toString()).contains("not-found");
         }
     }
 
@@ -23989,8 +24020,8 @@ class AdminNoticeControllerTest {
     }
 
     @Test
-    @DisplayName("POST /papi/v1/notices creates notice and returns 200")
-    void createNoticeReturnsOk() throws Exception {
+    @DisplayName("POST /papi/v1/notices creates notice and returns 201")
+    void createNoticeReturnsCreated() throws Exception {
         AdminNoticeRequest genRequest = new AdminNoticeRequest();
         genRequest.setTitleText("Maintenance");
         genRequest.setMessageText("Scheduled maintenance window");
@@ -24014,7 +24045,7 @@ class AdminNoticeControllerTest {
         when(requestContext.getBody()).thenReturn(Optional.of(envelope));
         ResponseEntity<DataResponseNoticeData> result = controller.createAdminNotice(requestContext);
 
-        assertThat(result.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(result.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         assertThat(result.getBody().getData().getNotice().getIdentifier()).isEqualTo(noticeId);
         verify(adminNoticeFacade).createNotice(any(AdminNoticeRequest.class));
     }
@@ -24141,7 +24172,7 @@ class AdminNoticeControllerTest {
         when(requestContext.getBody()).thenReturn(Optional.of(envelope));
         ResponseEntity<DataResponseNoticeData> result = controller.createAdminNotice(requestContext);
 
-        assertThat(result.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(result.getStatusCode()).isEqualTo(HttpStatus.CREATED);
 
         ArgumentCaptor<AdminNoticeRequest> captor = ArgumentCaptor.forClass(AdminNoticeRequest.class);
         verify(adminNoticeFacade).createNotice(captor.capture());
@@ -24166,6 +24197,7 @@ import com.hsbc.ccaas.papi.controller.helper.ApprovalResponseMapper;
 import com.hsbc.ccaas.papi.dto.PaginatedResult;
 import com.hsbc.ccaas.papi.dto.sapi.ApprovalPayloads.SapiPendingChange;
 import com.hsbc.ccaas.identity.service.helper.IdentityContextAccessor;
+import com.hsbc.ccaas.papi.service.AdminAuthorizationService;
 import com.hsbc.wpb.ef.ports.RequestContext;
 
 import java.time.LocalDateTime;
@@ -24198,6 +24230,9 @@ class ApprovalWorkflowControllerTest {
     @Mock
     private ApprovalResponseMapper approvalResponseMapper;
 
+    @Mock
+    private AdminAuthorizationService authorizationService;
+
     private ApprovalWorkflowController controller;
 
     private static final String USER_ID = "600020";
@@ -24209,7 +24244,7 @@ class ApprovalWorkflowControllerTest {
     @BeforeEach
     void setUp() {
         ApprovalResponseAssembler responseAssembler = new ApprovalResponseAssembler(approvalResponseMapper);
-        controller = new ApprovalWorkflowController(identity, sapiApprovalClient, responseAssembler);
+        controller = new ApprovalWorkflowController(identity, sapiApprovalClient, responseAssembler, authorizationService);
         lenient().when(identity.adGroups()).thenReturn(Collections.emptyList());
     }
 
@@ -25048,17 +25083,22 @@ import static org.mockito.Mockito.*;
 import com.hsbc.ccaas.papi.controller.model.*;
 import com.hsbc.ccaas.papi.client.SapiAuditClient;
 import com.hsbc.ccaas.papi.controller.helper.AuditResponseAssembler;
+import com.hsbc.ccaas.papi.dto.sapi.AuditPayloads.ActivityLogData;
+import com.hsbc.ccaas.papi.dto.sapi.AuditPayloads.AuditLogData;
+import com.hsbc.ccaas.papi.dto.sapi.AuditPayloads.SapiActivityLogItem;
+import com.hsbc.ccaas.papi.dto.sapi.SapiDataMetaResponse;
 import com.hsbc.ccaas.identity.service.helper.IdentityContextAccessor;
 import com.hsbc.wpb.ef.ports.RequestContext;
 
+import java.time.OffsetDateTime;
 import java.util.*;
+import java.util.stream.IntStream;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
@@ -25094,56 +25134,46 @@ class AuditControllerTest {
         return rc;
     }
 
-    private Map<String, Object> buildSapiActivityResponse(int itemCount) {
-        List<Map<String, Object>> items = new ArrayList<>();
-        for (int i = 0; i < itemCount; i++) {
-            Map<String, Object> item = new LinkedHashMap<>();
-            item.put("actionCode", "SUBMIT");
-            item.put("changeType", "CONFIG_UPDATE");
-            item.put("targetGroupIdentifier", GROUP_ID);
-            item.put("targetGroupName", "Voice Agent EMEA");
-            item.put("performedByText", USER_ID);
-            item.put("performedByNameText", "Admin User");
-            item.put("performedByRoleCode", "MAKER");
-            item.put("marketCode", "UK");
-            item.put("regionCode", "EMEA");
-            item.put("isCriticalIndicator", false);
-            item.put("createdAtDatetime", "2025-01-15T10:30:00Z");
-            item.put("completionReasonText", null);
-            items.add(item);
-        }
+    private SapiDataMetaResponse<ActivityLogData> buildSapiActivityResponse(int itemCount) {
+        List<SapiActivityLogItem> items = IntStream.range(0, itemCount)
+                .mapToObj(i -> new SapiActivityLogItem(
+                        "SUBMIT", "CONFIG_UPDATE", GROUP_ID, "Voice Agent EMEA",
+                        USER_ID, "Admin User", "MAKER", "UK", "EMEA",
+                        false, OffsetDateTime.parse("2025-01-15T10:30:00Z"), null))
+                .toList();
 
-        Map<String, Object> data = Map.of("activityValues", items);
-        Map<String, Object> pagination = Map.of(
-                "offset", 0, "limit", 25, "total", (long) itemCount, "hasMore", false);
-        Map<String, Object> meta = Map.of("pagination", pagination);
-        return Map.of("data", data, "meta", meta);
+        SapiDataMetaResponse<ActivityLogData> response = new SapiDataMetaResponse<>();
+        response.setData(new ActivityLogData(items));
+        SapiDataMetaResponse.SapiMeta meta = new SapiDataMetaResponse.SapiMeta();
+        SapiDataMetaResponse.SapiPagination pagination = new SapiDataMetaResponse.SapiPagination();
+        pagination.setOffset(0);
+        pagination.setLimit(25);
+        pagination.setTotal(itemCount);
+        pagination.setHasMore(false);
+        meta.setPagination(pagination);
+        response.setMeta(meta);
+        return response;
     }
 
-    private Map<String, Object> buildSapiAuditResponse(int itemCount) {
-        List<Map<String, Object>> items = new ArrayList<>();
-        for (int i = 0; i < itemCount; i++) {
-            Map<String, Object> item = new LinkedHashMap<>();
-            item.put("actionCode", "L1_APPROVE");
-            item.put("changeType", "CONFIG_UPDATE");
-            item.put("targetGroupIdentifier", GROUP_ID);
-            item.put("targetGroupName", "Voice Agent EMEA");
-            item.put("performedByText", "600030");
-            item.put("performedByNameText", "Checker User");
-            item.put("performedByRoleCode", "CHECKER");
-            item.put("marketCode", "UK");
-            item.put("regionCode", "EMEA");
-            item.put("isCriticalIndicator", true);
-            item.put("createdAtDatetime", "2025-01-15T14:00:00Z");
-            item.put("completionReasonText", "Approved as requested");
-            items.add(item);
-        }
+    private SapiDataMetaResponse<AuditLogData> buildSapiAuditResponse(int itemCount) {
+        List<SapiActivityLogItem> items = IntStream.range(0, itemCount)
+                .mapToObj(i -> new SapiActivityLogItem(
+                        "L1_APPROVE", "CONFIG_UPDATE", GROUP_ID, "Voice Agent EMEA",
+                        "600030", "Checker User", "CHECKER", "UK", "EMEA",
+                        true, OffsetDateTime.parse("2025-01-15T14:00:00Z"), "Approved as requested"))
+                .toList();
 
-        Map<String, Object> data = Map.of("auditValues", items);
-        Map<String, Object> pagination = Map.of(
-                "offset", 0, "limit", 25, "total", (long) itemCount, "hasMore", false);
-        Map<String, Object> meta = Map.of("pagination", pagination);
-        return Map.of("data", data, "meta", meta);
+        SapiDataMetaResponse<AuditLogData> response = new SapiDataMetaResponse<>();
+        response.setData(new AuditLogData(items));
+        SapiDataMetaResponse.SapiMeta meta = new SapiDataMetaResponse.SapiMeta();
+        SapiDataMetaResponse.SapiPagination pagination = new SapiDataMetaResponse.SapiPagination();
+        pagination.setOffset(0);
+        pagination.setLimit(25);
+        pagination.setTotal(itemCount);
+        pagination.setHasMore(false);
+        meta.setPagination(pagination);
+        response.setMeta(meta);
+        return response;
     }
 
     // ========================================================================
@@ -25742,6 +25772,7 @@ import static org.mockito.Mockito.*;
 import com.hsbc.ccaas.papi.application.EmbeddedAppFacade;
 import com.hsbc.ccaas.papi.controller.helper.EmbeddedAppResponseAssembler;
 import com.hsbc.ccaas.papi.controller.model.*;
+import com.hsbc.ccaas.papi.service.AdminAuthorizationService;
 import com.hsbc.ccaas.identity.service.helper.IdentityContextAccessor;
 import com.hsbc.wpb.ef.ports.RequestContext;
 import java.util.ArrayList;
@@ -25767,6 +25798,9 @@ class EmbeddedAppAdminControllerTest {
     @Mock
     private IdentityContextAccessor identity;
 
+    @Mock
+    private AdminAuthorizationService authorizationService;
+
     private EmbeddedAppAdminController controller;
 
     @BeforeEach
@@ -25774,7 +25808,8 @@ class EmbeddedAppAdminControllerTest {
         controller = new EmbeddedAppAdminController(
             embeddedAppFacade,
             identity,
-            new EmbeddedAppResponseAssembler()
+            new EmbeddedAppResponseAssembler(),
+            authorizationService
         );
     }
 
@@ -25785,6 +25820,22 @@ class EmbeddedAppAdminControllerTest {
         lenient().when(rc.getQueryParameter(anyString())).thenReturn(Optional.empty());
         lenient().when(rc.getPathVariable(anyString())).thenReturn(Optional.empty());
         return rc;
+    }
+
+    @Test
+    @DisplayName("getAllEmbeddedApps throws 403 when user lacks admin role")
+    void getAllEmbeddedApps_nonAdmin_throws403() {
+        doThrow(new ResponseStatusException(HttpStatus.FORBIDDEN, "Admin role required"))
+            .when(authorizationService).requireAdminRole();
+
+        RequestContext<Void> requestContext = mockRequestContext();
+
+        assertThatThrownBy(() -> controller.getAllEmbeddedApps(requestContext))
+            .isInstanceOf(ResponseStatusException.class)
+            .extracting(e -> ((ResponseStatusException) e).getStatusCode())
+            .isEqualTo(HttpStatus.FORBIDDEN);
+
+        verifyNoInteractions(embeddedAppFacade);
     }
 
     @Test
@@ -29289,7 +29340,7 @@ class BulkAssignmentProcessorTest {
                 BulkAssignmentProcessor.processRequests(requests, exceptionProcessor, mockLogger);
 
             assertThat(result.getFailedUserIds()).containsExactly("600001");
-            assertThat(result.getFailureReasons().get("600001")).contains("Network error");
+            assertThat(result.getFailureReasons().get("600001")).contains("Service temporarily unavailable");
         }
 
         @Test
