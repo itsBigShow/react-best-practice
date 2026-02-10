@@ -1,5 +1,5 @@
 # CCaaS Entitlement PAPI - Source Bundle
-# Generated: 2026-02-10 17:09:06
+# Generated: 2026-02-10 22:19:46
 # Total files: 284
 # Categories: 1 pom.xml, 2 CLAUDE.md, 3 docs, 1 resources, 131 YAML specs, 86 main Java, 52 test Java, 8 other
 # Note: target/generated-sources NOT included - run 'mvn generate-sources' after extraction
@@ -10859,6 +10859,7 @@ get:
           - APPROVED
           - REJECTED
           - CANCELLED
+          - MY_SUBMISSIONS
     - name: targetGroupIdentifier
       in: query
       description: Filter by target AD group identifier
