@@ -1,5 +1,5 @@
 # CCaaS Admin MFE - Source Bundle
-# Generated: 2026-02-10 21:10:17
+# Generated: 2026-02-10 22:19:24
 # Total files: 207
 # Categories: 93 TypeScript, 99 React (TSX), 1 CSS, 5 Config, 4 Docs, 5 Other
 # Note: node_modules and dist NOT included - run 'npm install && npm run build' after extraction
@@ -8535,6 +8535,13 @@ describe('summarizePermissionChanges', () => {
     expect(result[0].count).toBe(1)
     expect(result[1].count).toBe(1)
   })
+
+  it('uses workspacePreferences label', () => {
+    const result = summarizePermissionChanges({
+      workspacePreferences: { 'widgets.customer.info': true }
+    })
+    expect(result[0].label).toBe('Workspace & Preferences')
+  })
 })
 
 describe('getTemplateSection', () => {
@@ -8594,6 +8601,42 @@ describe('convertOverridesToAssignments', () => {
     })
   })
 
+  it('converts capabilities with micro_frontends prefix', () => {
+    const result = convertOverridesToAssignments({
+      capabilities: { 'micro_frontends.mediaBar': true }
+    })
+    expect(result.microFrontendAssignments).toEqual({
+      mediaBar: { state: 'enabled' }
+    })
+  })
+
+  it('converts workspacePreferences with widgets prefix', () => {
+    const result = convertOverridesToAssignments({
+      workspacePreferences: { 'widgets.customer.info': true }
+    })
+    expect(result.widgetAssignments).toEqual({
+      'customer.info': { state: 'enabled' }
+    })
+  })
+
+  it('converts workspacePreferences with settings_tabs prefix', () => {
+    const result = convertOverridesToAssignments({
+      workspacePreferences: { 'settings_tabs.help': false }
+    })
+    expect(result.settingsTabAssignments).toEqual({
+      help: { state: 'disabled' }
+    })
+  })
+
+  it('converts workspacePreferences with settings_options prefix', () => {
+    const result = convertOverridesToAssignments({
+      workspacePreferences: { 'settings_options.calls.autoAccept': true }
+    })
+    expect(result.settingsOptionAssignments).toEqual({
+      'calls.autoAccept': { state: 'enabled' }
+    })
+  })
+
   it('converts widget overrides', () => {
     const result = convertOverridesToAssignments({
       widgets: { 'customer.info': true }
@@ -8603,14 +8646,14 @@ describe('convertOverridesToAssignments', () => {
     })
   })
 
-  it('converts all level types', () => {
+  it('converts all direct level types', () => {
     const result = convertOverridesToAssignments({
       columns: { a: true },
       widgets: { b: true },
       features: { c: true },
-      settingsTabs: { d: true },
-      settingsOptions: { e: true },
-      microFrontends: { f: true }
+      settings_tabs: { d: true },
+      settings_options: { e: true },
+      micro_frontends: { f: true }
     })
     expect(result.columnAssignments).toBeDefined()
     expect(result.widgetAssignments).toBeDefined()
@@ -8688,12 +8731,13 @@ export function countPendingChangesByType(pendingChanges: PendingChanges): {
 
 const LEVEL_LABELS: Record<string, string> = {
   capabilities: 'Access Controls',
+  workspacePreferences: 'Workspace & Preferences',
   columns: 'Dashboard Layout overrides',
   widgets: 'Workspace Tools',
   features: 'Feature Access',
-  settingsTabs: 'Settings sections',
-  settingsOptions: 'Settings controls',
-  microFrontends: 'Embedded apps'
+  settings_tabs: 'Settings sections',
+  settings_options: 'Settings controls',
+  micro_frontends: 'Embedded apps'
 }
 
 const TOGGLE_LABEL_OVERRIDES: Record<string, string> = {
@@ -8757,6 +8801,31 @@ function applyCapabilityOverrides(
       const featureKey = key.replace('features.', '')
       if (!assignments.featureAssignments) assignments.featureAssignments = {}
       assignments.featureAssignments[featureKey] = toPermissionState(enabled)
+    } else if (key.startsWith('micro_frontends.')) {
+      const mfKey = key.replace('micro_frontends.', '')
+      if (!assignments.microFrontendAssignments) assignments.microFrontendAssignments = {}
+      assignments.microFrontendAssignments[mfKey] = toPermissionState(enabled)
+    }
+  }
+}
+
+function applyWorkspacePreferencesOverrides(
+  overrides: Record<string, boolean>,
+  assignments: AssignmentResult
+): void {
+  for (const [key, enabled] of Object.entries(overrides)) {
+    if (key.startsWith('widgets.')) {
+      const widgetKey = key.replace('widgets.', '')
+      if (!assignments.widgetAssignments) assignments.widgetAssignments = {}
+      assignments.widgetAssignments[widgetKey] = toPermissionState(enabled)
+    } else if (key.startsWith('settings_tabs.')) {
+      const tabKey = key.replace('settings_tabs.', '')
+      if (!assignments.settingsTabAssignments) assignments.settingsTabAssignments = {}
+      assignments.settingsTabAssignments[tabKey] = toPermissionState(enabled)
+    } else if (key.startsWith('settings_options.')) {
+      const optionKey = key.replace('settings_options.', '')
+      if (!assignments.settingsOptionAssignments) assignments.settingsOptionAssignments = {}
+      assignments.settingsOptionAssignments[optionKey] = toPermissionState(enabled)
     }
   }
 }
@@ -8778,9 +8847,9 @@ const LEVEL_MAPPINGS = [
   { override: 'columns', assignment: 'columnAssignments' },
   { override: 'widgets', assignment: 'widgetAssignments' },
   { override: 'features', assignment: 'featureAssignments' },
-  { override: 'settingsTabs', assignment: 'settingsTabAssignments' },
-  { override: 'settingsOptions', assignment: 'settingsOptionAssignments' },
-  { override: 'microFrontends', assignment: 'microFrontendAssignments' }
+  { override: 'settings_tabs', assignment: 'settingsTabAssignments' },
+  { override: 'settings_options', assignment: 'settingsOptionAssignments' },
+  { override: 'micro_frontends', assignment: 'microFrontendAssignments' }
 ]
 
 export function convertOverridesToAssignments(
@@ -8788,11 +8857,19 @@ export function convertOverridesToAssignments(
 ): AssignmentResult {
   const assignments: AssignmentResult = {}
 
+  // Handle capabilities compound level
   const capabilitiesOverrides = permissionOverrides.capabilities || {}
   if (Object.keys(capabilitiesOverrides).length > 0) {
     applyCapabilityOverrides(capabilitiesOverrides, assignments)
   }
 
+  // Handle workspacePreferences compound level
+  const workspaceOverrides = permissionOverrides.workspacePreferences || {}
+  if (Object.keys(workspaceOverrides).length > 0) {
+    applyWorkspacePreferencesOverrides(workspaceOverrides, assignments)
+  }
+
+  // Handle direct level overrides (actual template section keys)
   for (const { override, assignment } of LEVEL_MAPPINGS) {
     applyLevelOverrides(permissionOverrides[override] || {}, assignment, assignments)
   }
@@ -8896,7 +8973,12 @@ function AdGroupsViewComponent({ permissions }: AdGroupsViewProps) {
   }), [filters])
 
   useEffect(() => {
-    fetchAdGroups(buildFetchParams(currentPage))
+    let ignore = false
+    const params = buildFetchParams(currentPage)
+    fetchAdGroups(params).then(() => {
+      if (ignore) return
+    })
+    return () => { ignore = true }
   }, [fetchAdGroups, currentPage, buildFetchParams])
 
   useEffect(() => {
@@ -12390,21 +12472,96 @@ describe('businessRelevantToggles', () => {
     expect(businessRelevantToggles.capabilities.title).toBe('Access Controls')
   })
 
-  it('has widgets section with correct title', () => {
-    expect(businessRelevantToggles.widgets.title).toBe('Workspace Tools')
+  it('has workspacePreferences section with correct title', () => {
+    expect(businessRelevantToggles.workspacePreferences.title).toBe('Workspace & Preferences')
   })
 
-  it('marks capabilities toggles as visible', () => {
+  it('capabilities has exactly 5 toggles', () => {
+    expect(Object.keys(businessRelevantToggles.capabilities.toggles).length).toBe(5)
+  })
+
+  it('workspacePreferences has exactly 5 toggles', () => {
+    expect(Object.keys(businessRelevantToggles.workspacePreferences.toggles).length).toBe(5)
+  })
+
+  it('capabilities contains the correct 5 toggle keys', () => {
+    const keys = Object.keys(businessRelevantToggles.capabilities.toggles)
+    expect(keys).toEqual([
+      'columns.kms',
+      'columns.embeddedApps',
+      'columns.spaceCopilot',
+      'columns.chat',
+      'micro_frontends.mediaBar'
+    ])
+  })
+
+  it('workspacePreferences contains the correct 5 toggle keys', () => {
+    const keys = Object.keys(businessRelevantToggles.workspacePreferences.toggles)
+    expect(keys).toEqual([
+      'settings_options.calls.autoAccept',
+      'settings_options.calls.doNotDisturb.duration',
+      'settings_options.interface.showTranscript',
+      'settings_options.interface.autoCloseKnowledgeOnCallEnd',
+      'settings_options.interface.spaceCopilotMode'
+    ])
+  })
+
+  it('has linkedKeys on Knowledge Base toggle', () => {
+    const toggle = businessRelevantToggles.capabilities.toggles['columns.kms']
+    expect(toggle.linkedKeys).toEqual(['features.search.knowledgeBase'])
+  })
+
+  it('has linkedKeys on Banking Applications toggle', () => {
+    const toggle = businessRelevantToggles.capabilities.toggles['columns.embeddedApps']
+    expect(toggle.linkedKeys).toEqual(['features.search.embeddedApps'])
+  })
+
+  it('has linkedKeys on AI Assistant toggle', () => {
+    const toggle = businessRelevantToggles.capabilities.toggles['columns.spaceCopilot']
+    expect(toggle.linkedKeys).toEqual(['micro_frontends.spaceCopilot'])
+  })
+
+  it('has linkedKeys on Media Controls toggle', () => {
+    const toggle = businessRelevantToggles.capabilities.toggles['micro_frontends.mediaBar']
+    expect(toggle.linkedKeys).toEqual(['widgets.mediaBar.callControls'])
+  })
+
+  it('Chat Interface has no linkedKeys', () => {
+    const toggle = businessRelevantToggles.capabilities.toggles['columns.chat']
+    expect(toggle.linkedKeys).toBeUndefined()
+  })
+
+  it('workspacePreferences toggles have no linkedKeys', () => {
+    const toggles = businessRelevantToggles.workspacePreferences.toggles
+    Object.values(toggles).forEach(toggle => {
+      expect(toggle.linkedKeys).toBeUndefined()
+    })
+  })
+
+  it('has no duplicate toggle keys across capabilities and workspacePreferences', () => {
+    const capKeys = Object.keys(businessRelevantToggles.capabilities.toggles)
+    const wpKeys = Object.keys(businessRelevantToggles.workspacePreferences.toggles)
+    const allKeys = [...capKeys, ...wpKeys]
+    expect(new Set(allKeys).size).toBe(allKeys.length)
+  })
+
+  it('capabilities toggles have section properties', () => {
     const toggles = businessRelevantToggles.capabilities.toggles
-    expect(toggles['columns.kms'].visible).toBe(true)
-    expect(toggles['columns.chat'].visible).toBe(true)
-    expect(toggles['features.search.knowledgeBase'].visible).toBe(true)
+    expect(toggles['columns.kms'].section).toBe('Dashboard Access')
+    expect(toggles['micro_frontends.mediaBar'].section).toBe('Platform Apps')
   })
 
-  it('marks legacy column toggles as not visible', () => {
-    const toggles = businessRelevantToggles.columns.toggles
-    expect(toggles['kms'].visible).toBe(false)
-    expect(toggles['primary'].visible).toBe(false)
+  it('workspacePreferences toggles have section properties', () => {
+    const toggles = businessRelevantToggles.workspacePreferences.toggles
+    expect(toggles['settings_options.calls.autoAccept'].section).toBe('Call Preferences')
+    expect(toggles['settings_options.interface.showTranscript'].section).toBe('Privacy & Display')
+    expect(toggles['settings_options.interface.spaceCopilotMode'].section).toBe('AI Preference')
+  })
+
+  it('includes autoCloseKnowledgeOnCallEnd setting', () => {
+    const toggle = businessRelevantToggles.workspacePreferences.toggles['settings_options.interface.autoCloseKnowledgeOnCallEnd']
+    expect(toggle.visible).toBe(true)
+    expect(toggle.businessName).toBe('Auto-Close Knowledge')
   })
 
   it('has admin views section', () => {
@@ -12417,28 +12574,32 @@ describe('businessRelevantToggles', () => {
     expect(businessRelevantToggles.adminActions.toggles['admin.editPermissions'].visible).toBe(true)
   })
 
-  it('has settings tabs section', () => {
-    expect(businessRelevantToggles.settings_tabs).toBeDefined()
-    expect(businessRelevantToggles.settings_tabs.toggles['help'].visible).toBe(true)
-    expect(businessRelevantToggles.settings_tabs.toggles['admin'].visible).toBe(false)
-  })
-
-  it('has micro frontends section', () => {
-    expect(businessRelevantToggles.micro_frontends).toBeDefined()
-    expect(businessRelevantToggles.micro_frontends.toggles['mediaBar'].visible).toBe(true)
-    expect(businessRelevantToggles.micro_frontends.toggles['mediaBar'].warning).toBe('Required for voice agents')
+  it('does not have standalone legacy sections', () => {
+    expect(businessRelevantToggles['columns']).toBeUndefined()
+    expect(businessRelevantToggles['features']).toBeUndefined()
+    expect(businessRelevantToggles['widgets']).toBeUndefined()
+    expect(businessRelevantToggles['settings_tabs']).toBeUndefined()
+    expect(businessRelevantToggles['settings_options']).toBeUndefined()
+    expect(businessRelevantToggles['micro_frontends']).toBeUndefined()
   })
 })
 
 describe('isToggleBusinessRelevant', () => {
-  it('returns true for visible toggles', () => {
+  it('returns true for visible capabilities toggles', () => {
     expect(isToggleBusinessRelevant('capabilities', 'columns.kms')).toBe(true)
-    expect(isToggleBusinessRelevant('widgets', 'customer.info')).toBe(true)
+    expect(isToggleBusinessRelevant('capabilities', 'micro_frontends.mediaBar')).toBe(true)
   })
 
-  it('returns false for hidden toggles', () => {
-    expect(isToggleBusinessRelevant('columns', 'kms')).toBe(false)
-    expect(isToggleBusinessRelevant('settings_tabs', 'admin')).toBe(false)
+  it('returns true for visible workspacePreferences toggles', () => {
+    expect(isToggleBusinessRelevant('workspacePreferences', 'settings_options.calls.autoAccept')).toBe(true)
+    expect(isToggleBusinessRelevant('workspacePreferences', 'settings_options.interface.spaceCopilotMode')).toBe(true)
+  })
+
+  it('returns false for removed toggles', () => {
+    expect(isToggleBusinessRelevant('workspacePreferences', 'widgets.customer.info')).toBe(false)
+    expect(isToggleBusinessRelevant('workspacePreferences', 'settings_tabs.help')).toBe(false)
+    expect(isToggleBusinessRelevant('capabilities', 'features.search.knowledgeBase')).toBe(false)
+    expect(isToggleBusinessRelevant('capabilities', 'micro_frontends.spaceCopilot')).toBe(false)
   })
 
   it('returns false for unknown category', () => {
@@ -12454,13 +12615,25 @@ describe('isToggleBusinessRelevant', () => {
 /**
  * Business-Relevant Toggle Configuration
  *
- * SIMPLIFIED 2-SECTION STRUCTURE:
- * 1. "Access Controls" - What users can DO (combines columns + features)
- * 2. "Workspace Tools" - What users can SEE (widgets only)
+ * 2-SECTION STRUCTURE for the Permissions tab:
+ * 1. "Access Controls" (capabilities) - What users can DO (columns + micro_frontends)
+ * 2. "Workspace & Preferences" (workspacePreferences) - What users can CONFIGURE (settings_options only)
  *
- * This configuration defines which toggles are meaningful for business users
- * and should be displayed in the admin UI. Technical/infrastructure toggles
- * are excluded from the admin interface while remaining functional in the backend.
+ * MINIMAL TOGGLES (10 total, down from 28):
+ * - Only business-meaningful toggles admins configure per market/region/team
+ * - Linked keys auto-sync dependent technical keys (hidden from UI)
+ * - Settings tabs, basic widgets, and role-structural features are NOT toggleable
+ *
+ * Admin sections are separate and used by the admin panel views.
+ *
+ * Hidden/auto-synced keys:
+ * - features.search.knowledgeBase (follows columns.kms via linkedKeys)
+ * - features.search.embeddedApps (follows columns.embeddedApps via linkedKeys)
+ * - micro_frontends.spaceCopilot (follows columns.spaceCopilot via linkedKeys)
+ * - widgets.mediaBar.callControls (follows micro_frontends.mediaBar via linkedKeys)
+ * - All settings_tabs.* (role-structural, no admin ever toggles these)
+ * - All widgets.* (role-structural)
+ * - settings_options.notifications.desktop (role-structural)
  */
 
 interface ToggleVisibility {
@@ -12470,6 +12643,7 @@ interface ToggleVisibility {
   warning?: string;
   section?: string;
   parent?: string;
+  linkedKeys?: string[];
 }
 
 interface CategoryConfig {
@@ -12480,239 +12654,84 @@ interface CategoryConfig {
 
 export const businessRelevantToggles: Record<string, CategoryConfig> = {
   // SECTION 1: ACCESS CONTROLS (What users can DO)
-  // Combines columns + features into one business-friendly section
+  // 5 toggles with linkedKeys for auto-sync
   capabilities: {
     title: 'Access Controls',
-    description: 'Core actions and permissions this role can perform',
+    description: 'Platform capabilities, dashboard panels, and applications',
     toggles: {
-      // SECTION 1: Search & Discovery
-      'features.search.knowledgeBase': {
-        visible: true,
-        businessName: 'Knowledge Articles Search',
-        description: 'Search knowledge base from global search',
-        section: 'Search & Discovery'
-      },
-      'features.search.embeddedApps': {
-        visible: true,
-        businessName: 'Banking Applications Search',
-        description: 'Search and launch applications from global search',
-        section: 'Search & Discovery'
-      },
-
-      // SECTION 2: Dashboard Access
       'columns.kms': {
         visible: true,
         businessName: 'Knowledge Base',
         description: 'Access to knowledge base features',
-        section: 'Dashboard Access'
+        section: 'Dashboard Access',
+        linkedKeys: ['features.search.knowledgeBase']
       },
       'columns.embeddedApps': {
         visible: true,
         businessName: 'Banking Applications',
         description: 'Access to banking applications',
-        section: 'Dashboard Access'
+        section: 'Dashboard Access',
+        linkedKeys: ['features.search.embeddedApps']
       },
       'columns.spaceCopilot': {
         visible: true,
         businessName: 'AI Assistant',
         description: 'Access to AI assistant features',
-        section: 'Dashboard Access'
+        section: 'Dashboard Access',
+        linkedKeys: ['micro_frontends.spaceCopilot']
       },
       'columns.chat': {
         visible: true,
         businessName: 'Chat Interface',
         description: 'Access to chat conversation features',
         section: 'Dashboard Access'
-      }
-    }
-  },
-
-  // SECTION 2: WORKSPACE TOOLS (What users can SEE)
-  // Keep only actual UI widgets that users interact with
-  widgets: {
-    title: 'Workspace Tools',
-    description: 'Visible workspace widgets and supporting tools',
-    toggles: {
-      'customer.info': {
-        visible: true,
-        businessName: 'Customer Information',
-        description: 'View customer profile and account details'
       },
-      'customer.interactionHistory': {
-        visible: true,
-        businessName: 'Customer History',
-        description: 'Previous interactions and call history'
-      },
-      'mediaBar.callControls': {
-        visible: true,
-        businessName: 'Call Controls',
-        description: 'Phone call management interface'
-      },
-      'chat.templates': {
-        visible: true,
-        businessName: 'Chat Templates',
-        description: 'Pre-written response templates'
-      },
-      'supervisor.teamStatus': {
-        visible: true,
-        businessName: 'Team Dashboard',
-        description: 'Monitor team performance and status'
-      }
-    }
-  },
-
-  // LEGACY SECTIONS - Keep for backward compatibility with existing code
-  // These are still processed by the backend but hidden from admin UI
-  columns: {
-    title: 'Dashboard Layout (Legacy - Do Not Use)',
-    description: 'Legacy section - use Access Controls instead',
-    toggles: {
-      'primary': {
-        visible: false,
-        businessName: 'Main Content Area'
-      },
-      'kms': {
-        visible: false, // Moved to capabilities.columns.kms
-        businessName: 'Knowledge Base'
-      },
-      'embeddedApps': {
-        visible: false, // Moved to capabilities.columns.embeddedApps
-        businessName: 'Banking Applications'
-      },
-      'spaceCopilot': {
-        visible: false, // Moved to capabilities.columns.spaceCopilot
-        businessName: 'AI Assistant'
-      },
-      'chat': {
-        visible: false, // Moved to capabilities.columns.chat
-        businessName: 'Chat Interface'
-      }
-    }
-  },
-
-  features: {
-    title: 'Feature Access (Legacy - Do Not Use)',
-    description: 'Legacy section - use Access Controls instead',
-    toggles: {
-      'header.layoutManager': {
-        visible: false, // Technical feature
-        businessName: 'Layout Manager'
-      },
-      'search.knowledgeBase': {
-        visible: false, // Moved to capabilities.features.search.knowledgeBase
-        businessName: 'Knowledge Search'
-      },
-      'search.embeddedApps': {
-        visible: false, // Moved to capabilities.features.search.embeddedApps
-        businessName: 'Application Search'
-      }
-    }
-  },
-
-  settings_tabs: {
-    title: 'Settings Sections',
-    description: 'Which settings areas users can access',
-    toggles: {
-      'help': {
-        visible: true,
-        businessName: 'Help & Support',
-        description: 'Access help documentation and support'
-      },
-      'admin': {
-        visible: false, // Only for admin role, auto-managed
-        businessName: 'Admin Settings'
-      },
-      'audio': {
-        visible: true,
-        businessName: 'Audio Settings',
-        description: 'Microphone and speaker configuration'
-      },
-      'calls': {
-        visible: true,
-        businessName: 'Call Settings',
-        description: 'Call handling preferences'
-      },
-      'privacy': {
-        visible: true,
-        businessName: 'Privacy Settings',
-        description: 'Data and privacy preferences'
-      },
-      'language': {
-        visible: true,
-        businessName: 'Language',
-        description: 'Interface language selection'
-      },
-      'interface': {
-        visible: false, // Too technical
-        businessName: 'Interface Settings'
-      },
-      'accessibility': {
-        visible: true,
-        businessName: 'Accessibility',
-        description: 'Accessibility options and features'
-      },
-      'notifications': {
-        visible: true,
-        businessName: 'Notification Preferences',
-        description: 'Alert and notification settings'
-      }
-    }
-  },
-
-  settings_options: {
-    title: 'Specific Settings',
-    description: 'Individual configuration options',
-    toggles: {
-      'calls.autoAccept': {
-        visible: true,
-        businessName: 'Auto-Accept Calls',
-        description: 'Automatically accept incoming calls'
-      },
-      'admin.systemSettings': {
-        visible: false, // Admin only
-        businessName: 'System Settings'
-      },
-      'admin.userManagement': {
-        visible: false, // Admin only
-        businessName: 'User Management'
-      },
-      'notifications.desktop': {
-        visible: true,
-        businessName: 'Desktop Notifications',
-        description: 'Show browser desktop notifications'
-      },
-      'interface.showTranscript': {
-        visible: true,
-        businessName: 'Show Transcripts',
-        description: 'Display call/chat transcripts'
-      },
-      'interface.spaceCopilotMode': {
-        visible: true,
-        businessName: 'AI Assistant Mode',
-        description: 'Choose AI assistance level'
-      },
-      'calls.doNotDisturb.duration': {
-        visible: true,
-        businessName: 'Do Not Disturb',
-        description: 'Set break duration'
-      }
-    }
-  },
-
-  micro_frontends: {
-    title: 'Advanced Features',
-    description: 'Micro-frontend applications',
-    toggles: {
-      'mediaBar': {
+      'micro_frontends.mediaBar': {
         visible: true,
         businessName: 'Media Controls',
         description: 'Voice and video controls',
-        warning: 'Required for voice agents'
-      },
-      'spaceCopilot': {
+        section: 'Platform Apps',
+        warning: 'Required for voice agents',
+        linkedKeys: ['widgets.mediaBar.callControls']
+      }
+    }
+  },
+
+  // SECTION 2: WORKSPACE & PREFERENCES (What users can CONFIGURE)
+  // 5 toggles - settings_options only
+  workspacePreferences: {
+    title: 'Workspace & Preferences',
+    description: 'User preferences and workspace configuration',
+    toggles: {
+      'settings_options.calls.autoAccept': {
         visible: true,
-        businessName: 'AI Intelligence',
-        description: 'AI-powered features and assistance'
+        businessName: 'Auto-Accept Calls',
+        description: 'Automatically accept incoming calls',
+        section: 'Call Preferences'
+      },
+      'settings_options.calls.doNotDisturb.duration': {
+        visible: true,
+        businessName: 'Do Not Disturb',
+        description: 'Set break duration',
+        section: 'Call Preferences'
+      },
+      'settings_options.interface.showTranscript': {
+        visible: true,
+        businessName: 'Show Transcripts',
+        description: 'Display call/chat transcripts',
+        section: 'Privacy & Display'
+      },
+      'settings_options.interface.autoCloseKnowledgeOnCallEnd': {
+        visible: true,
+        businessName: 'Auto-Close Knowledge',
+        description: 'Automatically close knowledge panel when call ends',
+        section: 'Privacy & Display'
+      },
+      'settings_options.interface.spaceCopilotMode': {
+        visible: true,
+        businessName: 'AI Assistant Mode',
+        description: 'Choose AI assistance level',
+        section: 'AI Preference'
       }
     }
   },
@@ -12941,7 +12960,7 @@ describe('CopySourceSelectionModal', () => {
 })
 ===ENDFILE
 ===FILE: ./src/components/admin/copy-source-selection-modal.tsx
-import { useDeferredValue, useEffect, useMemo, useState } from 'react'
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -12983,15 +13002,21 @@ export function CopySourceSelectionModal({
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedGroup, setSelectedGroup] = useState<AdGroup | null>(null)
   const debouncedQuery = useDeferredValue(searchQuery)
+  const lastSearchedRef = useRef<string | null>(null)
 
   useEffect(() => {
-    if (!open || !onSearch) {
+    if (!open) {
+      lastSearchedRef.current = null
       return
     }
 
-    if (debouncedQuery === '' && adGroups.length > 0) {
-      return
-    }
+    if (!onSearch) return
+
+    if (debouncedQuery === '' && adGroups.length > 0) return
+
+    // Skip if we already searched this exact query in this session
+    if (lastSearchedRef.current === debouncedQuery) return
+    lastSearchedRef.current = debouncedQuery
 
     onSearch(debouncedQuery)
   }, [debouncedQuery, onSearch, open, adGroups.length])
@@ -14022,7 +14047,7 @@ describe('LayoutPreviewModal', () => {
 })
 ===ENDFILE
 ===FILE: ./src/components/admin/layout-preview-modal.tsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -14048,27 +14073,45 @@ export function LayoutPreviewModal({ role, adGroup, fetchLayout, children }: Lay
   const [open, setOpen] = useState(false);
   const [loadedRole, setLoadedRole] = useState<RoleTemplate | null>(role || null);
   const [loading, setLoading] = useState(false);
+  const fetchingRef = useRef(false);
 
-  // Fetch layout data when modal opens
   useEffect(() => {
-    if (open && fetchLayout && !loading && !loadedRole) {
-      setLoading(true);
-      fetchLayout()
-        .then(roleData => {
+    if (!open) {
+      // Reset when modal closes
+      if (fetchLayout) {
+        setLoadedRole(null);
+      }
+      fetchingRef.current = false;
+      return;
+    }
+
+    if (!fetchLayout || fetchingRef.current || loadedRole) return;
+
+    let ignore = false;
+    fetchingRef.current = true;
+    setLoading(true);
+
+    fetchLayout()
+      .then(roleData => {
+        if (!ignore) {
           setLoadedRole(roleData);
           setLoading(false);
-        })
-        .catch(() => {
+        }
+      })
+      .catch(() => {
+        if (!ignore) {
           setLoading(false);
-        });
-    }
-  }, [open, fetchLayout, loading, loadedRole]);
+        }
+      })
+      .finally(() => {
+        if (!ignore) {
+          fetchingRef.current = false;
+        }
+      });
 
-  // Reset loaded role when modal closes
-  useEffect(() => {
-    if (!open && fetchLayout) {
-      setLoadedRole(null);
-    }
+    return () => {
+      ignore = true;
+    };
   }, [open, fetchLayout]);
 
   const displayRole = loadedRole || role;
@@ -17988,45 +18031,55 @@ export function BusinessInfoTab({
   const [loadingCountries, setLoadingCountries] = useState(false)
 
   useEffect(() => {
-    const loadMarketsForRegion = async () => {
-      if (formData.region) {
-        setLoadingMarkets(true)
-        try {
-          const markets = await getMarketsForRegion(formData.region)
-          setFilteredMarkets(markets)
-        } catch (err) {
-          logger.error('Failed to load markets for region', err)
-          setFilteredMarkets([])
-        } finally {
-          setLoadingMarkets(false)
-        }
-      } else {
-        setFilteredMarkets([])
-      }
+    if (!formData.region) {
+      setFilteredMarkets([])
+      return
     }
 
-    loadMarketsForRegion()
+    let ignore = false
+    setLoadingMarkets(true)
+
+    getMarketsForRegion(formData.region)
+      .then(markets => {
+        if (!ignore) setFilteredMarkets(markets)
+      })
+      .catch(err => {
+        if (!ignore) {
+          logger.error('Failed to load markets for region', err)
+          setFilteredMarkets([])
+        }
+      })
+      .finally(() => {
+        if (!ignore) setLoadingMarkets(false)
+      })
+
+    return () => { ignore = true }
   }, [formData.region, getMarketsForRegion])
 
   useEffect(() => {
-    const loadCountriesForMarket = async () => {
-      if (formData.market) {
-        setLoadingCountries(true)
-        try {
-          const countries = await getCountriesForMarket(formData.market)
-          setFilteredCountries(countries)
-        } catch (err) {
-          logger.error('Failed to load countries for market', err)
-          setFilteredCountries([])
-        } finally {
-          setLoadingCountries(false)
-        }
-      } else {
-        setFilteredCountries([])
-      }
+    if (!formData.market) {
+      setFilteredCountries([])
+      return
     }
 
-    loadCountriesForMarket()
+    let ignore = false
+    setLoadingCountries(true)
+
+    getCountriesForMarket(formData.market)
+      .then(countries => {
+        if (!ignore) setFilteredCountries(countries)
+      })
+      .catch(err => {
+        if (!ignore) {
+          logger.error('Failed to load countries for market', err)
+          setFilteredCountries([])
+        }
+      })
+      .finally(() => {
+        if (!ignore) setLoadingCountries(false)
+      })
+
+    return () => { ignore = true }
   }, [formData.market, getCountriesForMarket])
 
   const handleRoleChange = (value: string) => {
@@ -18262,7 +18315,25 @@ vi.mock('../../../constants/permission-levels', () => ({
       title: 'Access Controls',
       description: 'Core actions',
       icon: (p: any) => <span {...p} />,
-      businessNames: { 'columns.kms': 'Knowledge Base' }
+      businessNames: {
+        'columns.kms': 'Knowledge Base',
+        'columns.embeddedApps': 'Banking Applications',
+        'columns.spaceCopilot': 'AI Assistant',
+        'columns.chat': 'Chat Interface',
+        'micro_frontends.mediaBar': 'Media Controls'
+      }
+    },
+    workspacePreferences: {
+      title: 'Workspace & Preferences',
+      description: 'User preferences',
+      icon: (p: any) => <span {...p} />,
+      businessNames: {
+        'settings_options.calls.autoAccept': 'Auto-Accept Calls',
+        'settings_options.calls.doNotDisturb.duration': 'Do Not Disturb',
+        'settings_options.interface.showTranscript': 'Show Transcripts',
+        'settings_options.interface.autoCloseKnowledgeOnCallEnd': 'Auto-Close Knowledge',
+        'settings_options.interface.spaceCopilotMode': 'AI Assistant Mode'
+      }
     }
   }
 }))
@@ -18285,8 +18356,22 @@ vi.mock('../business-relevant-toggles', () => ({
       toggles: {
         'columns.kms': {
           visible: true,
-          businessName: 'Knowledge Base Access',
-          description: 'Access to knowledge articles'
+          businessName: 'Knowledge Base',
+          description: 'Access to knowledge base features',
+          section: 'Dashboard Access',
+          linkedKeys: ['features.search.knowledgeBase']
+        }
+      }
+    },
+    workspacePreferences: {
+      title: 'Workspace & Preferences',
+      description: 'User preferences',
+      toggles: {
+        'settings_options.calls.autoAccept': {
+          visible: true,
+          businessName: 'Auto-Accept Calls',
+          description: 'Automatically accept incoming calls',
+          section: 'Call Preferences'
         }
       }
     }
@@ -18306,6 +18391,28 @@ vi.mock('../../../hooks/admin/use-permission-aggregators', () => ({
     getEnabledPermissions: () => ['columns.kms'],
     getFilteredPermissions: () => ['columns.kms']
   })
+}))
+
+vi.mock('../../../utils/admin/permission-level-resolver', () => ({
+  resolvePermissionLevel: ({ level, key }: { level: string; key: string }) => {
+    const COMPOUND: Record<string, string[]> = {
+      capabilities: ['columns', 'features', 'micro_frontends'],
+      workspacePreferences: ['widgets', 'settings_tabs', 'settings_options']
+    }
+    const prefixes = COMPOUND[level]
+    if (!prefixes) return { actualLevel: level, actualKey: key }
+    for (const prefix of prefixes) {
+      if (key.startsWith(prefix + '.')) {
+        return { actualLevel: prefix, actualKey: key.slice(prefix.length + 1) }
+      }
+    }
+    const [p, ...rest] = key.split('.')
+    return { actualLevel: p, actualKey: rest.join('.') }
+  }
+}))
+
+vi.mock('../../../utils/admin/permission-hierarchy-sorter', () => ({
+  sortWithHierarchy: ({ keys }: { keys: string[] }) => keys
 }))
 
 import { PermissionsTab } from './permissions-tab'
@@ -18363,9 +18470,10 @@ describe('PermissionsTab', () => {
     expect(screen.getByTestId('search-input')).toBeInTheDocument()
   })
 
-  it('renders permission level accordion section', () => {
+  it('renders both permission level accordion sections', () => {
     render(<PermissionsTab {...defaultProps} />)
     expect(screen.getByText('Access Controls')).toBeInTheDocument()
+    expect(screen.getByText('Workspace & Preferences')).toBeInTheDocument()
   })
 })
 ===ENDFILE
@@ -18390,6 +18498,7 @@ import { cn } from '../../../lib/utils'
 import { permissionLevels } from '../../../constants/permission-levels'
 import { useDropdownOptions } from '@/hooks/features/use-dropdown-options'
 import { businessRelevantToggles } from '../business-relevant-toggles'
+import { resolvePermissionLevel } from '../../../utils/admin/permission-level-resolver'
 import type {
   AdGroup,
   RoleTemplate,
@@ -18448,7 +18557,11 @@ function PermissionRow({
   const warning = businessConfig?.warning
 
   const isEnabled = isPermissionEnabled({ level: levelKey, key: permissionKey })
-  const isOverridden = permissionOverrides[levelKey]?.[permissionKey] !== undefined
+
+  // Resolve compound levels to check actual override path
+  const { actualLevel, actualKey } = resolvePermissionLevel({ level: levelKey, key: permissionKey })
+  const isOverridden = permissionOverrides[actualLevel]?.[actualKey] !== undefined
+
   const hasChanges = hasUnsavedChanges({ level: levelKey, key: permissionKey })
 
   const hasParent = !!businessConfig?.parent
@@ -18491,6 +18604,21 @@ function PermissionRow({
       />
     </div>
   )
+}
+
+function groupBySection(keys: string[], levelKey: string): [string, string[]][] {
+  const groups: Map<string, string[]> = new Map()
+
+  for (const key of keys) {
+    const config = businessRelevantToggles[levelKey]?.toggles[key]
+    const section = config?.section || ''
+    if (!groups.has(section)) {
+      groups.set(section, [])
+    }
+    groups.get(section)!.push(key)
+  }
+
+  return Array.from(groups.entries())
 }
 
 interface PermissionsTabProps {
@@ -18595,6 +18723,9 @@ export function PermissionsTab({
           if (filteredPermissions.length === 0 && searchTerm) return null
           if (totalCount === 0) return null
 
+          const sectionGroups = groupBySection(filteredPermissions, levelKey)
+          const hasSections = sectionGroups.some(([name]) => name !== '')
+
           return (
             <Card key={levelKey}>
               <AccordionItem value={levelKey} className="border-none">
@@ -18614,20 +18745,48 @@ export function PermissionsTab({
                 </AccordionTrigger>
                 <AccordionContent className="px-6 pb-4">
                   <div className="flex flex-col gap-3">
-                    {filteredPermissions.map((permissionKey) => (
-                      <PermissionRow
-                        key={permissionKey}
-                        levelKey={levelKey}
-                        permissionKey={permissionKey}
-                        formData={formData}
-                        permissionOverrides={permissionOverrides}
-                        loadingPermission={loadingPermission}
-                        isPermissionEnabled={isPermissionEnabled}
-                        hasUnsavedChanges={hasUnsavedChanges}
-                        onTogglePermission={onTogglePermission}
-                        isReadOnly={isReadOnly}
-                      />
-                    ))}
+                    {hasSections ? (
+                      sectionGroups.map(([sectionName, keys]) => (
+                        <div key={sectionName || '_default'}>
+                          {sectionName && (
+                            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mt-4 mb-2 first:mt-0">
+                              {sectionName}
+                            </h4>
+                          )}
+                          <div className="flex flex-col gap-3">
+                            {keys.map((permissionKey) => (
+                              <PermissionRow
+                                key={permissionKey}
+                                levelKey={levelKey}
+                                permissionKey={permissionKey}
+                                formData={formData}
+                                permissionOverrides={permissionOverrides}
+                                loadingPermission={loadingPermission}
+                                isPermissionEnabled={isPermissionEnabled}
+                                hasUnsavedChanges={hasUnsavedChanges}
+                                onTogglePermission={onTogglePermission}
+                                isReadOnly={isReadOnly}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      filteredPermissions.map((permissionKey) => (
+                        <PermissionRow
+                          key={permissionKey}
+                          levelKey={levelKey}
+                          permissionKey={permissionKey}
+                          formData={formData}
+                          permissionOverrides={permissionOverrides}
+                          loadingPermission={loadingPermission}
+                          isPermissionEnabled={isPermissionEnabled}
+                          hasUnsavedChanges={hasUnsavedChanges}
+                          onTogglePermission={onTogglePermission}
+                          isReadOnly={isReadOnly}
+                        />
+                      ))
+                    )}
                   </div>
                   {filteredPermissions.length === 0 && !searchTerm && (
                     <div className="text-center py-8 text-muted-foreground">
@@ -21253,12 +21412,9 @@ import { describe, expect, it } from 'vitest'
 import { permissionLevels } from './permission-levels'
 
 describe('permissionLevels', () => {
-  const requiredSections = ['capabilities', 'widgets', 'columns', 'features', 'settings_tabs', 'settings_options']
-
-  it('exports all required sections', () => {
-    requiredSections.forEach(section => {
-      expect(permissionLevels[section]).toBeDefined()
-    })
+  it('exports exactly 2 sections', () => {
+    const sections = Object.keys(permissionLevels)
+    expect(sections).toEqual(['capabilities', 'workspacePreferences'])
   })
 
   it('each section has required config properties', () => {
@@ -21283,15 +21439,28 @@ describe('permissionLevels', () => {
     })
   })
 
-  it('capabilities section contains column and feature prefixed keys', () => {
+  it('capabilities section contains column and micro_frontends prefixed keys only', () => {
     const businessNames = permissionLevels.capabilities.businessNames
     const keys = Object.keys(businessNames)
 
     const columnKeys = keys.filter(k => k.startsWith('columns.'))
-    const featureKeys = keys.filter(k => k.startsWith('features.'))
+    const mfKeys = keys.filter(k => k.startsWith('micro_frontends.'))
 
     expect(columnKeys.length).toBeGreaterThan(0)
-    expect(featureKeys.length).toBeGreaterThan(0)
+    expect(mfKeys.length).toBeGreaterThan(0)
+    // No features.* keys (those are linked, not displayed)
+    expect(keys.filter(k => k.startsWith('features.')).length).toBe(0)
+  })
+
+  it('workspacePreferences section contains only settings_options keys', () => {
+    const businessNames = permissionLevels.workspacePreferences.businessNames
+    const keys = Object.keys(businessNames)
+
+    const optionKeys = keys.filter(k => k.startsWith('settings_options.'))
+    expect(optionKeys.length).toBe(keys.length)
+    // No widgets.* or settings_tabs.* keys
+    expect(keys.filter(k => k.startsWith('widgets.')).length).toBe(0)
+    expect(keys.filter(k => k.startsWith('settings_tabs.')).length).toBe(0)
   })
 
   it('each section has a unique icon', () => {
@@ -21300,28 +21469,19 @@ describe('permissionLevels', () => {
     expect(uniqueIcons.size).toBe(icons.length)
   })
 
-  it('settings_tabs has expected keys', () => {
-    const keys = Object.keys(permissionLevels.settings_tabs.businessNames)
-    expect(keys).toContain('help')
-    expect(keys).toContain('admin')
-    expect(keys).toContain('privacy')
+  it('capabilities has 5 business names', () => {
+    expect(Object.keys(permissionLevels.capabilities.businessNames).length).toBe(5)
   })
 
-  it('settings_options has dotted keys for hierarchy', () => {
-    const keys = Object.keys(permissionLevels.settings_options.businessNames)
-    const dottedKeys = keys.filter(k => k.includes('.'))
-    expect(dottedKeys.length).toBe(keys.length)
+  it('workspacePreferences has 5 business names', () => {
+    expect(Object.keys(permissionLevels.workspacePreferences.businessNames).length).toBe(5)
   })
 })
 ===ENDFILE
 ===FILE: ./src/constants/permission-levels.ts
 import {
-  Layout,
-  Component,
   Shield,
   Sliders,
-  Settings,
-  Sparkles,
   type LucideIcon
 } from 'lucide-react'
 
@@ -21333,92 +21493,29 @@ interface PermissionLevelConfig {
 }
 
 export const permissionLevels: Record<string, PermissionLevelConfig> = {
-  // NEW 2-SECTION STRUCTURE
   capabilities: {
     title: 'Access Controls',
-    description: 'Core actions and permissions this role can perform',
-    icon: Sparkles,
-    businessNames: {
-      // Column capabilities
-      'columns.kms': 'Knowledge Base Access',
-      'columns.embeddedApps': 'Banking Applications Access',
-      'columns.spaceCopilot': 'AI Assistant',
-      'columns.chat': 'Chat Interface',
-
-      // Feature capabilities
-      'features.search.embeddedApps': 'Application Search',
-      'features.search.knowledgeBase': 'Knowledge Search'
-    }
-  },
-
-  widgets: {
-    title: 'Workspace Tools',
-    description: 'Visible workspace widgets and supporting tools',
-    icon: Component,
-    businessNames: {
-      'customer.info': 'Customer Information',
-      'customer.interactionHistory': 'Customer History',
-      'mediaBar.callControls': 'Call Controls',
-      'chat.templates': 'Chat Templates',
-      'supervisor.teamStatus': 'Team Dashboard'
-    }
-  },
-
-  // LEGACY SECTIONS - Keep for backward compatibility but hidden from UI
-  columns: {
-    title: 'Dashboard Layout (Legacy)',
-    description: 'Main dashboard sections and layout areas',
-    icon: Layout,
-    businessNames: {
-      'primary': 'Main Content Area',
-      'kms': 'Knowledge Management Panel',
-      'embeddedApps': 'Banking Applications Panel',
-      'spaceCopilot': 'AI Assistant Panel',
-      'chat': 'Chat Conversation Panel'
-    }
-  },
-
-  features: {
-    title: 'Core Features (Legacy)',
-    description: 'Essential capabilities and access permissions for agents',
+    description: 'Platform capabilities, dashboard panels, and applications',
     icon: Shield,
     businessNames: {
-      'header.layoutManager': 'Customize dashboard layout',
-      'header.notifications': 'Receive notifications',
-      'search.knowledgeBase': 'Knowledge Search',
-      'search.embeddedApps': 'Application Search'
+      'columns.kms': 'Knowledge Base',
+      'columns.embeddedApps': 'Banking Applications',
+      'columns.spaceCopilot': 'AI Assistant',
+      'columns.chat': 'Chat Interface',
+      'micro_frontends.mediaBar': 'Media Controls'
     }
   },
 
-  settings_tabs: {
-    title: 'Settings Access',
-    description: 'Control which settings sections users can access',
+  workspacePreferences: {
+    title: 'Workspace & Preferences',
+    description: 'User preferences and workspace configuration',
     icon: Sliders,
     businessNames: {
-      'help': 'Help & Support',
-      'admin': 'Administrative Settings',
-      'audio': 'Audio & Sound Settings',
-      'calls': 'Call Management Settings',
-      'privacy': 'Privacy & Security Settings',
-      'language': 'Language & Localization',
-      'interface': 'Interface Preferences',
-      'accessibility': 'Accessibility Options',
-      'notifications': 'Notification Preferences'
-    }
-  },
-
-  settings_options: {
-    title: 'User Preferences',
-    description: 'Individual setting controls that users can modify',
-    icon: Settings,
-    businessNames: {
-      'calls.autoAccept': 'Auto-accept incoming calls',
-      'admin.systemSettings': 'Manage system settings',
-      'admin.userManagement': 'Manage users and permissions',
-      'notifications.desktop': 'Show desktop notifications',
-      'interface.showTranscript': 'Display call transcripts',
-      'interface.spaceCopilotMode': 'Choose AI assistant mode',
-      'calls.doNotDisturb.duration': 'Set do not disturb duration'
+      'settings_options.calls.autoAccept': 'Auto-Accept Calls',
+      'settings_options.calls.doNotDisturb.duration': 'Do Not Disturb',
+      'settings_options.interface.showTranscript': 'Show Transcripts',
+      'settings_options.interface.autoCloseKnowledgeOnCallEnd': 'Auto-Close Knowledge',
+      'settings_options.interface.spaceCopilotMode': 'AI Assistant Mode'
     }
   }
 }
@@ -22497,17 +22594,21 @@ export function useAdGroupsLoader({ open, searchTerm, debounceMs = 250 }: UseAdG
   const [adGroups, setAdGroups] = useState<AdGroup[]>([])
   const [isLoadingGroups, setIsLoadingGroups] = useState(false)
   const cancelledRef = useRef(false)
+  const notificationsRef = useRef(notifications)
+  notificationsRef.current = notifications
+  const searchTermRef = useRef(searchTerm)
+  searchTermRef.current = searchTerm
 
   const loadGroups = useCallback(async () => {
     cancelledRef.current = false
     setIsLoadingGroups(true)
     try {
-      const groups = await adminService.searchAdGroups(searchTerm, 750)
+      const groups = await adminService.searchAdGroups(searchTermRef.current, 750)
       if (cancelledRef.current) return
       setAdGroups(groups.filter(group => isConfiguredGroup({ group })))
     } catch (error) {
       if (cancelledRef.current) return
-      notifications.error({
+      notificationsRef.current.error({
         title: 'Unable to load AD groups',
         description: error instanceof Error ? error.message : 'Please try again later.'
       })
@@ -22517,7 +22618,7 @@ export function useAdGroupsLoader({ open, searchTerm, debounceMs = 250 }: UseAdG
         setIsLoadingGroups(false)
       }
     }
-  }, [searchTerm, notifications])
+  }, [])
 
   useEffect(() => {
     if (!open) return
@@ -23199,7 +23300,8 @@ vi.mock('react', () => ({
     return [stateStore.get(idx), setState]
   },
   useEffect: (fn: () => void) => { effectCallbacks.push(fn) },
-  useCallback: (fn: (...args: unknown[]) => unknown) => fn
+  useCallback: (fn: (...args: unknown[]) => unknown) => fn,
+  useRef: (init: unknown) => ({ current: init })
 }))
 
 const mockNotifications = {
@@ -23330,7 +23432,7 @@ describe('useApplicationAssignment', () => {
 })
 ===ENDFILE
 ===FILE: ./src/hooks/admin/use-application-assignment.ts
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useEmbeddedAppsApi } from '../api/use-embedded-apps-api'
 import { useNotifications } from '../features/use-notifications'
 import type { EmbeddedAppWithStatus } from '../../types/integration/embedded-apps'
@@ -23363,6 +23465,7 @@ export function useApplicationAssignment({
   const [selectedApp, setSelectedApp] = useState<EmbeddedAppWithStatus | null>(null)
   const [appSearchTerm, setAppSearchTerm] = useState('')
   const [stagedAppChanges, setStagedAppChanges] = useState<StagedAppChange[]>([])
+  const loadedForGroupRef = useRef<string | null>(null)
 
   const {
     isLoadingApps,
@@ -23381,10 +23484,26 @@ export function useApplicationAssignment({
   }, [loadEmbeddedAppsData, groupIdentifier])
 
   useEffect(() => {
-    if (open && activeTab === 'applications') {
-      handleLoadEmbeddedAppsData()
+    if (!open || activeTab !== 'applications') {
+      if (!open) {
+        loadedForGroupRef.current = null
+      }
+      return
     }
-  }, [open, activeTab, handleLoadEmbeddedAppsData])
+
+    // Skip if already loaded for this group in this modal session
+    if (loadedForGroupRef.current === groupIdentifier) return
+    loadedForGroupRef.current = groupIdentifier
+
+    let ignore = false
+    loadEmbeddedAppsData(groupIdentifier).then(apps => {
+      if (!ignore) setAvailableApps(apps)
+    }).catch(() => {
+      // Load failure handled silently
+    })
+
+    return () => { ignore = true }
+  }, [open, activeTab, groupIdentifier, loadEmbeddedAppsData])
 
   const refreshAndUpdateSelected = async (selectedAppIdentifier: string | undefined) => {
     try {
@@ -25221,16 +25340,23 @@ vi.mock('../../constants/permission-levels', () => ({
       description: 'Core actions',
       icon: () => null,
       businessNames: {
-        'columns.kms': 'Knowledge Base Access',
-        'features.search.knowledgeBase': 'Knowledge Search'
+        'columns.kms': 'Knowledge Base',
+        'columns.embeddedApps': 'Banking Applications',
+        'columns.spaceCopilot': 'AI Assistant',
+        'columns.chat': 'Chat Interface',
+        'micro_frontends.mediaBar': 'Media Controls'
       }
     },
-    widgets: {
-      title: 'Workspace Tools',
-      description: 'Visible tools',
+    workspacePreferences: {
+      title: 'Workspace & Preferences',
+      description: 'User preferences',
       icon: () => null,
       businessNames: {
-        'customer.info': 'Customer Information'
+        'settings_options.calls.autoAccept': 'Auto-Accept Calls',
+        'settings_options.calls.doNotDisturb.duration': 'Do Not Disturb',
+        'settings_options.interface.showTranscript': 'Show Transcripts',
+        'settings_options.interface.autoCloseKnowledgeOnCallEnd': 'Auto-Close Knowledge',
+        'settings_options.interface.spaceCopilotMode': 'AI Assistant Mode'
       }
     }
   }
@@ -25249,17 +25375,31 @@ vi.mock('../../components/admin/business-relevant-toggles', () => ({
   businessRelevantToggles: {
     capabilities: {
       toggles: {
-        'columns.kms': { businessName: 'Knowledge Base Access', description: 'Access to knowledge base' },
-        'features.search.knowledgeBase': { businessName: 'Knowledge Search', description: 'Search knowledge articles' }
+        'columns.kms': { visible: true, businessName: 'Knowledge Base', description: 'Access to knowledge base', section: 'Dashboard Access' },
+        'columns.embeddedApps': { visible: true, businessName: 'Banking Applications', description: 'Access to banking apps', section: 'Dashboard Access' },
+        'columns.spaceCopilot': { visible: true, businessName: 'AI Assistant', description: 'Access to AI features', section: 'Dashboard Access' },
+        'columns.chat': { visible: true, businessName: 'Chat Interface', description: 'Access to chat', section: 'Dashboard Access' },
+        'micro_frontends.mediaBar': { visible: true, businessName: 'Media Controls', description: 'Voice and video controls', section: 'Platform Apps' }
       }
     },
-    widgets: {
+    workspacePreferences: {
       toggles: {
-        'customer.info': { businessName: 'Customer Information', description: 'View customer info' }
+        'settings_options.calls.autoAccept': { visible: true, businessName: 'Auto-Accept Calls', description: 'Auto accept calls', section: 'Call Preferences' },
+        'settings_options.calls.doNotDisturb.duration': { visible: true, businessName: 'Do Not Disturb', description: 'Set break duration', section: 'Call Preferences' },
+        'settings_options.interface.showTranscript': { visible: true, businessName: 'Show Transcripts', description: 'Display transcripts', section: 'Privacy & Display' },
+        'settings_options.interface.autoCloseKnowledgeOnCallEnd': { visible: true, businessName: 'Auto-Close Knowledge', description: 'Auto close knowledge', section: 'Privacy & Display' },
+        'settings_options.interface.spaceCopilotMode': { visible: true, businessName: 'AI Assistant Mode', description: 'Choose AI level', section: 'AI Preference' }
       }
     }
   },
   isToggleBusinessRelevant: (_level: string, _key: string) => true
+}))
+
+vi.mock('../../utils/admin/permission-level-resolver', () => ({
+  COMPOUND_LEVELS: {
+    capabilities: ['columns', 'features', 'micro_frontends'],
+    workspacePreferences: ['widgets', 'settings_tabs', 'settings_options']
+  }
 }))
 
 vi.mock('../../utils/admin/permission-hierarchy-sorter', () => ({
@@ -25273,13 +25413,19 @@ describe('usePermissionAggregators', () => {
     roleName: 'voice_agent',
     columns: {
       kms: { state: 'enabled' },
-      chat: { state: 'disabled' }
+      embeddedApps: { state: 'enabled' },
+      spaceCopilot: { state: 'enabled' },
+      chat: { state: 'enabled' }
     },
-    widgets: {
-      'customer.info': { state: 'enabled' }
+    micro_frontends: {
+      mediaBar: { state: 'enabled' }
     },
-    features: {
-      'search.knowledgeBase': { state: 'enabled' }
+    settings_options: {
+      'calls.autoAccept': { state: 'enabled' },
+      'calls.doNotDisturb.duration': { state: 'enabled' },
+      'interface.showTranscript': { state: 'enabled' },
+      'interface.autoCloseKnowledgeOnCallEnd': { state: 'enabled' },
+      'interface.spaceCopilotMode': { state: 'enabled' }
     }
   }
 
@@ -25294,24 +25440,24 @@ describe('usePermissionAggregators', () => {
       expect(getPermissionCount({ level: 'capabilities' })).toBe(0)
     })
 
-    it('counts enabled capabilities (columns + features)', () => {
+    it('counts enabled capabilities (columns + micro_frontends)', () => {
       const { getPermissionCount } = usePermissionAggregators({
         roleTemplate: baseTemplate as any,
         searchTerm: '',
         isPermissionEnabled: () => true
       })
 
-      expect(getPermissionCount({ level: 'capabilities' })).toBe(2)
+      expect(getPermissionCount({ level: 'capabilities' })).toBe(5)
     })
 
-    it('counts enabled widgets', () => {
+    it('counts enabled workspacePreferences (settings_options)', () => {
       const { getPermissionCount } = usePermissionAggregators({
         roleTemplate: baseTemplate as any,
         searchTerm: '',
         isPermissionEnabled: () => true
       })
 
-      expect(getPermissionCount({ level: 'widgets' })).toBe(1)
+      expect(getPermissionCount({ level: 'workspacePreferences' })).toBe(5)
     })
   })
 
@@ -25335,18 +25481,20 @@ describe('usePermissionAggregators', () => {
 
       const caps = getAllPermissions({ level: 'capabilities' })
       expect(caps).toContain('columns.kms')
-      expect(caps).toContain('features.search.knowledgeBase')
+      expect(caps).toContain('columns.spaceCopilot')
+      expect(caps).toContain('micro_frontends.mediaBar')
     })
 
-    it('returns widget keys', () => {
+    it('returns workspacePreferences keys with settings_options prefix', () => {
       const { getAllPermissions } = usePermissionAggregators({
         roleTemplate: baseTemplate as any,
         searchTerm: '',
         isPermissionEnabled: () => true
       })
 
-      const widgets = getAllPermissions({ level: 'widgets' })
-      expect(widgets).toContain('customer.info')
+      const prefs = getAllPermissions({ level: 'workspacePreferences' })
+      expect(prefs).toContain('settings_options.calls.autoAccept')
+      expect(prefs).toContain('settings_options.interface.spaceCopilotMode')
     })
 
     it('returns empty array for unknown level', () => {
@@ -25371,7 +25519,7 @@ describe('usePermissionAggregators', () => {
 
       const enabled = getEnabledPermissions({ level: 'capabilities' })
       expect(enabled).toContain('columns.kms')
-      expect(enabled).not.toContain('features.search.knowledgeBase')
+      expect(enabled).not.toContain('micro_frontends.mediaBar')
     })
 
     it('returns empty array when no template', () => {
@@ -25406,18 +25554,6 @@ describe('usePermissionAggregators', () => {
 
       const filtered = getFilteredPermissions({ level: 'capabilities' })
       expect(filtered).toContain('columns.kms')
-      expect(filtered).toContain('features.search.knowledgeBase')
-    })
-
-    it('filters by key name', () => {
-      const { getFilteredPermissions } = usePermissionAggregators({
-        roleTemplate: baseTemplate as any,
-        searchTerm: 'kms',
-        isPermissionEnabled: () => true
-      })
-
-      const filtered = getFilteredPermissions({ level: 'capabilities' })
-      expect(filtered).toContain('columns.kms')
     })
 
     it('returns empty when search matches nothing', () => {
@@ -25442,6 +25578,7 @@ import {
   businessRelevantToggles,
   isToggleBusinessRelevant
 } from '../../components/admin/business-relevant-toggles'
+import { COMPOUND_LEVELS } from '../../utils/admin/permission-level-resolver'
 import { sortWithHierarchy } from '../../utils/admin/permission-hierarchy-sorter'
 
 interface UsePermissionAggregatorsParams {
@@ -25458,19 +25595,14 @@ export function usePermissionAggregators({
   const getPermissionCount = React.useCallback(({ level }: { level: string }) => {
     if (!roleTemplate) return 0
 
-    if (level === 'capabilities') {
-      const columnsLevel = getTemplateSection(roleTemplate, 'columns')
-      const featuresLevel = getTemplateSection(roleTemplate, 'features')
-
-      const columnsCount = Object.keys(columnsLevel).filter(key =>
-        isToggleBusinessRelevant('capabilities', `columns.${key}`) && columnsLevel[key]?.state === 'enabled'
-      ).length
-
-      const featuresCount = Object.keys(featuresLevel).filter(key =>
-        isToggleBusinessRelevant('capabilities', `features.${key}`) && featuresLevel[key]?.state === 'enabled'
-      ).length
-
-      return columnsCount + featuresCount
+    const templateSections = COMPOUND_LEVELS[level]
+    if (templateSections) {
+      return templateSections.reduce((total, section) => {
+        const sectionData = getTemplateSection(roleTemplate, section)
+        return total + Object.keys(sectionData).filter(key =>
+          isToggleBusinessRelevant(level, `${section}.${key}`) && sectionData[key]?.state === 'enabled'
+        ).length
+      }, 0)
     }
 
     const templateLevel = getTemplateSection(roleTemplate, level)
@@ -25485,31 +25617,25 @@ export function usePermissionAggregators({
     const cache: Record<string, string[]> = {}
 
     Object.keys(permissionLevels).forEach(level => {
-      if (level === 'capabilities') {
-        const columnsLevel = getTemplateSection(roleTemplate, 'columns')
-        const featuresLevel = getTemplateSection(roleTemplate, 'features')
+      const templateSections = COMPOUND_LEVELS[level]
+      if (templateSections) {
+        const enabledKeys: string[] = []
 
-        const enabledColumns = Object.keys(columnsLevel)
-          .filter(key => isToggleBusinessRelevant('capabilities', `columns.${key}`))
-          .map(key => `columns.${key}`)
-          .filter(prefixedKey => {
-            const businessConfig = businessRelevantToggles['capabilities']?.toggles[prefixedKey]
-            const parentKey = businessConfig?.parent
-            const parentEnabled = parentKey ? isPermissionEnabled({ level: 'capabilities', key: parentKey }) : true
-            return isPermissionEnabled({ level: 'capabilities', key: prefixedKey }) && parentEnabled
-          })
+        for (const section of templateSections) {
+          const sectionData = getTemplateSection(roleTemplate, section)
+          const sectionEnabled = Object.keys(sectionData)
+            .filter(key => isToggleBusinessRelevant(level, `${section}.${key}`))
+            .map(key => `${section}.${key}`)
+            .filter(prefixedKey => {
+              const businessConfig = businessRelevantToggles[level]?.toggles[prefixedKey]
+              const parentKey = businessConfig?.parent
+              const parentEnabled = parentKey ? isPermissionEnabled({ level, key: parentKey }) : true
+              return isPermissionEnabled({ level, key: prefixedKey }) && parentEnabled
+            })
+          enabledKeys.push(...sectionEnabled)
+        }
 
-        const enabledFeatures = Object.keys(featuresLevel)
-          .filter(key => isToggleBusinessRelevant('capabilities', `features.${key}`))
-          .map(key => `features.${key}`)
-          .filter(prefixedKey => {
-            const businessConfig = businessRelevantToggles['capabilities']?.toggles[prefixedKey]
-            const parentKey = businessConfig?.parent
-            const parentEnabled = parentKey ? isPermissionEnabled({ level: 'capabilities', key: parentKey }) : true
-            return isPermissionEnabled({ level: 'capabilities', key: prefixedKey }) && parentEnabled
-          })
-
-        cache[level] = [...enabledColumns, ...enabledFeatures]
+        cache[level] = enabledKeys
       } else {
         const templateLevel = getTemplateSection(roleTemplate, level)
         cache[level] = Object.keys(templateLevel).filter(key =>
@@ -25531,21 +25657,19 @@ export function usePermissionAggregators({
     const cache: Record<string, string[]> = {}
 
     Object.keys(permissionLevels).forEach(level => {
-      if (level === 'capabilities') {
-        const columnsLevel = getTemplateSection(roleTemplate, 'columns')
-        const featuresLevel = getTemplateSection(roleTemplate, 'features')
+      const templateSections = COMPOUND_LEVELS[level]
+      if (templateSections) {
+        const allKeys: string[] = []
 
-        const columnKeys = Object.keys(columnsLevel)
-          .filter(key => isToggleBusinessRelevant('capabilities', `columns.${key}`))
-          .map(key => `columns.${key}`)
+        for (const section of templateSections) {
+          const sectionData = getTemplateSection(roleTemplate, section)
+          const sectionKeys = Object.keys(sectionData)
+            .filter(key => isToggleBusinessRelevant(level, `${section}.${key}`))
+            .map(key => `${section}.${key}`)
+          allKeys.push(...sectionKeys)
+        }
 
-        const featureKeys = Object.keys(featuresLevel)
-          .filter(key => isToggleBusinessRelevant('capabilities', `features.${key}`))
-          .map(key => `features.${key}`)
-
-        const allKeys = [...columnKeys, ...featureKeys]
-
-        cache[level] = sortWithHierarchy({ keys: allKeys, levelKey: 'capabilities' })
+        cache[level] = sortWithHierarchy({ keys: allKeys, levelKey: level })
       } else {
         const templateLevel = getTemplateSection(roleTemplate, level)
         cache[level] = Object.keys(templateLevel).filter(key =>
@@ -25600,7 +25724,6 @@ export function usePermissionAggregators({
 ===ENDFILE
 ===FILE: ./src/hooks/admin/use-permission-state.test.ts
 import { describe, expect, it, vi } from 'vitest'
-import React from 'react'
 
 vi.mock('react', () => ({
   default: { useCallback: (fn: (...args: unknown[]) => unknown) => fn },
@@ -25613,6 +25736,28 @@ vi.mock('../../components/admin/ad-group-config/utils/permission-helpers', () =>
     const section = template[level]
     if (section && typeof section === 'object') return section
     return {}
+  }
+}))
+
+vi.mock('../../utils/admin/permission-level-resolver', () => ({
+  resolvePermissionLevel: ({ level, key }: { level: string; key: string }) => {
+    const COMPOUND: Record<string, string[]> = {
+      capabilities: ['columns', 'features', 'micro_frontends'],
+      workspacePreferences: ['widgets', 'settings_tabs', 'settings_options']
+    }
+    const prefixes = COMPOUND[level]
+    if (!prefixes) return { actualLevel: level, actualKey: key }
+    for (const prefix of prefixes) {
+      if (key.startsWith(prefix + '.')) {
+        return { actualLevel: prefix, actualKey: key.slice(prefix.length + 1) }
+      }
+    }
+    const [p, ...rest] = key.split('.')
+    return { actualLevel: p, actualKey: rest.join('.') }
+  },
+  COMPOUND_LEVELS: {
+    capabilities: ['columns', 'features', 'micro_frontends'],
+    workspacePreferences: ['widgets', 'settings_tabs', 'settings_options']
   }
 }))
 
@@ -25630,6 +25775,15 @@ describe('usePermissionState', () => {
     },
     features: {
       'search.knowledgeBase': { state: 'enabled' }
+    },
+    micro_frontends: {
+      mediaBar: { state: 'enabled' }
+    },
+    settings_tabs: {
+      help: { state: 'enabled' }
+    },
+    settings_options: {
+      'calls.autoAccept': { state: 'enabled' }
     }
   }
 
@@ -25689,6 +25843,15 @@ describe('usePermissionState', () => {
       expect(isPermissionEnabled({ level: 'capabilities', key: 'features.search.knowledgeBase' })).toBe(true)
     })
 
+    it('handles capabilities level (micro_frontends prefix)', () => {
+      const { isPermissionEnabled } = usePermissionState({
+        roleTemplate: baseTemplate as any,
+        permissionOverrides: {},
+        pendingChanges: { permissions: {} }
+      })
+      expect(isPermissionEnabled({ level: 'capabilities', key: 'micro_frontends.mediaBar' })).toBe(true)
+    })
+
     it('handles capabilities with pending change', () => {
       const { isPermissionEnabled } = usePermissionState({
         roleTemplate: baseTemplate as any,
@@ -25696,6 +25859,42 @@ describe('usePermissionState', () => {
         pendingChanges: { permissions: { columns: { kms: false } } }
       })
       expect(isPermissionEnabled({ level: 'capabilities', key: 'columns.kms' })).toBe(false)
+    })
+
+    it('handles workspacePreferences level (widgets prefix)', () => {
+      const { isPermissionEnabled } = usePermissionState({
+        roleTemplate: baseTemplate as any,
+        permissionOverrides: {},
+        pendingChanges: { permissions: {} }
+      })
+      expect(isPermissionEnabled({ level: 'workspacePreferences', key: 'widgets.customer.info' })).toBe(true)
+    })
+
+    it('handles workspacePreferences level (settings_tabs prefix)', () => {
+      const { isPermissionEnabled } = usePermissionState({
+        roleTemplate: baseTemplate as any,
+        permissionOverrides: {},
+        pendingChanges: { permissions: {} }
+      })
+      expect(isPermissionEnabled({ level: 'workspacePreferences', key: 'settings_tabs.help' })).toBe(true)
+    })
+
+    it('handles workspacePreferences level (settings_options prefix)', () => {
+      const { isPermissionEnabled } = usePermissionState({
+        roleTemplate: baseTemplate as any,
+        permissionOverrides: {},
+        pendingChanges: { permissions: {} }
+      })
+      expect(isPermissionEnabled({ level: 'workspacePreferences', key: 'settings_options.calls.autoAccept' })).toBe(true)
+    })
+
+    it('handles workspacePreferences with override', () => {
+      const { isPermissionEnabled } = usePermissionState({
+        roleTemplate: baseTemplate as any,
+        permissionOverrides: { settings_tabs: { help: false } },
+        pendingChanges: { permissions: {} }
+      })
+      expect(isPermissionEnabled({ level: 'workspacePreferences', key: 'settings_tabs.help' })).toBe(false)
     })
   })
 
@@ -25744,6 +25943,15 @@ describe('usePermissionState', () => {
       })
       expect(hasUnsavedChanges({ level: 'capabilities', key: 'columns.kms' })).toBe(true)
     })
+
+    it('handles workspacePreferences level', () => {
+      const { hasUnsavedChanges } = usePermissionState({
+        roleTemplate: baseTemplate as any,
+        permissionOverrides: {},
+        pendingChanges: { permissions: { settings_tabs: { help: false } } }
+      })
+      expect(hasUnsavedChanges({ level: 'workspacePreferences', key: 'settings_tabs.help' })).toBe(true)
+    })
   })
 })
 ===ENDFILE
@@ -25755,6 +25963,7 @@ import type {
   PendingChanges
 } from '../../types/features/ad-group-config'
 import { getTemplateSection } from '../../components/admin/ad-group-config/utils/permission-helpers'
+import { resolvePermissionLevel, COMPOUND_LEVELS } from '../../utils/admin/permission-level-resolver'
 
 interface UsePermissionStateParams {
   roleTemplate: RoleTemplate | null
@@ -25770,10 +25979,8 @@ export function usePermissionState({
   const isPermissionEnabled = React.useCallback(({ level, key }: { level: string; key: string }) => {
     if (!roleTemplate) return false
 
-    if (level === 'capabilities') {
-      const [prefix, ...rest] = key.split('.')
-      const actualLevel = prefix === 'columns' ? 'columns' : 'features'
-      const actualKey = rest.join('.')
+    if (COMPOUND_LEVELS[level]) {
+      const { actualLevel, actualKey } = resolvePermissionLevel({ level, key })
 
       const pendingChange = pendingChanges?.permissions?.[actualLevel]?.[actualKey]
       if (pendingChange !== undefined) {
@@ -25808,10 +26015,8 @@ export function usePermissionState({
   const hasUnsavedChanges = React.useCallback(({ level, key }: { level: string; key: string }) => {
     if (!roleTemplate) return false
 
-    if (level === 'capabilities') {
-      const [prefix, ...rest] = key.split('.')
-      const actualLevel = prefix === 'columns' ? 'columns' : 'features'
-      const actualKey = rest.join('.')
+    if (COMPOUND_LEVELS[level]) {
+      const { actualLevel, actualKey } = resolvePermissionLevel({ level, key })
 
       const pendingValue = pendingChanges.permissions?.[actualLevel]?.[actualKey]
       if (pendingValue === undefined) return false
@@ -25869,15 +26074,20 @@ vi.mock('../../components/admin/business-relevant-toggles', () => ({
   businessRelevantToggles: {
     capabilities: {
       toggles: {
-        'columns.kms': { businessName: 'KMS', parent: undefined },
-        'columns.embeddedApps': { businessName: 'Embedded Apps', parent: undefined },
-        'features.search.knowledgeBase': { businessName: 'KB Search', parent: 'columns.kms' },
-        'features.search.embeddedApps': { businessName: 'App Search', parent: 'columns.embeddedApps' }
+        'columns.kms': { businessName: 'Knowledge Base', linkedKeys: ['features.search.knowledgeBase'] },
+        'columns.embeddedApps': { businessName: 'Banking Applications', linkedKeys: ['features.search.embeddedApps'] },
+        'columns.spaceCopilot': { businessName: 'AI Assistant', linkedKeys: ['micro_frontends.spaceCopilot'] },
+        'columns.chat': { businessName: 'Chat Interface' },
+        'micro_frontends.mediaBar': { businessName: 'Media Controls', linkedKeys: ['widgets.mediaBar.callControls'] }
       }
     },
-    widgets: {
+    workspacePreferences: {
       toggles: {
-        'customer.info': { businessName: 'Customer Info' }
+        'settings_options.calls.autoAccept': { businessName: 'Auto-Accept Calls' },
+        'settings_options.calls.doNotDisturb.duration': { businessName: 'Do Not Disturb' },
+        'settings_options.interface.showTranscript': { businessName: 'Show Transcripts' },
+        'settings_options.interface.autoCloseKnowledgeOnCallEnd': { businessName: 'Auto-Close Knowledge' },
+        'settings_options.interface.spaceCopilotMode': { businessName: 'AI Assistant Mode' }
       }
     }
   }
@@ -25894,14 +26104,29 @@ vi.mock('../../components/admin/ad-group-config/utils/permission-helpers', () =>
 
 vi.mock('../../utils/admin/permission-level-resolver', () => ({
   resolvePermissionLevel: ({ level, key }: { level: string; key: string }) => {
-    if (level !== 'capabilities') {
-      return { actualLevel: level, actualKey: key }
+    const COMPOUND: Record<string, string[]> = {
+      capabilities: ['columns', 'features', 'micro_frontends'],
+      workspacePreferences: ['widgets', 'settings_tabs', 'settings_options']
     }
-    const [prefix, ...rest] = key.split('.')
-    return {
-      actualLevel: prefix === 'columns' ? 'columns' : 'features',
-      actualKey: rest.join('.')
+    const prefixes = COMPOUND[level]
+    if (!prefixes) return { actualLevel: level, actualKey: key }
+    for (const prefix of prefixes) {
+      if (key.startsWith(prefix + '.')) {
+        return { actualLevel: prefix, actualKey: key.slice(prefix.length + 1) }
+      }
     }
+    const [p, ...rest] = key.split('.')
+    return { actualLevel: p, actualKey: rest.join('.') }
+  },
+  resolveLinkedKey: (linkedKey: string) => {
+    const allSections = ['columns', 'features', 'micro_frontends', 'widgets', 'settings_tabs', 'settings_options']
+    for (const section of allSections) {
+      if (linkedKey.startsWith(section + '.')) {
+        return { actualLevel: section, actualKey: linkedKey.slice(section.length + 1) }
+      }
+    }
+    const [level, ...rest] = linkedKey.split('.')
+    return { actualLevel: level, actualKey: rest.join('.') }
   }
 }))
 
@@ -25912,14 +26137,25 @@ describe('usePermissionToggle', () => {
     roleName: 'voice_agent',
     columns: {
       kms: { state: 'enabled' },
-      embeddedApps: { state: 'enabled' }
+      embeddedApps: { state: 'enabled' },
+      spaceCopilot: { state: 'enabled' }
     },
     features: {
       'search.knowledgeBase': { state: 'enabled' },
       'search.embeddedApps': { state: 'enabled' }
     },
+    micro_frontends: {
+      mediaBar: { state: 'enabled' },
+      spaceCopilot: { state: 'enabled' }
+    },
     widgets: {
-      'customer.info': { state: 'enabled' }
+      'mediaBar.callControls': { state: 'enabled' }
+    },
+    settings_options: {
+      'calls.autoAccept': { state: 'enabled' },
+      'interface.showTranscript': { state: 'enabled' },
+      'interface.autoCloseKnowledgeOnCallEnd': { state: 'enabled' },
+      'interface.spaceCopilotMode': { state: 'enabled' }
     }
   }
 
@@ -25946,21 +26182,6 @@ describe('usePermissionToggle', () => {
     expect(result.loadingPermission).toBeNull()
   })
 
-  it('toggles a non-capabilities permission', () => {
-    const result = callHook()
-    result.handleTogglePermission({ level: 'widgets', key: 'customer.info', value: false })
-
-    expect(setPendingChangesSpy).toHaveBeenCalledWith(
-      expect.objectContaining({
-        permissions: expect.objectContaining({
-          widgets: expect.objectContaining({
-            'customer.info': false
-          })
-        })
-      })
-    )
-  })
-
   it('toggles a capabilities column permission', () => {
     const result = callHook()
     result.handleTogglePermission({ level: 'capabilities', key: 'columns.kms', value: false })
@@ -25976,25 +26197,34 @@ describe('usePermissionToggle', () => {
     )
   })
 
-  it('cascades disable to children when parent is disabled', () => {
+  it('toggles a workspacePreferences permission', () => {
     const result = callHook()
-    result.handleTogglePermission({ level: 'capabilities', key: 'columns.kms', value: false })
+    result.handleTogglePermission({ level: 'workspacePreferences', key: 'settings_options.calls.autoAccept', value: false })
 
-    const call = setPendingChangesSpy.mock.calls[0][0]
-    // child 'features.search.knowledgeBase' should be disabled too
-    expect(call.permissions.features?.['search.knowledgeBase']).toBe(false)
+    expect(setPendingChangesSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        permissions: expect.objectContaining({
+          settings_options: expect.objectContaining({
+            'calls.autoAccept': false
+          })
+        })
+      })
+    )
   })
 
-  it('auto-enables parent when child is enabled', () => {
-    const result = callHook({
-      permissionOverrides: { columns: { kms: false } },
-      pendingChanges: { permissions: { columns: { kms: false } } }
-    })
-    result.handleTogglePermission({ level: 'capabilities', key: 'features.search.knowledgeBase', value: true })
+  it('toggles a micro_frontends capability', () => {
+    const result = callHook()
+    result.handleTogglePermission({ level: 'capabilities', key: 'micro_frontends.mediaBar', value: false })
 
-    const call = setPendingChangesSpy.mock.calls[0][0]
-    // parent 'columns.kms' should be auto-enabled
-    expect(call.permissions.columns?.kms).toBe(true)
+    expect(setPendingChangesSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        permissions: expect.objectContaining({
+          micro_frontends: expect.objectContaining({
+            mediaBar: false
+          })
+        })
+      })
+    )
   })
 
   it('removes pending change when value matches saved override', () => {
@@ -26004,8 +26234,46 @@ describe('usePermissionToggle', () => {
     result.handleTogglePermission({ level: 'capabilities', key: 'columns.kms', value: false })
 
     const call = setPendingChangesSpy.mock.calls[0][0]
-    // Should have been deleted since value matches saved override
     expect(call.permissions.columns?.kms).toBeUndefined()
+  })
+
+  it('cascades AI Assistant toggle to micro_frontends.spaceCopilot via linkedKeys', () => {
+    const result = callHook()
+    result.handleTogglePermission({ level: 'capabilities', key: 'columns.spaceCopilot', value: false })
+
+    const call = setPendingChangesSpy.mock.calls[0][0]
+    // Linked key: micro_frontends.spaceCopilot should also be set to false
+    expect(call.permissions.micro_frontends?.spaceCopilot).toBe(false)
+  })
+
+  it('cascades Knowledge Base toggle to features.search.knowledgeBase via linkedKeys', () => {
+    const result = callHook()
+    result.handleTogglePermission({ level: 'capabilities', key: 'columns.kms', value: false })
+
+    const call = setPendingChangesSpy.mock.calls[0][0]
+    // Linked key: features.search.knowledgeBase should also be set to false
+    expect(call.permissions.features?.['search.knowledgeBase']).toBe(false)
+  })
+
+  it('cascades Media Controls toggle to widgets.mediaBar.callControls via linkedKeys', () => {
+    const result = callHook()
+    result.handleTogglePermission({ level: 'capabilities', key: 'micro_frontends.mediaBar', value: false })
+
+    const call = setPendingChangesSpy.mock.calls[0][0]
+    // Linked key: widgets.mediaBar.callControls should also be set to false
+    expect(call.permissions.widgets?.['mediaBar.callControls']).toBe(false)
+  })
+
+  it('does not cascade linkedKeys for toggles without them', () => {
+    const result = callHook()
+    result.handleTogglePermission({ level: 'capabilities', key: 'columns.chat', value: false })
+
+    const call = setPendingChangesSpy.mock.calls[0][0]
+    // Only columns.chat should be affected, no other sections
+    expect(call.permissions.columns?.chat).toBe(false)
+    expect(call.permissions.features).toBeUndefined()
+    expect(call.permissions.micro_frontends).toBeUndefined()
+    expect(call.permissions.widgets).toBeUndefined()
   })
 })
 ===ENDFILE
@@ -26014,7 +26282,7 @@ import { useState } from 'react'
 import type { RoleTemplate, PermissionOverrides, PendingChanges } from '../../types/features/ad-group-config'
 import { businessRelevantToggles } from '../../components/admin/business-relevant-toggles'
 import { getTemplateSection } from '../../components/admin/ad-group-config/utils/permission-helpers'
-import { resolvePermissionLevel } from '../../utils/admin/permission-level-resolver'
+import { resolvePermissionLevel, resolveLinkedKey } from '../../utils/admin/permission-level-resolver'
 
 interface UsePermissionToggleParams {
   roleTemplate: RoleTemplate | null
@@ -26177,6 +26445,15 @@ export function usePermissionToggle({
         { actualLevel, actualKey },
         { pendingChanges, permissionOverrides, roleTemplate }
       )
+    }
+
+    // Linked key cascade: auto-sync dependent technical keys
+    if (toggleConfig?.linkedKeys) {
+      for (const lk of toggleConfig.linkedKeys) {
+        const { actualLevel: lkLevel, actualKey: lkKey } = resolveLinkedKey(lk)
+        ensureLevelExists(newPendingChanges.permissions, lkLevel)
+        newPendingChanges.permissions[lkLevel][lkKey] = value
+      }
     }
 
     setPendingChanges(newPendingChanges)
@@ -32698,44 +32975,66 @@ export function validateNoticeForm({ title, message }: { title?: string; message
 }
 ===ENDFILE
 ===FILE: ./src/utils/admin/permission-hierarchy-sorter.test.ts
-import { describe, expect, it } from 'vitest'
-import { sortWithHierarchy } from './permission-hierarchy-sorter'
+import { describe, expect, it, vi } from 'vitest'
+
+vi.mock('../../components/admin/business-relevant-toggles', () => ({
+  businessRelevantToggles: {
+    capabilities: {
+      toggles: {
+        'columns.kms': { businessName: 'Knowledge Base', section: 'Dashboard Access', linkedKeys: ['features.search.knowledgeBase'] },
+        'columns.embeddedApps': { businessName: 'Banking Applications', section: 'Dashboard Access', linkedKeys: ['features.search.embeddedApps'] },
+        'columns.spaceCopilot': { businessName: 'AI Assistant', section: 'Dashboard Access', linkedKeys: ['micro_frontends.spaceCopilot'] },
+        'columns.chat': { businessName: 'Chat Interface', section: 'Dashboard Access' },
+        'micro_frontends.mediaBar': { businessName: 'Media Controls', section: 'Platform Apps', linkedKeys: ['widgets.mediaBar.callControls'] }
+      }
+    },
+    workspacePreferences: {
+      toggles: {
+        'settings_options.calls.autoAccept': { businessName: 'Auto-Accept Calls', section: 'Call Preferences' },
+        'settings_options.calls.doNotDisturb.duration': { businessName: 'Do Not Disturb', section: 'Call Preferences' },
+        'settings_options.interface.showTranscript': { businessName: 'Show Transcripts', section: 'Privacy & Display' },
+        'settings_options.interface.autoCloseKnowledgeOnCallEnd': { businessName: 'Auto-Close Knowledge', section: 'Privacy & Display' },
+        'settings_options.interface.spaceCopilotMode': { businessName: 'AI Assistant Mode', section: 'AI Preference' }
+      }
+    }
+  }
+}))
+
+const { sortWithHierarchy } = await import('./permission-hierarchy-sorter')
 
 describe('sortWithHierarchy', () => {
-  it('sorts known keys in desired order', () => {
+  it('sorts by section order for capabilities', () => {
     const keys = [
       'columns.kms',
-      'columns.chat',
-      'columns.spaceCopilot',
-      'features.search.knowledgeBase',
-      'features.search.embeddedApps',
+      'micro_frontends.mediaBar',
       'columns.embeddedApps'
     ]
 
     const result = sortWithHierarchy({ keys, levelKey: 'capabilities' })
 
-    expect(result[0]).toBe('columns.chat')
-    expect(result[1]).toBe('columns.spaceCopilot')
-    expect(result[2]).toBe('features.search.knowledgeBase')
-    expect(result[3]).toBe('features.search.embeddedApps')
-    expect(result[4]).toBe('columns.embeddedApps')
-    expect(result[5]).toBe('columns.kms')
+    const kmsIdx = result.indexOf('columns.kms')
+    const mediaIdx = result.indexOf('micro_frontends.mediaBar')
+
+    // Dashboard Access items come before Platform Apps
+    expect(kmsIdx).toBeLessThan(mediaIdx)
   })
 
-  it('places unknown keys after known ones', () => {
-    const keys = ['unknown.key', 'columns.chat']
-    const result = sortWithHierarchy({ keys, levelKey: 'capabilities' })
+  it('sorts workspacePreferences by section', () => {
+    const keys = [
+      'settings_options.calls.autoAccept',
+      'settings_options.interface.showTranscript',
+      'settings_options.interface.spaceCopilotMode'
+    ]
 
-    expect(result.indexOf('columns.chat')).toBeLessThan(result.indexOf('unknown.key'))
-  })
+    const result = sortWithHierarchy({ keys, levelKey: 'workspacePreferences' })
 
-  it('groups children under their parent', () => {
-    // With a level that has parent-child relationships
-    const keys = ['customer.info', 'customer.interactionHistory']
-    const result = sortWithHierarchy({ keys, levelKey: 'widgets' })
+    const autoAcceptIdx = result.indexOf('settings_options.calls.autoAccept')
+    const transcriptIdx = result.indexOf('settings_options.interface.showTranscript')
+    const copilotIdx = result.indexOf('settings_options.interface.spaceCopilotMode')
 
-    expect(result).toContain('customer.info')
-    expect(result).toContain('customer.interactionHistory')
+    // Call Preferences first, then Privacy & Display, then AI Preference
+    expect(autoAcceptIdx).toBeLessThan(transcriptIdx)
+    expect(transcriptIdx).toBeLessThan(copilotIdx)
   })
 
   it('handles empty keys array', () => {
@@ -32766,32 +33065,27 @@ export function sortWithHierarchy({ keys, levelKey }: { keys: string[]; levelKey
     }
   })
 
-  const desiredOrder = [
-    'columns.chat',
-    'columns.spaceCopilot',
-    'features.search.knowledgeBase',
-    'features.search.embeddedApps',
-    'columns.embeddedApps',
-    'columns.kms'
-  ]
-
   const topLevelKeys = keys.filter(key => {
     const config = businessRelevantToggles[levelKey]?.toggles[key]
     return !config?.parent
   })
 
-  topLevelKeys.sort((a, b) => {
-    const indexA = desiredOrder.indexOf(a)
-    const indexB = desiredOrder.indexOf(b)
-
-    const orderA = indexA === -1 ? 9999 : indexA
-    const orderB = indexB === -1 ? 9999 : indexB
-
-    return orderA - orderB
+  // Sort by section order (preserving first-appearance order of sections)
+  const sectionOrder: string[] = []
+  topLevelKeys.forEach(key => {
+    const section = businessRelevantToggles[levelKey]?.toggles[key]?.section || ''
+    if (!sectionOrder.includes(section)) {
+      sectionOrder.push(section)
+    }
   })
-  const orderedTopLevel = topLevelKeys
 
-  orderedTopLevel.forEach(key => {
+  topLevelKeys.sort((a, b) => {
+    const sectionA = businessRelevantToggles[levelKey]?.toggles[a]?.section || ''
+    const sectionB = businessRelevantToggles[levelKey]?.toggles[b]?.section || ''
+    return sectionOrder.indexOf(sectionA) - sectionOrder.indexOf(sectionB)
+  })
+
+  topLevelKeys.forEach(key => {
     sorted.push(key)
     if (childrenMap[key]) {
       sorted.push(...childrenMap[key])
@@ -32803,10 +33097,10 @@ export function sortWithHierarchy({ keys, levelKey }: { keys: string[]; levelKey
 ===ENDFILE
 ===FILE: ./src/utils/admin/permission-level-resolver.test.ts
 import { describe, expect, it } from 'vitest'
-import { resolvePermissionLevel } from './permission-level-resolver'
+import { resolvePermissionLevel, resolveLinkedKey, COMPOUND_LEVELS } from './permission-level-resolver'
 
 describe('resolvePermissionLevel', () => {
-  it('passes through non-capabilities levels unchanged', () => {
+  it('passes through non-compound levels unchanged', () => {
     expect(resolvePermissionLevel({ level: 'columns', key: 'kms' })).toEqual({
       actualLevel: 'columns',
       actualKey: 'kms'
@@ -32823,7 +33117,7 @@ describe('resolvePermissionLevel', () => {
     })
   })
 
-  it('resolves capabilities with columns prefix to columns level', () => {
+  it('resolves capabilities with columns prefix', () => {
     expect(resolvePermissionLevel({ level: 'capabilities', key: 'columns.spaceCopilot' })).toEqual({
       actualLevel: 'columns',
       actualKey: 'spaceCopilot'
@@ -32835,29 +33129,97 @@ describe('resolvePermissionLevel', () => {
     })
   })
 
-  it('resolves capabilities with non-columns prefix to features level', () => {
+  it('resolves capabilities with features prefix', () => {
     expect(resolvePermissionLevel({ level: 'capabilities', key: 'features.search.knowledgeBase' })).toEqual({
       actualLevel: 'features',
       actualKey: 'search.knowledgeBase'
     })
+  })
 
-    expect(resolvePermissionLevel({ level: 'capabilities', key: 'other.something' })).toEqual({
-      actualLevel: 'features',
-      actualKey: 'something'
+  it('resolves capabilities with micro_frontends prefix', () => {
+    expect(resolvePermissionLevel({ level: 'capabilities', key: 'micro_frontends.mediaBar' })).toEqual({
+      actualLevel: 'micro_frontends',
+      actualKey: 'mediaBar'
+    })
+
+    expect(resolvePermissionLevel({ level: 'capabilities', key: 'micro_frontends.spaceCopilot' })).toEqual({
+      actualLevel: 'micro_frontends',
+      actualKey: 'spaceCopilot'
     })
   })
 
-  it('handles capabilities key with no dots', () => {
+  it('resolves workspacePreferences with widgets prefix', () => {
+    expect(resolvePermissionLevel({ level: 'workspacePreferences', key: 'widgets.customer.info' })).toEqual({
+      actualLevel: 'widgets',
+      actualKey: 'customer.info'
+    })
+  })
+
+  it('resolves workspacePreferences with settings_tabs prefix', () => {
+    expect(resolvePermissionLevel({ level: 'workspacePreferences', key: 'settings_tabs.help' })).toEqual({
+      actualLevel: 'settings_tabs',
+      actualKey: 'help'
+    })
+  })
+
+  it('resolves workspacePreferences with settings_options prefix', () => {
+    expect(resolvePermissionLevel({ level: 'workspacePreferences', key: 'settings_options.calls.autoAccept' })).toEqual({
+      actualLevel: 'settings_options',
+      actualKey: 'calls.autoAccept'
+    })
+  })
+
+  it('handles capabilities key with no dots via fallback', () => {
     const result = resolvePermissionLevel({ level: 'capabilities', key: 'standalone' })
-    expect(result.actualLevel).toBe('features')
+    expect(result.actualLevel).toBe('standalone')
     expect(result.actualKey).toBe('')
+  })
+})
+
+describe('resolveLinkedKey', () => {
+  it('resolves known section prefix (features)', () => {
+    expect(resolveLinkedKey('features.search.knowledgeBase')).toEqual({
+      actualLevel: 'features',
+      actualKey: 'search.knowledgeBase'
+    })
+  })
+
+  it('resolves known section prefix (micro_frontends)', () => {
+    expect(resolveLinkedKey('micro_frontends.spaceCopilot')).toEqual({
+      actualLevel: 'micro_frontends',
+      actualKey: 'spaceCopilot'
+    })
+  })
+
+  it('resolves known section prefix (widgets)', () => {
+    expect(resolveLinkedKey('widgets.mediaBar.callControls')).toEqual({
+      actualLevel: 'widgets',
+      actualKey: 'mediaBar.callControls'
+    })
+  })
+
+  it('falls back to splitting on first dot for unknown prefixes', () => {
+    expect(resolveLinkedKey('unknown.section.key')).toEqual({
+      actualLevel: 'unknown',
+      actualKey: 'section.key'
+    })
+  })
+})
+
+describe('COMPOUND_LEVELS', () => {
+  it('defines capabilities sections', () => {
+    expect(COMPOUND_LEVELS.capabilities).toEqual(['columns', 'features', 'micro_frontends'])
+  })
+
+  it('defines workspacePreferences sections', () => {
+    expect(COMPOUND_LEVELS.workspacePreferences).toEqual(['widgets', 'settings_tabs', 'settings_options'])
   })
 })
 ===ENDFILE
 ===FILE: ./src/utils/admin/permission-level-resolver.ts
 /**
  * Permission Level Resolver - Shared utility for resolving actual permission levels
- * Eliminates duplicate logic for capability-to-level mapping
+ * Handles compound UI levels (capabilities, workspacePreferences) that merge multiple template sections
  */
 
 interface ResolvedPermissionLevel {
@@ -32866,19 +33228,30 @@ interface ResolvedPermissionLevel {
 }
 
 /**
- * Resolve the actual permission level and key from display level and key
- * Handles the 'capabilities' special case where the key prefix determines the actual level
- *
- * @param level Display level (e.g., 'capabilities', 'columns', 'features')
- * @param key Permission key (e.g., 'columns.spaceCopilot', 'features.search')
- * @returns Resolved actual level and key
+ * Compound levels map a single UI section to multiple template sections.
+ * The key prefix in the permission key determines which template section it belongs to.
+ */
+const COMPOUND_LEVELS: Record<string, string[]> = {
+  capabilities: ['columns', 'features', 'micro_frontends'],
+  workspacePreferences: ['widgets', 'settings_tabs', 'settings_options']
+}
+
+/**
+ * Resolve the actual permission level and key from display level and key.
+ * For compound levels (capabilities, workspacePreferences), the key prefix determines the actual level.
  *
  * @example
  * resolvePermissionLevel({ level: 'capabilities', key: 'columns.spaceCopilot' })
  * // => { actualLevel: 'columns', actualKey: 'spaceCopilot' }
  *
- * resolvePermissionLevel({ level: 'features', key: 'search.global' })
- * // => { actualLevel: 'features', actualKey: 'search.global' }
+ * resolvePermissionLevel({ level: 'capabilities', key: 'micro_frontends.mediaBar' })
+ * // => { actualLevel: 'micro_frontends', actualKey: 'mediaBar' }
+ *
+ * resolvePermissionLevel({ level: 'workspacePreferences', key: 'settings_tabs.help' })
+ * // => { actualLevel: 'settings_tabs', actualKey: 'help' }
+ *
+ * resolvePermissionLevel({ level: 'widgets', key: 'customer.info' })
+ * // => { actualLevel: 'widgets', actualKey: 'customer.info' }
  */
 export function resolvePermissionLevel({
   level,
@@ -32887,22 +33260,42 @@ export function resolvePermissionLevel({
   level: string
   key: string
 }): ResolvedPermissionLevel {
-  if (level !== 'capabilities') {
-    return {
-      actualLevel: level,
-      actualKey: key
+  const knownPrefixes = COMPOUND_LEVELS[level]
+  if (!knownPrefixes) {
+    return { actualLevel: level, actualKey: key }
+  }
+
+  for (const prefix of knownPrefixes) {
+    if (key.startsWith(prefix + '.')) {
+      return {
+        actualLevel: prefix,
+        actualKey: key.slice(prefix.length + 1)
+      }
     }
   }
 
+  // Fallback for unrecognized prefixes
   const [prefix, ...rest] = key.split('.')
-  const actualLevel = prefix === 'columns' ? 'columns' : 'features'
-  const actualKey = rest.join('.')
-
-  return {
-    actualLevel,
-    actualKey
-  }
+  return { actualLevel: prefix, actualKey: rest.join('.') }
 }
+
+/**
+ * Resolve a linked key string (e.g., 'micro_frontends.spaceCopilot') into its
+ * actual template section and key. Uses COMPOUND_LEVELS to match known section
+ * prefixes, falling back to splitting on the first dot.
+ */
+export function resolveLinkedKey(linkedKey: string): { actualLevel: string; actualKey: string } {
+  const allSections = Object.values(COMPOUND_LEVELS).flat()
+  for (const section of allSections) {
+    if (linkedKey.startsWith(section + '.')) {
+      return { actualLevel: section, actualKey: linkedKey.slice(section.length + 1) }
+    }
+  }
+  const [level, ...rest] = linkedKey.split('.')
+  return { actualLevel: level, actualKey: rest.join('.') }
+}
+
+export { COMPOUND_LEVELS }
 ===ENDFILE
 ===FILE: ./src/utils/api/response-handler.test.ts
 import { describe, expect, it, vi } from 'vitest'
