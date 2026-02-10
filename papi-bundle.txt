@@ -1,8 +1,29 @@
 # CCaaS Entitlement PAPI - Source Bundle
-# Generated: 2026-02-10 01:45:50
-# Total files: 279
-# Categories: 1 pom.xml, 1 CLAUDE.md, 4 docs, 3 resources, 125 YAML specs, 86 main Java, 52 test Java, 7 other
+# Generated: 2026-02-10 12:52:22
+# Total files: 278
+# Categories: 1 pom.xml, 2 CLAUDE.md, 3 docs, 1 resources, 125 YAML specs, 86 main Java, 52 test Java, 8 other
 # Note: target/generated-sources NOT included - run 'mvn generate-sources' after extraction
+===FILE: ./.claude/settings.local.json
+{
+  "permissions": {
+    "allow": [
+      "Bash(mvn clean test sonar:sonar:*)",
+      "Bash(mvn clean compile sonar:sonar:*)",
+      "Bash(mvn clean checkstyle:check:*)",
+      "Bash(python3:*)",
+      "Bash(mvn checkstyle:check:*)",
+      "Bash(mvn clean compile:*)",
+      "Bash(sqlite3:*)"
+    ]
+  },
+  "enabledMcpjsonServers": [
+    "linear",
+    "context7",
+    "chrome-mcp-stdio",
+    "playwright"
+  ]
+}
+===ENDFILE
 ===FILE: ./AGENTS.md
 # AGENTS.md - ccaas-entitlement-papi
 
@@ -96,10 +117,10 @@ curl http://localhost:8093/actuator/health
 ===FILE: ./API_REFERENCE.md
 # CCaaS Entitlement PAPI - API Reference
 
-**Base URL:** `http://localhost:8094`
+**Base URL:** `http://localhost:8094/papi/v1`
 **Port:** 8094
-**Swagger UI:** http://localhost:8094/swagger-ui/index.html
-**OpenAPI Spec:** http://localhost:8094/v3/api-docs
+**Swagger UI:** http://localhost:8094/papi/v1/swagger-ui.html
+**OpenAPI Spec:** http://localhost:8094/papi/v1/v3/api-docs
 
 ## Overview
 
@@ -107,9 +128,58 @@ The Entitlement PAPI (Public API) is the frontend-facing service for the CCaaS E
 
 This service delegates data operations to the Entitlement SAPI (port 8093) and provides caching, session management, and public API surface.
 
+## Audit Snapshot (2026-02-10)
+
+The following runtime checks were executed via `curl` against local services on February 10, 2026.
+
+### Confirmed Gaps
+
+1. `GET /papi/v1/sessions` returns `200` without token, with empty token, and with invalid token.
+2. Reference-data endpoints return `200` without token:
+   - `GET /papi/v1/regions`
+   - `GET /papi/v1/markets`
+   - `GET /papi/v1/countries`
+   - `GET /papi/v1/business-units`
+   - `GET /papi/v1/regions-markets/{regionCode}`
+   - `GET /papi/v1/regions-countries/{regionCode}`
+3. Admin/data endpoints accessible without token in some paths:
+   - `GET /papi/v1/embedded-apps` -> `200`
+   - `POST /papi/v1/embedded-apps-ad-groups/{appKey}` -> `200`
+   - `GET /papi/v1/audit-logs` -> `200`
+4. `POST /papi/v1/notices` without token reaches request validation (`400`) instead of authentication/authorization failure.
+
+### Control Cases That Behave As Expected
+
+1. `GET /papi/v1/ad-groups` without token -> `403`
+2. `GET /papi/v1/pending-changes` without/invalid token -> `401`
+3. `GET /papi/v1/pending-changes` with admin token -> `200`
+
+### Likely Root-Cause Areas To Fix
+
+1. Security chain matcher appears misaligned with servlet context path:
+   - `src/main/java/com/hsbc/ccaas/papi/config/SecurityConfig.java`
+   - current matcher: `securityMatcher("/papi/**")` while app context path is `/papi/v1`
+2. Supervisor matcher typo:
+   - `"/users//primaries/*"` has an extra slash and does not match generated route shape.
+
+### Repro Examples
+
+```bash
+# Unexpected: unauthenticated request returns 200
+curl -i http://localhost:8094/papi/v1/regions
+
+# Unexpected: invalid token still returns 200
+curl -i -H "X-HSBC-E2E-Trust-Token: INVALID_TOKEN" \
+  http://localhost:8094/papi/v1/embedded-apps
+
+# Expected control: unauthenticated request blocked
+curl -i http://localhost:8094/papi/v1/pending-changes?offset=0&limit=2
+```
+
 ## Authentication
 
-All endpoints (except `/actuator/health`) require the `X-HSBC-E2E-Trust-Token` header.
+Intended contract: all endpoints (except `/actuator/health`) require the `X-HSBC-E2E-Trust-Token` header.
+See the audit snapshot above for current runtime deviations that must be fixed.
 
 ### Header Format
 ```
@@ -124,7 +194,7 @@ X-HSBC-E2E-Trust-Token: <token-value>
 2. `IdentityContextFilter` validates token and extracts identity
 3. Token is resolved to user information (userId, displayName, AD groups)
 4. Identity context is stored in request attributes for downstream use
-5. Returns 401 if token is missing or invalid
+5. Intended behavior: return `401/403` when token is missing or invalid (currently inconsistent in runtime; see audit snapshot)
 
 ### Authorization Levels
 
@@ -1939,13 +2009,13 @@ curl -X POST http://localhost:8094/papi/v1/bulk-primaries \
 #### Health Status
 Returns the health status of the PAPI service.
 
-**Endpoint:** `GET /actuator/health`
+**Endpoint:** `GET /papi/v1/actuator/health`
 
 **Authentication:** Not required
 
 **Request Example:**
 ```bash
-curl -X GET http://localhost:8094/actuator/health
+curl -X GET http://localhost:8094/papi/v1/actuator/health
 ```
 
 **Response (200 OK):**
@@ -2340,8 +2410,8 @@ When SAPI is unreachable:
 
 ## Additional Resources
 
-- **Swagger UI:** http://localhost:8094/swagger-ui/index.html
-- **OpenAPI Spec:** http://localhost:8094/v3/api-docs
+- **Swagger UI:** http://localhost:8094/papi/v1/swagger-ui/index.html
+- **OpenAPI Spec:** http://localhost:8094/papi/v1/v3/api-docs
 - **Service Repository:** `/Users/adarshpandey/indie-repo/ccaas-entitlement-papi`
 - **Related Services:**
   - Entitlement SAPI: http://localhost:8093
@@ -3777,7 +3847,7 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
   "info": {
     "_postman_id": "ccaas-entitlement-papi-v3",
     "name": "CCaaS Entitlement PAPI",
-    "description": "Complete Postman collection for CCaaS Entitlement PAPI (port 8094). All 32 endpoints tested and verified. Organized into 8 endpoint groups: Session Layouts, AD Groups, Approval Workflow, Embedded Apps, Reference Data, Admin Notices, User Roles, Auth Error Scenarios. All endpoints use flat /papi/v1/* paths with X-HSBC-E2E-Trust-Token header authentication. Request/response bodies follow { \"data\": { ... } } envelope pattern. Paginated responses include { \"data\": { ... }, \"meta\": { \"pagination\": { ... } } }. Auth errors return 403 (not 401).",
+    "description": "Postman collection for CCaaS Entitlement PAPI (port 8094, context path /papi/v1). Updated with runtime audit results from 2026-02-10. Authentication behavior is currently inconsistent: several endpoints allow missing/invalid tokens while some endpoints still enforce 401/403. Use the 'Auth Error Scenarios' and 'Audit Regression - 2026-02-10' folders for reproducible checks.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -5605,10 +5675,10 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
     },
     {
       "name": "Auth Error Scenarios",
-      "description": "Cross-cutting authentication and authorization error tests. All auth errors return 403 (not 401). No token, invalid token, and non-admin on admin endpoint all return 403.",
+      "description": "Authentication and authorization checks updated from runtime audit on 2026-02-10. Several endpoints currently allow unauthenticated access and are marked as security gaps.",
       "item": [
         {
-          "name": "No Token - Returns 403",
+          "name": "Sessions Without Token - Observed 200 (Security Gap)",
           "request": {
             "method": "GET",
             "header": [],
@@ -5617,11 +5687,11 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
               "host": ["{{papi_base_url}}"],
               "path": ["papi", "v1", "sessions"]
             },
-            "description": "Expected: 403 - missing X-HSBC-E2E-Trust-Token header. Verified: returns 403."
+            "description": "Observed 2026-02-10: HTTP 200 without token. Intended contract is to block missing or invalid tokens."
           }
         },
         {
-          "name": "Empty Token - Returns 403",
+          "name": "Sessions With Empty Token - Observed 200 (Security Gap)",
           "request": {
             "method": "GET",
             "header": [
@@ -5635,17 +5705,17 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
               "host": ["{{papi_base_url}}"],
               "path": ["papi", "v1", "sessions"]
             },
-            "description": "Expected: 403 - empty X-HSBC-E2E-Trust-Token value."
+            "description": "Observed 2026-02-10: HTTP 200 with empty token value."
           }
         },
         {
-          "name": "Invalid Token - Returns 403",
+          "name": "Sessions With Invalid Token - Observed 200 (Security Gap)",
           "request": {
             "method": "GET",
             "header": [
               {
                 "key": "X-HSBC-E2E-Trust-Token",
-                "value": "NOT_A_VALID_TOKEN_123"
+                "value": "INVALID_TOKEN"
               }
             ],
             "url": {
@@ -5653,75 +5723,39 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
               "host": ["{{papi_base_url}}"],
               "path": ["papi", "v1", "sessions"]
             },
-            "description": "Expected: 403 - unrecognized token. Verified: returns 403."
+            "description": "Observed 2026-02-10: HTTP 200 with invalid token."
           }
         },
         {
-          "name": "Non-Admin on Admin Endpoint - Returns 403",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "X-HSBC-E2E-Trust-Token",
-                "value": "VOICE_AGENT_DEMO",
-                "description": "Agent token - not authorized for admin endpoints"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"data\": {\n    \"titleText\": \"Unauthorized\",\n    \"messageText\": \"Agent should not create notices\",\n    \"severityCode\": \"INFO\",\n    \"statusCode\": \"ACTIVE\",\n    \"broadcastToAllFlag\": true\n  }\n}"
-            },
-            "url": {
-              "raw": "{{papi_base_url}}/papi/v1/create-notices",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "create-notices"]
-            },
-            "description": "Expected: 403 - agent token on admin-only endpoint. Verified: returns 403."
-          }
-        },
-        {
-          "name": "Maker Cannot Approve Changes - Returns 403",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "X-HSBC-E2E-Trust-Token",
-                "value": "ADMIN_MAKER_DEMO",
-                "description": "Maker token - cannot approve, requires Checker/Super Admin"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"data\": {\n    \"changeIdentifier\": \"1\"\n  }\n}"
-            },
-            "url": {
-              "raw": "{{papi_base_url}}/papi/v1/change-approvals",
-              "host": ["{{papi_base_url}}"],
-              "path": ["papi", "v1", "change-approvals"]
-            },
-            "description": "Expected: 403 - Maker token attempting to approve. Requires Checker or Super Admin role."
-          }
-        },
-        {
-          "name": "No Access Token on Any Endpoint - Returns 403",
+          "name": "Pending Changes Without Token - Control (401)",
           "request": {
             "method": "GET",
-            "header": [
-              {
-                "key": "X-HSBC-E2E-Trust-Token",
-                "value": "NO_ACCESS_DEMO"
-              }
-            ],
+            "header": [],
             "url": {
-              "raw": "{{papi_base_url}}/papi/v1/ad-groups?offset=0&limit=5",
+              "raw": "{{papi_base_url}}/papi/v1/pending-changes?offset=0&limit=2",
+              "host": ["{{papi_base_url}}"],
+              "path": ["papi", "v1", "pending-changes"],
+              "query": [
+                {
+                  "key": "offset",
+                  "value": "0"
+                },
+                {
+                  "key": "limit",
+                  "value": "2"
+                }
+              ]
+            },
+            "description": "Observed 2026-02-10: HTTP 401 without token (expected control)."
+          }
+        },
+        {
+          "name": "AD Groups Without Token - Control (403)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{papi_base_url}}/papi/v1/ad-groups?offset=0&limit=2",
               "host": ["{{papi_base_url}}"],
               "path": ["papi", "v1", "ad-groups"],
               "query": [
@@ -5731,11 +5765,138 @@ This means a user can be Super Admin for EMEA groups, Checker for AMER groups, a
                 },
                 {
                   "key": "limit",
-                  "value": "5"
+                  "value": "2"
                 }
               ]
             },
-            "description": "Expected: 403 - user has no access at all."
+            "description": "Observed 2026-02-10: HTTP 403 without token (expected control)."
+          }
+        },
+        {
+          "name": "Audit Logs Without Token - Observed 200 (Security Gap)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{papi_base_url}}/papi/v1/audit-logs?offset=0&limit=2",
+              "host": ["{{papi_base_url}}"],
+              "path": ["papi", "v1", "audit-logs"],
+              "query": [
+                {
+                  "key": "offset",
+                  "value": "0"
+                },
+                {
+                  "key": "limit",
+                  "value": "2"
+                }
+              ]
+            },
+            "description": "Observed 2026-02-10: HTTP 200 without token on audit-log endpoint."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Audit Regression - 2026-02-10",
+      "description": "Focused runtime regression checks captured during entitlement PAPI audit.",
+      "item": [
+        {
+          "name": "Regions Without Token - Observed 200 (Security Gap)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{papi_base_url}}/papi/v1/regions",
+              "host": ["{{papi_base_url}}"],
+              "path": ["papi", "v1", "regions"]
+            },
+            "description": "Observed 2026-02-10: HTTP 200 without token."
+          }
+        },
+        {
+          "name": "Embedded Apps With Invalid Token - Observed 200 (Security Gap)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-HSBC-E2E-Trust-Token",
+                "value": "INVALID_TOKEN"
+              }
+            ],
+            "url": {
+              "raw": "{{papi_base_url}}/papi/v1/embedded-apps",
+              "host": ["{{papi_base_url}}"],
+              "path": ["papi", "v1", "embedded-apps"]
+            },
+            "description": "Observed 2026-02-10: HTTP 200 with invalid token."
+          }
+        },
+        {
+          "name": "App Config By AppKey Without Token - Observed 200 (Security Gap)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"data\": {\n    \"groupIdentifier\": \"CN=Voice_Agent_Basic,OU=Groups,DC=hsbc,DC=com\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{papi_base_url}}/papi/v1/embedded-apps-ad-groups/{{app_key}}",
+              "host": ["{{papi_base_url}}"],
+              "path": ["papi", "v1", "embedded-apps-ad-groups", "{{app_key}}"]
+            },
+            "description": "Observed 2026-02-10: HTTP 200 without token."
+          }
+        },
+        {
+          "name": "Notices Without Token - Observed 400 (Validation Reached)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"data\": {}\n}"
+            },
+            "url": {
+              "raw": "{{papi_base_url}}/papi/v1/notices",
+              "host": ["{{papi_base_url}}"],
+              "path": ["papi", "v1", "notices"]
+            },
+            "description": "Observed 2026-02-10: request reaches validation and returns 400 instead of auth challenge."
+          }
+        },
+        {
+          "name": "Pending Changes Without Token - Control (401)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{papi_base_url}}/papi/v1/pending-changes?offset=0&limit=2",
+              "host": ["{{papi_base_url}}"],
+              "path": ["papi", "v1", "pending-changes"],
+              "query": [
+                {
+                  "key": "offset",
+                  "value": "0"
+                },
+                {
+                  "key": "limit",
+                  "value": "2"
+                }
+              ]
+            },
+            "description": "Observed 2026-02-10: HTTP 401 without token (expected control)."
           }
         }
       ]
@@ -7270,6 +7431,11 @@ properties:
     additionalProperties: true
     minProperties: 0
     maxProperties: 1000
+  changedFields:
+    type: array
+    items:
+      type: string
+    description: List of changed field names for criticality evaluation.
   configVersionNumber:
     type: integer
     format: int64
@@ -8306,6 +8472,27 @@ properties:
   updatedGroup:
     description: The updated target AD group configuration after copy
     $ref: './AdGroupLayoutResponse.yaml'
+  workflowStatusCode:
+    type: string
+    description: Workflow outcome for this copy request
+    enum:
+      - DIRECT_APPLIED
+      - SUBMITTED_FOR_APPROVAL
+  pendingChangeIdentifier:
+    type: string
+    format: uuid
+    description: Pending change identifier when request is submitted for approval
+  criticalIndicator:
+    type: boolean
+    description: Whether approval rule evaluation marked this copy as critical
+  levelTwoApprovalRequiredIndicator:
+    type: boolean
+    description: Whether the copy requires level-two approval after level-one review
+  unavailableAppFunctionValues:
+    type: array
+    description: App-function values not available in target market (APP_KEY:FUNCTION_KEY)
+    items:
+      type: string
 ===ENDFILE
 ===FILE: ./src/main/api/components/schemas/layout/AdGroupLayoutResponse.yaml
 title: AdGroupLayoutResponse
@@ -8750,6 +8937,10 @@ properties:
     description: List of app-function changes.
     items:
       $ref: './AppFunctionChange.yaml'
+  activeIndicator:
+    type: boolean
+    description: Whether the AD group configuration is active.
+    nullable: true
 additionalProperties: false
 nullable: true
 ===ENDFILE
@@ -8769,9 +8960,9 @@ properties:
     description: Whether to copy business unit, market, region, and country assignments from the source group
     default: true
     example: true
-  copyMetadataFlag:
+  copyApplicationsFlag:
     type: boolean
-    description: Whether to copy metadata fields such as logical name and descriptive attributes from the source group
+    description: Whether to copy embedded app/function assignments from the source group
     default: true
     example: true
   overwriteExistingFlag:
@@ -8779,6 +8970,22 @@ properties:
     description: Whether to overwrite existing configuration on the target group or skip conflicting values
     default: false
     example: false
+  copyWorkflowModeCode:
+    type: string
+    description: Whether copy should be submitted for approval or applied directly
+    enum:
+      - SUBMIT_FOR_APPROVAL
+      - DIRECT_SAVE
+    default: SUBMIT_FOR_APPROVAL
+    example: SUBMIT_FOR_APPROVAL
+  functionMismatchPolicyCode:
+    type: string
+    description: How to handle app-function values unavailable in target market
+    enum:
+      - FAIL_ON_MISMATCH
+      - SKIP_UNAVAILABLE
+    default: FAIL_ON_MISMATCH
+    example: FAIL_ON_MISMATCH
 ===ENDFILE
 ===FILE: ./src/main/api/components/schemas/layout/Notice.yaml
 title: Notice
@@ -11175,8 +11382,14 @@ public class SapiAdGroupClient {
                 AdGroupPayloads.SapiCopyOptions sapiCopyOptions = new AdGroupPayloads.SapiCopyOptions(
                     copyOptions == null || copyOptions.getCopyRoleAndPermissionsFlag(),
                     copyOptions == null || copyOptions.getCopyBusinessInfoFlag(),
-                    true,
-                    copyOptions != null && copyOptions.getOverwriteExistingFlag()
+                    copyOptions == null || copyOptions.getCopyApplicationsFlag(),
+                    copyOptions != null && copyOptions.getOverwriteExistingFlag(),
+                    copyOptions == null || copyOptions.getCopyWorkflowModeCode() == null
+                        ? "SUBMIT_FOR_APPROVAL"
+                        : copyOptions.getCopyWorkflowModeCode().toString(),
+                    copyOptions == null || copyOptions.getFunctionMismatchPolicyCode() == null
+                        ? "FAIL_ON_MISMATCH"
+                        : copyOptions.getFunctionMismatchPolicyCode().toString()
                 );
 
                 AdGroupPayloads.SapiCopyRequest request = new AdGroupPayloads.SapiCopyRequest(
@@ -11542,14 +11755,16 @@ public class SapiApprovalClient {
      * The configVersionNumber enables optimistic locking to prevent concurrent edits.
      */
     public SapiPendingChange submitChange(String targetGroupIdentifier, String changeDescription,
-            Map<String, Object> proposedConfig, String submittedBy, Long configVersionNumber) {
+            Map<String, Object> proposedConfig, String submittedBy, List<String> changedFields,
+            Long configVersionNumber) {
         // Validate at PAPI boundary before making the network call to SAPI
         ValidationUtil.requireNotBlank(targetGroupIdentifier, "Target group identifier");
 
         logger.debug("Submitting change for approval: target={}", targetGroupIdentifier);
 
         ApprovalPayloads.SubmitChangeData data = new ApprovalPayloads.SubmitChangeData(
-                targetGroupIdentifier, submittedBy, proposedConfig, changeDescription, configVersionNumber);
+                targetGroupIdentifier, submittedBy, proposedConfig, changeDescription, changedFields,
+                configVersionNumber);
 
         // Delegate to SAPI; exception handler maps HTTP errors to PAPI error responses
         return SapiExceptionHandler.executeWithExceptionHandling(
@@ -12974,6 +13189,7 @@ public class RequestContextValueExtractor implements ValueExtractor<RequestConte
 ===FILE: ./src/main/java/com/hsbc/ccaas/papi/config/RestClientConfig.java
 package com.hsbc.ccaas.papi.config;
 
+import com.hsbc.ccaas.identity.service.helper.IdentityContextAccessor;
 import java.time.Duration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13000,6 +13216,7 @@ public class RestClientConfig {
 
     private static final Logger logger = LoggerFactory.getLogger(RestClientConfig.class);
     private static final String CORRELATION_ID_HEADER = "X-Correlation-ID";
+    private static final String X_HSBC_E2E_TRUST_TOKEN_KEY = "X-HSBC-E2E-Trust-Token";
 
     @Bean
     public RestClientCustomizer correlationIdRestClientCustomizer() {
@@ -13018,6 +13235,7 @@ public class RestClientConfig {
     @Bean
     public RestClient sapiRestClient(
             RestClient.Builder restClientBuilder,
+            IdentityContextAccessor identityContextAccessor,
             @Value("${ccaas.entitlement.sapi.base-url:http://localhost:8093}") String sapiBaseUrl,
             @Value("${ccaas.entitlement.sapi.connect-timeout:5s}") Duration connectTimeout,
             @Value("${ccaas.entitlement.sapi.read-timeout:10s}") Duration readTimeout) {
@@ -13026,15 +13244,18 @@ public class RestClientConfig {
                 sapiBaseUrl, connectTimeout, readTimeout);
 
         // Use JDK HTTP Client with virtual thread-friendly configuration
-        java.net.http.HttpClient httpClient = java.net.http.HttpClient.newBuilder()
-                .connectTimeout(connectTimeout)
-                .build();
-        JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
+        JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory();
         requestFactory.setReadTimeout(readTimeout);
 
         return restClientBuilder
                 .baseUrl(sapiBaseUrl)
                 .requestFactory(requestFactory)
+                .defaultRequest(req -> {
+                    String token = identityContextAccessor.token();
+                    if (StringUtils.hasText(token)) {
+                        req.headers(h -> h.set(X_HSBC_E2E_TRUST_TOKEN_KEY, token));
+                    }
+                })
                 .build();
     }
 
@@ -13701,6 +13922,7 @@ public class ApprovalWorkflowController implements PendingChangesApi, ChangeAppr
                 submitChangeRequest.getChangeDescription(),
                 submitChangeRequest.getProposedConfig(),
                 userId,
+                submitChangeRequest.getChangedFields(),
                 submitChangeRequest.getConfigVersionNumber());
 
         return responseAssembler.buildSubmitResponse(sapiResponse);
@@ -15492,9 +15714,11 @@ public final class AdGroupPayloads {
 
     public record SapiCopyOptions(
         Boolean copyRoleAndPermissionsFlag,
-        Boolean copyLocationMetaFlag,
-        Boolean copyEmbeddedFlag,
-        Boolean overwriteExistingFlag
+        Boolean copyBusinessInfoFlag,
+        Boolean copyApplicationsFlag,
+        Boolean overwriteExistingFlag,
+        String copyWorkflowModeCode,
+        String functionMismatchPolicyCode
     ) {}
 
     // SAPI request records (typed replacements for Map<String, Object>)
@@ -15566,6 +15790,7 @@ public final class ApprovalPayloads {
             String submittedByText,
             Map<String, Object> proposedConfig,
             String changeDescription,
+            List<String> changedFields,
             Long configVersionNumber) {}
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -16879,7 +17104,7 @@ import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.util.List;
+import java.util.*;
 
 @Service
 public class DefaultAdGroupLayoutAssignmentService implements AdGroupLayoutAssignmentService {
@@ -16931,7 +17156,21 @@ public class DefaultAdGroupLayoutAssignmentService implements AdGroupLayoutAssig
 
         if (result != null) {
             List<String> userAdGroups = identity.adGroups();
-            result.setUserAccessCode(userAccessEnricher.computeAccessLevel(userAdGroups, result));
+            // Resolve access level via parent admin group's access fields
+            String adminId = result.getAdminGroupIdentifier();
+            if (adminId != null && !adminId.isBlank() && !adminId.equals(groupIdentifier)) {
+                AdGroupLayoutResponse adminGroup = SapiExceptionHandler.executeWithNotFoundDefault(
+                    () -> sapiAdGroupClient.getAdGroupByIdentifier(adminId),
+                    () -> null
+                );
+                if (adminGroup != null) {
+                    result.setUserAccessCode(userAccessEnricher.computeAccessLevel(userAdGroups, adminGroup));
+                } else {
+                    result.setUserAccessCode(userAccessEnricher.computeAccessLevel(userAdGroups, result));
+                }
+            } else {
+                result.setUserAccessCode(userAccessEnricher.computeAccessLevel(userAdGroups, result));
+            }
         }
 
         return result;
@@ -16995,11 +17234,39 @@ public class DefaultAdGroupLayoutAssignmentService implements AdGroupLayoutAssig
             return PaginatedResult.empty(criteria.getOffset(), criteria.getLimit());
         }
 
-        // Compute per-group access level
+        // Compute per-group access level using parent admin group's access fields
         List<String> userAdGroups = identity.adGroups();
         if (response.items() != null) {
+            // Collect unique admin group identifiers to look up their access fields
+            Set<String> adminGroupIds = new HashSet<>();
             for (AdGroupLayoutResponse item : response.items()) {
-                item.setUserAccessCode(userAccessEnricher.computeAccessLevel(userAdGroups, item));
+                String adminId = item.getAdminGroupIdentifier();
+                if (adminId != null && !adminId.isBlank()) {
+                    adminGroupIds.add(adminId);
+                }
+            }
+
+            // Fetch admin groups to get their maker/checker/super_admin fields
+            Map<String, AdGroupLayoutResponse> adminGroupMap = new HashMap<>();
+            for (String adminId : adminGroupIds) {
+                AdGroupLayoutResponse adminGroup = SapiExceptionHandler.executeWithNotFoundDefault(
+                    () -> sapiAdGroupClient.getAdGroupByIdentifier(adminId),
+                    () -> null
+                );
+                if (adminGroup != null) {
+                    adminGroupMap.put(adminId, adminGroup);
+                }
+            }
+
+            // Resolve access level for each group using its parent admin group
+            for (AdGroupLayoutResponse item : response.items()) {
+                String adminId = item.getAdminGroupIdentifier();
+                AdGroupLayoutResponse adminGroup = adminId != null ? adminGroupMap.get(adminId) : null;
+                if (adminGroup != null) {
+                    item.setUserAccessCode(userAccessEnricher.computeAccessLevel(userAdGroups, adminGroup));
+                } else {
+                    item.setUserAccessCode(userAccessEnricher.computeAccessLevel(userAdGroups, item));
+                }
             }
         }
 
@@ -17790,285 +18057,6 @@ logging:
     org.springframework.security: INFO
     org.apache.tomcat: INFO
     io.github.resilience4j: DEBUG
-===ENDFILE
-===FILE: ./src/main/resources/openapi-templates/api.mustache
-/**
- * NOTE: This class is auto generated by OpenAPI Generator (https://openapi-generator.tech) ({{{generatorVersion}}}).
- * https://openapi-generator.tech
- * Do not edit the class manually.
- */
-package {{package}};
-
-{{#imports}}import {{import}};
-{{/imports}}
-{{#swagger2AnnotationLibrary}}
-import io.swagger.v3.oas.annotations.ExternalDocumentation;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.Parameters;
-import io.swagger.v3.oas.annotations.media.ArraySchema;
-import io.swagger.v3.oas.annotations.media.Content;
-import io.swagger.v3.oas.annotations.media.Schema;
-import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.security.SecurityRequirement;
-import io.swagger.v3.oas.annotations.tags.Tag;
-import io.swagger.v3.oas.annotations.enums.ParameterIn;
-{{/swagger2AnnotationLibrary}}
-{{#swagger1AnnotationLibrary}}
-import io.swagger.annotations.*;
-{{/swagger1AnnotationLibrary}}
-{{#jdk8-no-delegate}}
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
-{{/jdk8-no-delegate}}
-{{^useResponseEntity}}
-import org.springframework.http.HttpStatus;
-{{/useResponseEntity}}
-{{#useResponseEntity}}
-import org.springframework.http.ResponseEntity;
-{{/useResponseEntity}}
-{{#useBeanValidation}}
-import org.springframework.validation.annotation.Validated;
-{{/useBeanValidation}}
-import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;
-import com.hsbc.wpb.ef.ports.RequestContext;
-
-{{#useBeanValidation}}
-import {{javaxPackage}}.validation.Valid;
-import {{javaxPackage}}.validation.constraints.*;
-{{/useBeanValidation}}
-import java.util.List;
-import java.util.Map;
-{{#jdk8-no-delegate}}
-import java.util.Optional;
-{{/jdk8-no-delegate}}
-{{^jdk8-no-delegate}}
-{{#useOptional}}
-import java.util.Optional;
-{{/useOptional}}
-{{/jdk8-no-delegate}}
-import {{javaxPackage}}.annotation.Generated;
-
-{{>generatedAnnotation}}
-{{#useBeanValidation}}
-@Validated
-{{/useBeanValidation}}
-{{#swagger2AnnotationLibrary}}
-@Tag(name = "{{{tagName}}}", description = {{#tagDescription}}"{{{.}}}"{{/tagDescription}}{{^tagDescription}}"the {{{tagName}}} API"{{/tagDescription}})
-{{/swagger2AnnotationLibrary}}
-{{#swagger1AnnotationLibrary}}
-@Api(value = "{{{tagName}}}", description = {{#tagDescription}}"{{{.}}}"{{/tagDescription}}{{^tagDescription}}"the {{{tagName}}} API"{{/tagDescription}})
-{{/swagger1AnnotationLibrary}}
-{{#operations}}
-public interface {{classname}} {
-{{#operation}}
-
-    /**
-     * {{httpMethod}} {{{path}}}{{#summary}} : {{.}}{{/summary}}
-    {{#notes}}
-     * {{.}}
-    {{/notes}}
-     *
-    {{#allParams}}
-     * @param {{paramName}} {{description}}{{#required}} (required){{/required}}{{^required}} (optional{{#defaultValue}}, default to {{.}}{{/defaultValue}}){{/required}}
-    {{/allParams}}
-     * @return {{#responses}}{{message}} (status code {{code}}){{^-last}}
-     *         or {{/-last}}{{/responses}}
-    {{#isDeprecated}}
-     * @deprecated
-    {{/isDeprecated}}
-    {{#externalDocs}}
-     * {{description}}
-     * @see <a href="{{url}}">{{summary}} Documentation</a>
-    {{/externalDocs}}
-     */
-    {{#isDeprecated}}
-    @Deprecated
-    {{/isDeprecated}}
-    {{#swagger2AnnotationLibrary}}
-    @Operation(
-        operationId = "{{{operationId}}}",
-        {{#summary}}
-        summary = "{{{.}}}",
-        {{/summary}}
-        {{#notes}}
-        description = "{{{.}}}",
-        {{/notes}}
-        {{#isDeprecated}}
-        deprecated = true,
-        {{/isDeprecated}}
-        {{#vendorExtensions.x-tags.size}}
-        tags = { {{#vendorExtensions.x-tags}}"{{tag}}"{{^-last}}, {{/-last}}{{/vendorExtensions.x-tags}} },
-        {{/vendorExtensions.x-tags.size}}
-        responses = {
-            {{#responses}}
-            @ApiResponse(responseCode = {{#isDefault}}"default"{{/isDefault}}{{^isDefault}}"{{{code}}}"{{/isDefault}}, description = "{{{message}}}"{{#baseType}}, content = {
-                {{#produces}}
-                @Content(mediaType = "{{{mediaType}}}", {{#isArray}}array = @ArraySchema({{/isArray}}schema = @Schema(implementation = {{{baseType}}}.class){{#isArray}}){{/isArray}}){{^-last}},{{/-last}}
-                {{/produces}}
-            }{{/baseType}}){{^-last}},{{/-last}}
-            {{/responses}}
-        }{{#hasAuthMethods}},
-        security = {
-            {{#authMethods}}
-            @SecurityRequirement(name = "{{name}}"{{#scopes.0}}, scopes={ {{#scopes}}"{{scope}}"{{^-last}}, {{/-last}}{{/scopes}} }{{/scopes.0}}){{^-last}},{{/-last}}
-            {{/authMethods}}
-        }{{/hasAuthMethods}}
-    )
-    {{/swagger2AnnotationLibrary}}
-    {{#implicitHeadersParams.0}}
-    {{#swagger2AnnotationLibrary}}
-    @Parameters({
-        {{#implicitHeadersParams}}
-        {{>paramDoc}}{{^-last}},{{/-last}}
-        {{/implicitHeadersParams}}
-    })
-    {{/swagger2AnnotationLibrary}}
-    {{/implicitHeadersParams.0}}
-    @RequestMapping(
-        method = RequestMethod.{{httpMethod}},
-        value = "{{{path}}}"{{#singleContentTypes}}{{#hasProduces}},
-        produces = { {{#vendorExtensions.x-accepts}}"{{{.}}}"{{^-last}}, {{/-last}}{{/vendorExtensions.x-accepts}} }{{/hasProduces}}{{#hasConsumes}},
-        consumes = "{{{vendorExtensions.x-content-type}}}"{{/hasConsumes}}{{/singleContentTypes}}{{^singleContentTypes}}{{#hasProduces}},
-        produces = { {{#produces}}"{{{mediaType}}}"{{^-last}}, {{/-last}}{{/produces}} }{{/hasProduces}}{{#hasConsumes}},
-        consumes = { {{#consumes}}"{{{mediaType}}}"{{^-last}}, {{/-last}}{{/consumes}} }{{/hasConsumes}}{{/singleContentTypes}}
-    )
-    {{#vendorExtensions.x-operation-extra-annotation}}
-    {{{.}}}
-    {{/vendorExtensions.x-operation-extra-annotation}}
-    default {{>responseType}} {{operationId}}(
-        {{#bodyParam}}RequestContext<{{{dataType}}}> requestContext{{/bodyParam}}{{^bodyParam}}RequestContext<Void> requestContext{{/bodyParam}}
-    ) throws Exception {
-        return new ResponseEntity<>(HttpStatus.NOT_IMPLEMENTED);
-    }
-
-{{/operation}}
-}
-{{/operations}}
-===ENDFILE
-===FILE: ./src/main/resources/static/api-docs.html
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Entitlement PAPI - API Documentation</title>
-  <style>
-    body {
-      margin: 0;
-      padding: 0;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    }
-
-    /* Hide "Powered by Scalar" footer, "Open API Client", "Share", and "Generate SDKs" */
-    footer[class*="scalar"],
-    footer[class*="Footer"],
-    [class*="PoweredBy"],
-    [class*="powered-by"],
-    a[href*="scalar.com"],
-    button[aria-label*="API Client"],
-    button[aria-label*="Open API Client"],
-    [aria-label*="Share"],
-    [aria-label*="Generate SDKs"],
-    [data-testid*="api-client"],
-    [data-testid*="powered-by"],
-    [data-testid*="share"],
-    [data-testid*="generate"],
-    [class*="HeaderActions"],
-    [class*="ToolbarActions"],
-    button[class*="Share"],
-    button[class*="GenerateSDK"] {
-      display: none !important;
-      visibility: hidden !important;
-      opacity: 0 !important;
-      height: 0 !important;
-      width: 0 !important;
-      pointer-events: none !important;
-    }
-
-    /* Additional catch-all for top-right action buttons */
-    header > div > div:last-child > button,
-    [class*="Header"] > [class*="Actions"] {
-      display: none !important;
-    }
-  </style>
-</head>
-<body>
-  <!--
-    Scalar API Reference with custom styling to hide branding.
-
-    Customizations applied:
-    - CSS hiding for Scalar footer, Share/Generate SDK buttons (lines 14-44)
-    - JavaScript to remove branding elements after load (lines 72-116)
-    - MutationObserver to handle dynamic re-renders
-
-    Scalar features available:
-    - Dark mode by default
-    - 3-column layout (sidebar, content, code examples)
-    - Interactive API testing
-    - Auto-generated code in multiple languages
-    - Command palette (Press ⌘K)
-  -->
-  <script
-    id="api-reference"
-    data-url="/v3/api-docs"
-    data-configuration='{
-      "theme": "purple",
-      "darkMode": true,
-      "layout": "modern"
-    }'
-  ></script>
-
-  <script src="/scalar-api-reference.min.js"></script>
-
-  <script>
-    // Wait for Scalar to fully render, then hide unwanted elements
-    function hideScalarBranding() {
-      // Hide buttons containing specific text
-      const buttonsToHide = ['Share', 'Generate SDKs', 'Open API Client'];
-      const buttons = document.querySelectorAll('button');
-
-      buttons.forEach(button => {
-        const buttonText = button.textContent || button.innerText;
-        if (buttonsToHide.some(text => buttonText.includes(text))) {
-          button.style.display = 'none';
-          button.style.visibility = 'hidden';
-        }
-      });
-
-      // Hide links to scalar.com
-      const links = document.querySelectorAll('a[href*="scalar.com"]');
-      links.forEach(link => {
-        link.style.display = 'none';
-        link.style.visibility = 'hidden';
-      });
-
-      // Hide footer elements
-      const footers = document.querySelectorAll('footer, [class*="Footer"], [class*="powered"]');
-      footers.forEach(footer => {
-        if (footer.textContent.toLowerCase().includes('scalar') ||
-            footer.textContent.toLowerCase().includes('powered by')) {
-          footer.style.display = 'none';
-        }
-      });
-    }
-
-    // Run after Scalar loads
-    setTimeout(hideScalarBranding, 1000);
-
-    // Also run on any DOM changes (in case Scalar re-renders)
-    const observer = new MutationObserver(() => {
-      hideScalarBranding();
-    });
-
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true
-    });
-  </script>
-</body>
-</html>
 ===ENDFILE
 ===FILE: ./src/test/java/com/hsbc/ccaas/papi/application/DefaultAdGroupManagementFacadeTest.java
 package com.hsbc.ccaas.papi.application;
@@ -19403,7 +19391,7 @@ class SapiApprovalClientTest {
                     }
                     """));
 
-            SapiPendingChange response = client.submitChange("CN=Test", "LAYOUT", null, "user1", null);
+            SapiPendingChange response = client.submitChange("CN=Test", "LAYOUT", null, "user1", null, null);
 
             assertThat(response).isNotNull();
             assertThat(response.changeIdentifier()).isEqualTo("pc-001");
@@ -19419,7 +19407,7 @@ class SapiApprovalClientTest {
         @Test
         @DisplayName("should throw when targetGroupIdentifier is null")
         void shouldThrowWhenTargetGroupIdentifierNull() {
-            assertThatThrownBy(() -> client.submitChange(null, "LAYOUT", null, "user1", null))
+            assertThatThrownBy(() -> client.submitChange(null, "LAYOUT", null, "user1", null, null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("cannot be null or blank");
         }
@@ -19439,7 +19427,7 @@ class SapiApprovalClientTest {
                     }
                     """));
 
-            SapiPendingChange response = client.submitChange("CN=Test", "LAYOUT", null, "user1", 42L);
+            SapiPendingChange response = client.submitChange("CN=Test", "LAYOUT", null, "user1", null, 42L);
 
             assertThat(response).isNotNull();
 
@@ -19463,7 +19451,7 @@ class SapiApprovalClientTest {
                     }
                     """));
 
-            SapiPendingChange response = client.submitChange("CN=Test", "LAYOUT", null, "user1", null);
+            SapiPendingChange response = client.submitChange("CN=Test", "LAYOUT", null, "user1", null, null);
 
             assertThat(response).isNotNull();
 
@@ -19479,7 +19467,7 @@ class SapiApprovalClientTest {
                 .setHeader("Content-Type", "application/json")
                 .setBody("{\"data\": null}"));
 
-            SapiPendingChange response = client.submitChange("CN=Test", "LAYOUT", null, "user1", null);
+            SapiPendingChange response = client.submitChange("CN=Test", "LAYOUT", null, "user1", null, null);
 
             assertThat(response).isNull();
         }
@@ -19975,7 +19963,7 @@ class SapiApprovalClientTest {
                 .setHeader("Content-Type", "application/json")
                 .setBody("{\"error\": \"Duplicate pending change\"}"));
 
-            assertThatThrownBy(() -> client.submitChange("CN=Test", "LAYOUT", null, "user1", null))
+            assertThatThrownBy(() -> client.submitChange("CN=Test", "LAYOUT", null, "user1", null, null))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(ex -> {
                     ResponseStatusException rse = (ResponseStatusException) ex;
@@ -22246,6 +22234,7 @@ class RequestContextValueExtractorTest {
 ===FILE: ./src/test/java/com/hsbc/ccaas/papi/config/RestClientConfigTest.java
 package com.hsbc.ccaas.papi.config;
 
+import com.hsbc.ccaas.identity.service.helper.IdentityContextAccessor;
 import java.io.IOException;
 import java.time.Duration;
 import okhttp3.mockwebserver.MockResponse;
@@ -22258,6 +22247,8 @@ import org.slf4j.MDC;
 import org.springframework.web.client.RestClient;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class RestClientConfigTest {
 
@@ -22269,6 +22260,7 @@ class RestClientConfigTest {
     private MockWebServer mockWebServer;
     private RestClient.Builder builder;
     private RestClient restClient;
+    private IdentityContextAccessor identityContextAccessor;
 
     @BeforeEach
     void setUp() throws IOException {
@@ -22277,9 +22269,12 @@ class RestClientConfigTest {
 
         builder = RestClient.builder();
         config.correlationIdRestClientCustomizer().customize(builder);
+        identityContextAccessor = mock(IdentityContextAccessor.class);
+        when(identityContextAccessor.token()).thenReturn("token-123");
 
         restClient = config.sapiRestClient(
             builder,
+            identityContextAccessor,
             mockWebServer.url("/").toString(),
             CONNECT_TIMEOUT,
             READ_TIMEOUT
@@ -23141,7 +23136,7 @@ class ApprovalWorkflowControllerTest {
             SapiPendingChange sapiResponse = buildSapiPendingChange(
                 CHANGE_ID, GROUP_ID, "PENDING_LEVEL_ONE", false);
 
-            when(sapiApprovalClient.submitChange(anyString(), anyString(), any(), anyString(), any()))
+            when(sapiApprovalClient.submitChange(anyString(), anyString(), any(), anyString(), any(), any()))
                 .thenReturn(sapiResponse);
             when(approvalResponseMapper.mapToPendingChangeResponse(any()))
                 .thenReturn(new PendingChangeResponse().changeIdentifier(CHANGE_ID).statusCode("PENDING_LEVEL_ONE"));
@@ -23163,7 +23158,7 @@ class ApprovalWorkflowControllerTest {
                 .contains("/papi/v1/pending-changes/" + CHANGE_ID);
 
             verify(sapiApprovalClient).submitChange(
-                eq(GROUP_ID), eq("Test change description"), any(), eq(USER_ID), eq(42L));
+                eq(GROUP_ID), eq("Test change description"), any(), eq(USER_ID), any(), eq(42L));
         }
 
         @Test
@@ -23174,7 +23169,7 @@ class ApprovalWorkflowControllerTest {
             SapiPendingChange sapiResponse = buildSapiPendingChange(
                 CHANGE_ID, GROUP_ID, "PENDING_LEVEL_ONE", true);
 
-            when(sapiApprovalClient.submitChange(anyString(), anyString(), any(), anyString(), any()))
+            when(sapiApprovalClient.submitChange(anyString(), anyString(), any(), anyString(), any(), any()))
                 .thenReturn(sapiResponse);
             when(approvalResponseMapper.mapToPendingChangeResponse(any()))
                 .thenReturn(new PendingChangeResponse().changeIdentifier(CHANGE_ID).statusCode("PENDING_LEVEL_ONE"));
@@ -23200,7 +23195,7 @@ class ApprovalWorkflowControllerTest {
 
             SapiPendingChange sapiResponse = buildSapiPendingChange(
                 CHANGE_ID, GROUP_ID, "PENDING_LEVEL_ONE", false);
-            when(sapiApprovalClient.submitChange(anyString(), anyString(), any(), anyString(), any()))
+            when(sapiApprovalClient.submitChange(anyString(), anyString(), any(), anyString(), any(), any()))
                 .thenReturn(sapiResponse);
             when(approvalResponseMapper.mapToPendingChangeResponse(any()))
                 .thenReturn(new PendingChangeResponse().changeIdentifier(CHANGE_ID).statusCode("PENDING_LEVEL_ONE"));
@@ -23215,7 +23210,7 @@ class ApprovalWorkflowControllerTest {
             controller.submitChange(requestContext);
 
             verify(sapiApprovalClient).submitChange(
-                eq(GROUP_ID), eq("Test change description"), any(), eq(USER_ID), eq(42L));
+                eq(GROUP_ID), eq("Test change description"), any(), eq(USER_ID), any(), eq(42L));
         }
     }
 
