@@ -1,0 +1,2630 @@
+# CCaaS Script - Database Setup Bundle
+# Generated: 2026-02-10 13:06:09
+# Total files: 19
+# Categories: 3 shell scripts, 3 schema SQL, 11 seed SQL, 1 config, 1 docs
+===FILE: ./README.md
+# CCaaS Platform - Database Scripts
+
+Database setup scripts for the CCaaS (Contact Center as a Service) platform. Creates all tables, indexes, triggers, and loads demo seed data for PostgreSQL.
+
+## Prerequisites
+
+- PostgreSQL 15+ (tested with 15-alpine)
+- `psql` client installed
+- Network access to the target PostgreSQL instance
+
+## Quick Start (Local Docker)
+
+```bash
+# 1. Start PostgreSQL
+docker compose up -d postgres
+
+# 2. Wait for it to be ready (5-10 seconds)
+docker compose exec postgres pg_isready -U hsbc_user -d hsbc_ccaas
+
+# 3. Create schema + seed data
+chmod +x *.sh
+./setup-database.sh
+
+# 4. Validate
+./validate-database.sh
+```
+
+## AWS / Remote Deployment
+
+```bash
+# 1. Create database and user (requires admin/superuser access)
+./create-database.sh \
+  --host your-rds-endpoint.amazonaws.com \
+  --admin-user master_user \
+  --admin-pass master_password
+
+# 2. Create schema and load seed data
+./setup-database.sh \
+  --host your-rds-endpoint.amazonaws.com \
+  --user hsbc_user \
+  --pass hsbc_secure_pass
+
+# 3. Validate
+./validate-database.sh \
+  --host your-rds-endpoint.amazonaws.com
+```
+
+## Scripts
+
+| Script | Purpose |
+|--------|---------|
+| `create-database.sh` | Creates the database, user, and grants permissions. Run once. |
+| `setup-database.sh` | Creates all tables and loads seed data. Idempotent (safe to re-run). |
+| `validate-database.sh` | Validates all tables, columns, triggers, and seed data counts. |
+
+## Options
+
+All scripts accept:
+- `--host HOST` - PostgreSQL host (default: `localhost`)
+- `--port PORT` - PostgreSQL port (default: `5432`)
+- `--db NAME` - Database name (default: `hsbc_ccaas`)
+- `--user USER` - Database user (default: `hsbc_user`)
+- `--pass PASSWORD` - Database password (default: `hsbc_secure_pass`)
+
+`setup-database.sh` also accepts:
+- `--skip-seed` - Create schema only (no seed data)
+- `--skip-demo` - Skip demo customer data (keep production reference data)
+
+## Database Schema
+
+### Production Tables (22 tables)
+
+**Reference Data:**
+- `ref_regions` - 3 regions (EMEA, AMER, APAC)
+- `ref_markets` - 16 markets
+- `ref_countries` - 37 countries
+- `ref_business_units` - 3 business units (WPB, CMB, GBM)
+
+**Entitlements:**
+- `role_layout_templates` - 4 role templates (admin, voice_agent, chat_agent, supervisor)
+- `ad_group_layout_assignments` - 30 AD group configurations
+- `user_layout_configurations` - Cached computed layouts
+- `user_role_assignments` - User-to-role mappings
+
+**Embedded Apps:**
+- `embedded_apps` - 10 embedded applications
+- `embedded_app_routes` - App routing
+- `embedded_app_ad_group_functions` - Per-group function toggles
+- `intent_app_mappings` - 94 AI intent-to-app mappings
+
+**Approval Workflow:**
+- `approval_rules` - 16 criticality rules
+- `pending_changes` - Maker/checker pending changes
+- `change_audit_log` - Full audit trail
+
+**Admin Notices:**
+- `admin_notices` - System notices
+- `admin_notice_ad_groups` - Notice targeting by AD group
+- `admin_notice_roles` - Notice targeting by role
+- `admin_notice_user_states` - Acknowledgement tracking
+
+### Demo Tables (for local development)
+- `customers` - 8 demo customers
+- `customer_interactions` - 30 interaction records
+- `agent_metrics` - Agent performance metrics
+- `documents` - Knowledge base articles
+
+## Connection Details
+
+| Setting | Default |
+|---------|---------|
+| Host | `localhost` |
+| Port | `5432` |
+| Database | `hsbc_ccaas` |
+| User | `hsbc_user` |
+| Password | `hsbc_secure_pass` |
+
+## File Structure
+
+```
+ccaas-script/
+  create-database.sh          # Step 1: Create DB + user
+  setup-database.sh           # Step 2: Schema + seed data
+  validate-database.sh        # Step 3: Validate everything
+  docker-compose.yml          # Local PostgreSQL + Kafka + pgAdmin
+  sql/
+    schema/
+      01-create-tables.sql           # Core tables + indexes + triggers
+      02-create-demo-tables.sql      # Demo-only tables (customers, etc.)
+      03-create-approval-workflow-tables.sql  # Approval workflow tables
+    seed/
+      seed-01-ref-regions.sql        # 3 regions
+      seed-01b-ref-markets.sql       # 16 markets
+      seed-02-ref-countries.sql      # 37 countries
+      seed-03-ref-business-units.sql # 3 business units
+      seed-04-role-layout-templates.sql     # 4 role templates
+      seed-05-ad-group-layout-assignments.sql  # 30 AD groups
+      seed-06-customers.sql          # 8 demo customers
+      seed-07-embedded-apps.sql      # 10 embedded apps
+      seed-08-intent-app-mappings.sql # 94 intent mappings
+      seed-10-customer-interactions.sql # 30 interactions
+      seed-11-approval-rules.sql     # 16 approval rules
+```
+===ENDFILE
+===FILE: ./create-database.sh
+#!/bin/bash
+# =====================================================================
+# CCaaS Platform - Create Database from Scratch
+# Version: 1.0
+# =====================================================================
+# This script creates the PostgreSQL database, user, and grants
+# permissions. Run this BEFORE setup-database.sh if the database
+# doesn't exist yet.
+#
+# Requires: PostgreSQL superuser access (postgres user)
+#
+# Usage:
+#   ./create-database.sh                           # Local Docker
+#   ./create-database.sh --host rds-endpoint.aws   # AWS RDS
+# =====================================================================
+
+set -euo pipefail
+
+DB_HOST="${PGHOST:-localhost}"
+DB_PORT="${PGPORT:-5432}"
+DB_NAME="hsbc_ccaas"
+DB_USER="hsbc_user"
+DB_PASS="hsbc_secure_pass"
+ADMIN_USER="${PG_ADMIN_USER:-postgres}"
+ADMIN_PASS="${PG_ADMIN_PASSWORD:-}"
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --host) DB_HOST="$2"; shift 2 ;;
+        --port) DB_PORT="$2"; shift 2 ;;
+        --db) DB_NAME="$2"; shift 2 ;;
+        --user) DB_USER="$2"; shift 2 ;;
+        --pass) DB_PASS="$2"; shift 2 ;;
+        --admin-user) ADMIN_USER="$2"; shift 2 ;;
+        --admin-pass) ADMIN_PASS="$2"; shift 2 ;;
+        --help)
+            echo "Usage: $0 [OPTIONS]"
+            echo ""
+            echo "Options:"
+            echo "  --host HOST         PostgreSQL host (default: localhost)"
+            echo "  --port PORT         PostgreSQL port (default: 5432)"
+            echo "  --db NAME           Database name (default: hsbc_ccaas)"
+            echo "  --user USER         App user to create (default: hsbc_user)"
+            echo "  --pass PASSWORD     App user password (default: hsbc_secure_pass)"
+            echo "  --admin-user USER   Admin/superuser (default: postgres)"
+            echo "  --admin-pass PASS   Admin password"
+            exit 0
+            ;;
+        *) echo "Unknown option: $1"; exit 1 ;;
+    esac
+done
+
+if [ -n "$ADMIN_PASS" ]; then
+    export PGPASSWORD="$ADMIN_PASS"
+fi
+
+ADMIN_PSQL="psql -h $DB_HOST -p $DB_PORT -U $ADMIN_USER"
+
+echo "====================================================================="
+echo "CCaaS Platform - Create Database v1.0"
+echo "====================================================================="
+echo ""
+echo "Target: $ADMIN_USER@$DB_HOST:$DB_PORT"
+echo "Database: $DB_NAME"
+echo "App User: $DB_USER"
+echo ""
+
+# Test admin connection
+echo "Testing admin connection..."
+if ! $ADMIN_PSQL -d postgres -c "SELECT 1" > /dev/null 2>&1; then
+    echo "ERROR: Cannot connect as $ADMIN_USER to $DB_HOST:$DB_PORT"
+    echo ""
+    echo "For AWS RDS, use:"
+    echo "  $0 --host your-rds-endpoint --admin-user master_user --admin-pass your_password"
+    exit 1
+fi
+echo "Admin connection OK."
+echo ""
+
+# Create user if not exists
+echo "Creating user '$DB_USER'..."
+$ADMIN_PSQL -d postgres -c "
+DO \$\$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '$DB_USER') THEN
+        CREATE USER $DB_USER WITH PASSWORD '$DB_PASS';
+        RAISE NOTICE 'User $DB_USER created';
+    ELSE
+        ALTER USER $DB_USER WITH PASSWORD '$DB_PASS';
+        RAISE NOTICE 'User $DB_USER already exists, password updated';
+    END IF;
+END \$\$;
+" 2>&1 | grep -E "NOTICE|ERROR" || true
+
+# Create database if not exists
+echo "Creating database '$DB_NAME'..."
+if $ADMIN_PSQL -d postgres -tc "SELECT 1 FROM pg_database WHERE datname = '$DB_NAME'" | grep -q 1; then
+    echo "  Database '$DB_NAME' already exists."
+else
+    $ADMIN_PSQL -d postgres -c "CREATE DATABASE $DB_NAME OWNER $DB_USER ENCODING 'UTF8';"
+    echo "  Database '$DB_NAME' created."
+fi
+
+# Grant permissions
+echo "Granting permissions..."
+$ADMIN_PSQL -d "$DB_NAME" -c "
+GRANT ALL PRIVILEGES ON DATABASE $DB_NAME TO $DB_USER;
+GRANT ALL ON SCHEMA public TO $DB_USER;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO $DB_USER;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO $DB_USER;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO $DB_USER;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO $DB_USER;
+" 2>&1 | grep -v "^$" || true
+
+echo ""
+echo "====================================================================="
+echo "Database created successfully!"
+echo "====================================================================="
+echo ""
+echo "Next step: Run the schema and seed setup:"
+echo "  ./setup-database.sh --host $DB_HOST --port $DB_PORT"
+echo ""
+echo "Connection string:"
+echo "  postgresql://$DB_USER:$DB_PASS@$DB_HOST:$DB_PORT/$DB_NAME"
+echo ""
+===ENDFILE
+===FILE: ./docker-compose.yml
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: hsbc-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: hsbc_ccaas
+      POSTGRES_USER: hsbc_user
+      POSTGRES_PASSWORD: hsbc_secure_pass
+      POSTGRES_INIT_DB_ARGS: "--encoding=UTF8 --locale=en_US.UTF-8"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - hsbc-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hsbc_user -d hsbc_ccaas"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: hsbc-pgadmin
+    ports:
+      - "8082:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@hsbc.com
+      PGADMIN_DEFAULT_PASSWORD: admin123
+      PGADMIN_CONFIG_ENHANCED_COOKIE_PROTECTION: 'True'
+      PGADMIN_CONFIG_LOGIN_BANNER: '"HSBC CCAAS Database Admin"'
+      PGADMIN_CONFIG_CONSOLE_LOG_LEVEL: '10'
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+    networks:
+      - hsbc-network
+    depends_on:
+      - postgres
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.3.0
+    hostname: zookeeper
+    container_name: hsbc-zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - hsbc-network
+    volumes:
+      - zookeeper-data:/var/lib/zookeeper/data
+      - zookeeper-logs:/var/lib/zookeeper/log
+
+  kafka:
+    image: confluentinc/cp-kafka:7.3.0
+    hostname: kafka
+    container_name: hsbc-kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "9101:9101"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_JMX_PORT: 9101
+      KAFKA_JMX_HOSTNAME: localhost
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_LOG4J_LOGGERS: "kafka.controller=INFO,kafka.producer.async.DefaultEventHandler=INFO,state.change.logger=INFO"
+    networks:
+      - hsbc-network
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: hsbc-kafka-ui
+    depends_on:
+      - kafka
+    ports:
+      - "8090:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+    networks:
+      - hsbc-network
+
+networks:
+  hsbc-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  pgadmin-data:
+  zookeeper-data:
+  zookeeper-logs:
+  kafka-data:
+===ENDFILE
+===FILE: ./setup-database.sh
+#!/bin/bash
+# =====================================================================
+# CCaaS Platform - Database Setup Script
+# Version: 1.0
+# =====================================================================
+# This script creates the complete CCaaS database from scratch.
+# It assumes PostgreSQL is running and accessible.
+#
+# Usage:
+#   ./setup-database.sh                    # Use defaults (localhost)
+#   ./setup-database.sh --host db.example.com --port 5432
+#   ./setup-database.sh --help
+#
+# Environment variables (override defaults):
+#   PGHOST, PGPORT, PGUSER, PGPASSWORD, PGDATABASE
+# =====================================================================
+
+set -euo pipefail
+
+# =====================================================================
+# Configuration (can be overridden via env vars or flags)
+# =====================================================================
+DB_HOST="${PGHOST:-localhost}"
+DB_PORT="${PGPORT:-5432}"
+DB_NAME="${PGDATABASE:-hsbc_ccaas}"
+DB_USER="${PGUSER:-hsbc_user}"
+DB_PASS="${PGPASSWORD:-hsbc_secure_pass}"
+SKIP_SEED=false
+SKIP_DEMO=false
+
+# =====================================================================
+# Parse command line arguments
+# =====================================================================
+usage() {
+    echo "Usage: $0 [OPTIONS]"
+    echo ""
+    echo "Options:"
+    echo "  --host HOST       PostgreSQL host (default: localhost)"
+    echo "  --port PORT       PostgreSQL port (default: 5432)"
+    echo "  --db NAME         Database name (default: hsbc_ccaas)"
+    echo "  --user USER       Database user (default: hsbc_user)"
+    echo "  --pass PASSWORD   Database password"
+    echo "  --skip-seed       Skip seed data (create schema only)"
+    echo "  --skip-demo       Skip demo/test data (customers, interactions)"
+    echo "  --help            Show this help message"
+    echo ""
+    echo "Environment variables: PGHOST, PGPORT, PGUSER, PGPASSWORD, PGDATABASE"
+    exit 0
+}
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --host) DB_HOST="$2"; shift 2 ;;
+        --port) DB_PORT="$2"; shift 2 ;;
+        --db) DB_NAME="$2"; shift 2 ;;
+        --user) DB_USER="$2"; shift 2 ;;
+        --pass) DB_PASS="$2"; shift 2 ;;
+        --skip-seed) SKIP_SEED=true; shift ;;
+        --skip-demo) SKIP_DEMO=true; shift ;;
+        --help) usage ;;
+        *) echo "Unknown option: $1"; usage ;;
+    esac
+done
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SCHEMA_DIR="$SCRIPT_DIR/sql/schema"
+SEED_DIR="$SCRIPT_DIR/sql/seed"
+
+export PGPASSWORD="$DB_PASS"
+
+PSQL="psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -v ON_ERROR_STOP=1"
+
+# =====================================================================
+# Pre-flight checks
+# =====================================================================
+echo "====================================================================="
+echo "CCaaS Platform - Database Setup v1.0"
+echo "====================================================================="
+echo ""
+echo "Configuration:"
+echo "  Host:     $DB_HOST:$DB_PORT"
+echo "  Database: $DB_NAME"
+echo "  User:     $DB_USER"
+echo "  Seed:     $([ "$SKIP_SEED" = true ] && echo 'SKIP' || echo 'YES')"
+echo "  Demo:     $([ "$SKIP_DEMO" = true ] && echo 'SKIP' || echo 'YES')"
+echo ""
+
+# Test connection
+echo "Testing database connection..."
+if ! psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -c "SELECT 1" > /dev/null 2>&1; then
+    echo ""
+    echo "ERROR: Cannot connect to PostgreSQL at $DB_HOST:$DB_PORT"
+    echo ""
+    echo "If the database doesn't exist yet, create it with:"
+    echo "  createdb -h $DB_HOST -p $DB_PORT -U postgres $DB_NAME"
+    echo "  psql -h $DB_HOST -p $DB_PORT -U postgres -c \"CREATE USER $DB_USER WITH PASSWORD '$DB_PASS';\""
+    echo "  psql -h $DB_HOST -p $DB_PORT -U postgres -c \"GRANT ALL PRIVILEGES ON DATABASE $DB_NAME TO $DB_USER;\""
+    echo "  psql -h $DB_HOST -p $DB_PORT -U postgres -d $DB_NAME -c \"GRANT ALL ON SCHEMA public TO $DB_USER;\""
+    echo ""
+    echo "Or start the included Docker Compose:"
+    echo "  docker compose up -d postgres"
+    exit 1
+fi
+echo "Connection OK."
+echo ""
+
+# =====================================================================
+# Step 1: Create Schema (tables, indexes, triggers)
+# =====================================================================
+echo "====================================================================="
+echo "Step 1: Creating schema (tables, indexes, triggers)..."
+echo "====================================================================="
+
+echo "  Running 01-create-tables.sql..."
+$PSQL -f "$SCHEMA_DIR/01-create-tables.sql" > /dev/null
+
+echo "  Running 03-create-approval-workflow-tables.sql..."
+$PSQL -f "$SCHEMA_DIR/03-create-approval-workflow-tables.sql" > /dev/null
+
+echo "Schema created successfully."
+echo ""
+
+# =====================================================================
+# Step 2: Seed Data
+# =====================================================================
+if [ "$SKIP_SEED" = true ]; then
+    echo "Skipping seed data (--skip-seed)."
+else
+    echo "====================================================================="
+    echo "Step 2: Loading seed data..."
+    echo "====================================================================="
+
+    echo "  Loading reference data..."
+    echo "    - Regions (3 records)"
+    $PSQL -f "$SEED_DIR/seed-01-ref-regions.sql" > /dev/null
+    echo "    - Markets (16 records)"
+    $PSQL -f "$SEED_DIR/seed-01b-ref-markets.sql" > /dev/null
+    echo "    - Countries (37 records)"
+    $PSQL -f "$SEED_DIR/seed-02-ref-countries.sql" > /dev/null
+    echo "    - Business Units (3 records)"
+    $PSQL -f "$SEED_DIR/seed-03-ref-business-units.sql" > /dev/null
+
+    echo "  Loading entitlement data..."
+    echo "    - Role Layout Templates (4 roles)"
+    $PSQL -f "$SEED_DIR/seed-04-role-layout-templates.sql" > /dev/null
+    echo "    - AD Group Layout Assignments (30 groups)"
+    $PSQL -f "$SEED_DIR/seed-05-ad-group-layout-assignments.sql" > /dev/null
+
+    echo "  Loading embedded apps data..."
+    echo "    - Embedded Apps (10 apps)"
+    $PSQL -f "$SEED_DIR/seed-07-embedded-apps.sql" > /dev/null
+    echo "    - Intent App Mappings (94 mappings)"
+    $PSQL -f "$SEED_DIR/seed-08-intent-app-mappings.sql" > /dev/null
+
+    echo "  Loading approval rules..."
+    echo "    - Approval Rules (16 rules)"
+    $PSQL -f "$SEED_DIR/seed-11-approval-rules.sql" > /dev/null
+
+    if [ "$SKIP_DEMO" = false ]; then
+        echo "  Loading demo/test data..."
+        echo "    - Customers (8 records)"
+        $PSQL -f "$SEED_DIR/seed-06-customers.sql" > /dev/null
+        echo "    - Customer Interactions (30 records)"
+        $PSQL -f "$SEED_DIR/seed-10-customer-interactions.sql" > /dev/null
+    else
+        echo "  Skipping demo/test data (--skip-demo)."
+    fi
+
+    echo ""
+    echo "Seed data loaded successfully."
+fi
+echo ""
+
+# =====================================================================
+# Step 3: Validation
+# =====================================================================
+echo "====================================================================="
+echo "Step 3: Validating database..."
+echo "====================================================================="
+
+VALIDATION_SQL="
+SELECT 'ref_regions' AS table_name, COUNT(*) AS row_count FROM ref_regions
+UNION ALL SELECT 'ref_markets', COUNT(*) FROM ref_markets
+UNION ALL SELECT 'ref_countries', COUNT(*) FROM ref_countries
+UNION ALL SELECT 'ref_business_units', COUNT(*) FROM ref_business_units
+UNION ALL SELECT 'role_layout_templates', COUNT(*) FROM role_layout_templates
+UNION ALL SELECT 'ad_group_layout_assignments', COUNT(*) FROM ad_group_layout_assignments
+UNION ALL SELECT 'embedded_apps', COUNT(*) FROM embedded_apps
+UNION ALL SELECT 'intent_app_mappings', COUNT(*) FROM intent_app_mappings
+UNION ALL SELECT 'approval_rules', COUNT(*) FROM approval_rules
+UNION ALL SELECT 'pending_changes', COUNT(*) FROM pending_changes
+UNION ALL SELECT 'change_audit_log', COUNT(*) FROM change_audit_log
+UNION ALL SELECT 'customers', COUNT(*) FROM customers
+UNION ALL SELECT 'customer_interactions', COUNT(*) FROM customer_interactions
+UNION ALL SELECT 'user_role_assignments', COUNT(*) FROM user_role_assignments
+UNION ALL SELECT 'user_layout_configurations', COUNT(*) FROM user_layout_configurations
+UNION ALL SELECT 'admin_notices', COUNT(*) FROM admin_notices
+ORDER BY table_name;
+"
+
+echo ""
+$PSQL -c "$VALIDATION_SQL"
+
+echo ""
+echo "====================================================================="
+echo "Database setup complete!"
+echo "====================================================================="
+echo ""
+echo "Connection string:"
+echo "  postgresql://$DB_USER:****@$DB_HOST:$DB_PORT/$DB_NAME"
+echo ""
+echo "Test with:"
+echo "  psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME"
+echo ""
+===ENDFILE
+===FILE: ./sql/schema/01-create-tables.sql
+-- =====================================================================
+-- HSBC Platform - Database Schema
+-- Table Creation Script
+-- =====================================================================
+-- This script creates all tables for the HSBC Platform database
+-- Execute this script after database initialization
+-- =====================================================================
+
+-- Enable required extensions
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+CREATE EXTENSION IF NOT EXISTS "pg_trgm";
+
+-- =====================================================================
+-- DROP TABLES (in reverse dependency order)
+-- =====================================================================
+
+DROP TABLE IF EXISTS admin_notice_user_states CASCADE;
+DROP TABLE IF EXISTS admin_notice_roles CASCADE;
+DROP TABLE IF EXISTS admin_notice_ad_groups CASCADE;
+DROP TABLE IF EXISTS admin_notices CASCADE;
+DROP TABLE IF EXISTS intent_app_mappings CASCADE;
+DROP TABLE IF EXISTS embedded_app_ad_group_functions CASCADE;
+DROP TABLE IF EXISTS embedded_app_routes CASCADE;
+DROP TABLE IF EXISTS embedded_apps CASCADE;
+DROP TABLE IF EXISTS user_role_assignments CASCADE;
+DROP TABLE IF EXISTS user_layout_configurations CASCADE;
+DROP TABLE IF EXISTS ad_group_layout_assignments CASCADE;
+DROP TABLE IF EXISTS role_layout_templates CASCADE;
+DROP TABLE IF EXISTS customer_interactions CASCADE;
+DROP TABLE IF EXISTS customers CASCADE;
+DROP TABLE IF EXISTS agent_metrics CASCADE;
+DROP TABLE IF EXISTS documents CASCADE;
+DROP TABLE IF EXISTS ref_countries CASCADE;
+DROP TABLE IF EXISTS ref_markets CASCADE;
+DROP TABLE IF EXISTS ref_regions CASCADE;
+DROP TABLE IF EXISTS ref_business_units CASCADE;
+
+-- =====================================================================
+-- REFERENCE TABLES
+-- =====================================================================
+
+-- Regions reference table
+CREATE TABLE ref_regions (
+    region_code VARCHAR(50) PRIMARY KEY,
+    region_name VARCHAR(100) NOT NULL,
+    display_order INTEGER DEFAULT 0,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Markets reference table
+CREATE TABLE ref_markets (
+    market_code VARCHAR(50) PRIMARY KEY,
+    market_name VARCHAR(100) NOT NULL,
+    region_code VARCHAR(50) NOT NULL,
+    display_order INTEGER DEFAULT 0,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT ref_markets_region_code_fkey FOREIGN KEY (region_code)
+        REFERENCES ref_regions(region_code)
+);
+
+-- Countries reference table
+CREATE TABLE ref_countries (
+    country_code VARCHAR(3) PRIMARY KEY,
+    country_name VARCHAR(100) NOT NULL,
+    region_code VARCHAR(50) NOT NULL,
+    market_code VARCHAR(50),
+    display_order INTEGER DEFAULT 0,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT ref_countries_region_code_fkey FOREIGN KEY (region_code)
+        REFERENCES ref_regions(region_code),
+    CONSTRAINT ref_countries_market_code_fkey FOREIGN KEY (market_code)
+        REFERENCES ref_markets(market_code)
+);
+
+-- Business units reference table
+CREATE TABLE ref_business_units (
+    unit_code VARCHAR(100) PRIMARY KEY,
+    unit_name VARCHAR(200) NOT NULL,
+    description TEXT,
+    effective_date DATE,
+    display_order INTEGER DEFAULT 0,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- =====================================================================
+-- CUSTOMER & INTERACTION TABLES
+-- =====================================================================
+
+-- Customers table
+CREATE TABLE customers (
+    account_number VARCHAR(20) PRIMARY KEY,
+    cin VARCHAR(20) UNIQUE,
+    name VARCHAR(100) NOT NULL,
+    tier VARCHAR(50) NOT NULL,
+    phone VARCHAR(30),
+    email VARCHAR(100),
+    location VARCHAR(100),
+    balance NUMERIC,
+    credit_score INTEGER,
+    products TEXT[],
+    member_since DATE,
+    account_type VARCHAR(50),
+    monthly_income NUMERIC,
+    risk_profile VARCHAR(20),
+    occupation VARCHAR(100),
+    age INTEGER,
+    verification_status VARCHAR(20) DEFAULT 'pending',
+    care_need VARCHAR(20) DEFAULT 'none',
+    total_interactions INTEGER DEFAULT 0,
+    last_contact_date TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Customer interactions table
+CREATE TABLE customer_interactions (
+    interaction_id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    account_number VARCHAR(20),
+    interaction_date TIMESTAMP NOT NULL,
+    interaction_type VARCHAR(50),
+    channel VARCHAR(50),
+    interaction_medium VARCHAR(50),
+    social_handle VARCHAR(100),
+    subject VARCHAR(200),
+    description TEXT,
+    interaction_context TEXT,
+    interaction_outcome VARCHAR(50),
+    sentiment VARCHAR(20),
+    duration_minutes INTEGER,
+    response_time_minutes INTEGER,
+    resolution_time_minutes INTEGER,
+    status VARCHAR(20),
+    agent_name VARCHAR(100),
+    resolution_notes TEXT,
+    satisfaction_rating INTEGER,
+    follow_up_required BOOLEAN DEFAULT FALSE,
+    channel_icon VARCHAR(50),
+    priority_level VARCHAR(20),
+    tags TEXT[],
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Agent metrics table
+CREATE TABLE agent_metrics (
+    id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    agent_id VARCHAR(50) NOT NULL,
+    calls_today INTEGER DEFAULT 0,
+    avg_handle_time INTEGER DEFAULT 0,
+    resolution_rate NUMERIC(5,2) DEFAULT 0.00,
+    satisfaction_score NUMERIC(5,2) DEFAULT 0.00,
+    first_call_resolution NUMERIC(5,2) DEFAULT 0.00,
+    calls_handled INTEGER DEFAULT 0,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT agent_metrics_agent_id_timestamp_key UNIQUE (agent_id, timestamp)
+);
+
+-- =====================================================================
+-- KNOWLEDGE MANAGEMENT TABLES
+-- =====================================================================
+
+-- Documents table (knowledge articles)
+CREATE TABLE documents (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    url TEXT,
+    category VARCHAR(100),
+    product VARCHAR(100),
+    country_code VARCHAR(2),
+    locale VARCHAR(10),
+    tags TEXT[],
+    entitlement_groups TEXT[],
+    search_vector TSVECTOR,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- =====================================================================
+-- ENTITLEMENT & LAYOUT TABLES
+-- =====================================================================
+
+-- Role layout templates
+CREATE TABLE role_layout_templates (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    role_name VARCHAR(100) UNIQUE,
+    role_display_name VARCHAR(150),
+    columns JSONB,
+    widgets JSONB,
+    features JSONB,
+    settings_tabs JSONB,
+    settings_options JSONB,
+    micro_frontends JSONB,
+    created_by VARCHAR(120),
+    updated_by VARCHAR(120),
+    created_at TIMESTAMP,
+    updated_at TIMESTAMP
+);
+
+-- AD group layout assignments
+CREATE TABLE ad_group_layout_assignments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    group_identifier VARCHAR(500) UNIQUE,
+    logical_name VARCHAR(255),
+    role_name VARCHAR(100),
+    market VARCHAR(100),
+    region VARCHAR(100),
+    business_unit VARCHAR(100),
+    country VARCHAR(100),
+    channel VARCHAR(100),
+    admin_group_identifier VARCHAR(500),
+    column_assignments JSONB,
+    widget_assignments JSONB,
+    feature_assignments JSONB,
+    settings_tab_assignments JSONB,
+    settings_option_assignments JSONB,
+    micro_frontend_assignments JSONB,
+    role_priority INTEGER DEFAULT 100,
+    is_active BOOLEAN,
+    last_modified_by VARCHAR(255),
+    created_by VARCHAR(120),
+    created_at TIMESTAMP,
+    updated_at TIMESTAMP,
+    version INTEGER NOT NULL DEFAULT 1
+);
+
+-- User layout configurations (cached layouts)
+CREATE TABLE user_layout_configurations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id VARCHAR(255) NOT NULL,
+    role_name VARCHAR(100) NOT NULL,
+    user_email VARCHAR(255),
+    layout_config JSONB NOT NULL,
+    source_ad_groups JSONB NOT NULL,
+    primary_ad_group VARCHAR(500),
+    layout_version INTEGER DEFAULT 1,
+    computation_time_ms INTEGER,
+    expires_at TIMESTAMP,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_by VARCHAR(120),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- User role assignments
+CREATE TABLE user_role_assignments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id VARCHAR(255) NOT NULL,
+    role_name VARCHAR(100) NOT NULL,
+    ad_group_identifier VARCHAR(500) NOT NULL,
+    assignment_priority INTEGER NOT NULL,
+    is_primary_assignment BOOLEAN DEFAULT FALSE,
+    assigned_by VARCHAR(120),
+    updated_by VARCHAR(120),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT user_role_assignments_user_id_role_name_ad_group_identifier_key
+        UNIQUE (user_id, role_name, ad_group_identifier),
+    CONSTRAINT user_role_assignments_ad_group_fk
+        FOREIGN KEY (ad_group_identifier)
+        REFERENCES ad_group_layout_assignments(group_identifier)
+);
+
+-- =====================================================================
+-- EMBEDDED APPS TABLES
+-- =====================================================================
+
+-- Embedded applications
+CREATE TABLE embedded_apps (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    app_key VARCHAR(100) NOT NULL UNIQUE,
+    title VARCHAR(200) NOT NULL,
+    description TEXT NOT NULL,
+    primary_keywords TEXT[] NOT NULL,
+    secondary_keywords TEXT[] DEFAULT '{}'::text[],
+    mfe_config JSONB DEFAULT '{}'::jsonb,
+    category VARCHAR(50) NOT NULL,
+    regional_urls JSONB DEFAULT '{}'::jsonb,
+    base_url VARCHAR(500),
+    loading_strategy VARCHAR(20) NOT NULL DEFAULT 'mfe',
+    function_definitions JSONB DEFAULT '{}'::jsonb,
+    usage_count BIGINT DEFAULT 0,
+    display_priority INTEGER DEFAULT 0,
+    search_text TEXT,
+    search_vector TSVECTOR,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_by VARCHAR(120),
+    updated_by VARCHAR(120),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_loading_strategy CHECK (loading_strategy IN ('mfe', 'iframe', 'ext-cb', 'bmm')),
+    CONSTRAINT chk_mfe_config_is_object CHECK (mfe_config IS NULL OR jsonb_typeof(mfe_config) = 'object'),
+    CONSTRAINT chk_function_definitions_is_object CHECK (function_definitions IS NULL OR jsonb_typeof(function_definitions) = 'object'),
+    CONSTRAINT chk_regional_urls_is_object CHECK (regional_urls IS NULL OR jsonb_typeof(regional_urls) = 'object'),
+    CONSTRAINT chk_required_fields CHECK (title IS NOT NULL AND length(title) > 0 AND description IS NOT NULL AND length(description) > 0 AND category IS NOT NULL AND primary_keywords IS NOT NULL AND array_length(primary_keywords, 1) > 0)
+);
+
+-- Embedded app routes
+CREATE TABLE embedded_app_routes (
+    route_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    app_key VARCHAR(100) NOT NULL,
+    route_key VARCHAR(150) NOT NULL UNIQUE,
+    function_key VARCHAR(100) NOT NULL,
+    display_name VARCHAR(200) NOT NULL,
+    description TEXT,
+    search_terms TEXT[] DEFAULT ARRAY[]::text[],
+    mfe_config JSONB DEFAULT '{}'::jsonb,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_by VARCHAR(120),
+    updated_by VARCHAR(120),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_embedded_app_route_app
+        FOREIGN KEY (app_key)
+        REFERENCES embedded_apps(app_key)
+        ON DELETE CASCADE,
+    CONSTRAINT chk_route_mfe_config_is_object CHECK (mfe_config IS NULL OR jsonb_typeof(mfe_config) = 'object')
+);
+
+-- Embedded app AD group functions
+CREATE TABLE embedded_app_ad_group_functions (
+    id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    app_key VARCHAR(100) NOT NULL,
+    ad_group_identifier VARCHAR(500) NOT NULL,
+    function_key VARCHAR(100) NOT NULL,
+    is_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    last_modified_by VARCHAR(255),
+    created_by VARCHAR(120),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_app_group_function
+        UNIQUE (app_key, ad_group_identifier, function_key),
+    CONSTRAINT fk_embedded_app
+        FOREIGN KEY (app_key)
+        REFERENCES embedded_apps(app_key),
+    CONSTRAINT fk_ad_group_identifier
+        FOREIGN KEY (ad_group_identifier)
+        REFERENCES ad_group_layout_assignments(group_identifier)
+);
+
+-- Intent to app mappings
+CREATE TABLE intent_app_mappings (
+    id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    intent_name VARCHAR(100) NOT NULL,
+    app_key VARCHAR(100) NOT NULL,
+    function_key VARCHAR(100),
+    route_key VARCHAR(150),
+    is_enabled BOOLEAN DEFAULT TRUE,
+    created_by VARCHAR(120),
+    updated_by VARCHAR(120),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT intent_app_mappings_unique_key
+        UNIQUE (intent_name, app_key, function_key, route_key),
+    CONSTRAINT intent_app_mappings_app_key_fkey
+        FOREIGN KEY (app_key)
+        REFERENCES embedded_apps(app_key),
+    CONSTRAINT intent_app_mappings_route_key_fkey
+        FOREIGN KEY (route_key)
+        REFERENCES embedded_app_routes(route_key)
+);
+
+-- =====================================================================
+-- ADMIN NOTICE TABLES
+-- =====================================================================
+
+-- Admin notices
+CREATE TABLE admin_notices (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    title VARCHAR(200) NOT NULL,
+    message VARCHAR(2000) NOT NULL,
+    severity VARCHAR(20) NOT NULL,
+    status VARCHAR(20) NOT NULL,
+    requires_acknowledgement BOOLEAN NOT NULL,
+    broadcast_all BOOLEAN NOT NULL,
+    start_at TIMESTAMP,
+    end_at TIMESTAMP,
+    created_by VARCHAR(120) NOT NULL,
+    updated_by VARCHAR(120),
+    created_at TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP NOT NULL
+);
+
+-- Admin notice AD groups (targeting)
+CREATE TABLE admin_notice_ad_groups (
+    notice_id UUID NOT NULL,
+    ad_group_identifier VARCHAR(500) NOT NULL,
+    PRIMARY KEY (notice_id, ad_group_identifier),
+    CONSTRAINT admin_notice_ad_groups_notice_id_fkey
+        FOREIGN KEY (notice_id)
+        REFERENCES admin_notices(id)
+);
+
+-- Admin notice roles (targeting)
+CREATE TABLE admin_notice_roles (
+    notice_id UUID NOT NULL,
+    role_name VARCHAR(100) NOT NULL,
+    PRIMARY KEY (notice_id, role_name),
+    CONSTRAINT admin_notice_roles_notice_id_fkey
+        FOREIGN KEY (notice_id)
+        REFERENCES admin_notices(id)
+);
+
+-- Admin notice user states (acknowledgements)
+CREATE TABLE admin_notice_user_states (
+    notice_id UUID NOT NULL,
+    user_id VARCHAR(120) NOT NULL,
+    state VARCHAR(20) NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (notice_id, user_id),
+    CONSTRAINT fk_admin_notice_user_state_notice
+        FOREIGN KEY (notice_id)
+        REFERENCES admin_notices(id)
+);
+
+-- =====================================================================
+-- INDEXES - Reference Tables
+-- =====================================================================
+
+CREATE INDEX idx_ref_countries_region ON ref_countries(region_code);
+
+-- =====================================================================
+-- INDEXES - Customer & Interactions
+-- =====================================================================
+
+CREATE INDEX idx_customer_name ON customers(name);
+CREATE INDEX idx_customer_phone ON customers(phone);
+CREATE INDEX idx_customer_account ON customers(account_number);
+
+CREATE INDEX idx_interaction_account ON customer_interactions(account_number);
+CREATE INDEX idx_interaction_date ON customer_interactions(interaction_date DESC);
+CREATE INDEX idx_interaction_type ON customer_interactions(interaction_type);
+CREATE INDEX idx_interaction_agent ON customer_interactions(agent_name);
+
+CREATE INDEX idx_metrics_agent ON agent_metrics(agent_id);
+CREATE INDEX idx_metrics_timestamp ON agent_metrics(timestamp DESC);
+
+-- =====================================================================
+-- INDEXES - Documents (Knowledge Management)
+-- =====================================================================
+
+CREATE INDEX idx_documents_category ON documents(category);
+CREATE INDEX idx_documents_product ON documents(product);
+CREATE INDEX idx_documents_country_locale ON documents(country_code, locale);
+CREATE INDEX idx_documents_category_product_updated ON documents(category, product, updated_at DESC);
+CREATE INDEX idx_documents_search_composite ON documents(category, product, updated_at DESC)
+    WHERE category IS NOT NULL AND product IS NOT NULL;
+CREATE INDEX idx_documents_search_covering ON documents(id, title, url, category, product, updated_at);
+CREATE INDEX idx_documents_search_covering_v2 ON documents(id, title, url, category, product, updated_at, country_code, locale)
+    INCLUDE (content);
+CREATE INDEX idx_documents_entitlements ON documents USING GIN(entitlement_groups);
+CREATE INDEX idx_documents_entitlements_composite ON documents USING GIN(entitlement_groups)
+    WHERE entitlement_groups IS NOT NULL AND array_length(entitlement_groups, 1) > 0;
+CREATE INDEX idx_documents_fts ON documents USING GIN(to_tsvector('english', COALESCE(title, '') || ' ' || COALESCE(content, '')));
+CREATE INDEX idx_documents_search_vector ON documents USING GIN(search_vector);
+CREATE INDEX idx_documents_title_trgm ON documents USING GIN(title gin_trgm_ops);
+
+-- =====================================================================
+-- INDEXES - User Layout Configurations
+-- =====================================================================
+
+CREATE INDEX idx_user_layout_config_user_id ON user_layout_configurations(user_id);
+CREATE INDEX idx_user_layout_config_role_name ON user_layout_configurations(role_name);
+CREATE INDEX idx_user_layout_config_user_role ON user_layout_configurations(user_id, role_name);
+CREATE INDEX idx_user_layout_config_expires_at ON user_layout_configurations(expires_at)
+    WHERE is_active = TRUE;
+CREATE INDEX idx_user_layout_expires ON user_layout_configurations(expires_at)
+    WHERE is_active = TRUE AND expires_at IS NOT NULL;
+CREATE INDEX idx_user_layout_user_role_active ON user_layout_configurations(user_id, role_name)
+    WHERE is_active = TRUE;
+CREATE INDEX idx_user_layout_source_ad_groups ON user_layout_configurations USING GIN(source_ad_groups)
+    WHERE source_ad_groups IS NOT NULL;
+CREATE INDEX idx_user_layout_config_source_ad_groups_gin ON user_layout_configurations USING GIN(source_ad_groups);
+
+-- =====================================================================
+-- INDEXES - User Role Assignments
+-- =====================================================================
+
+CREATE INDEX idx_user_role_assignments_user_id ON user_role_assignments(user_id);
+CREATE INDEX idx_user_role_assignments_role_name ON user_role_assignments(role_name);
+CREATE INDEX idx_user_role_assignments_ad_group ON user_role_assignments(ad_group_identifier);
+CREATE INDEX idx_user_role_assignments_user_role ON user_role_assignments(user_id, role_name);
+CREATE INDEX idx_user_role_assignments_by_role ON user_role_assignments(role_name, user_id);
+CREATE INDEX idx_user_role_assignments_composite ON user_role_assignments(user_id, ad_group_identifier, role_name, assignment_priority);
+CREATE INDEX idx_user_role_assignments_primary ON user_role_assignments(user_id, role_name)
+    WHERE is_primary_assignment = TRUE;
+CREATE INDEX idx_user_role_priority ON user_role_assignments(user_id, role_name, assignment_priority)
+    WHERE assignment_priority IS NOT NULL;
+
+-- =====================================================================
+-- INDEXES - Embedded Apps
+-- =====================================================================
+
+CREATE INDEX idx_embedded_apps_key ON embedded_apps(app_key);
+CREATE INDEX idx_embedded_apps_key_active ON embedded_apps(app_key) WHERE is_active = TRUE;
+CREATE INDEX idx_embedded_apps_category ON embedded_apps(category);
+CREATE INDEX idx_embedded_apps_active ON embedded_apps(is_active) WHERE is_active = TRUE;
+CREATE INDEX idx_embedded_apps_active_category ON embedded_apps(is_active, category)
+    WHERE is_active = TRUE;
+CREATE INDEX idx_embedded_apps_active_search_composite ON embedded_apps(is_active, category, usage_count DESC, display_priority)
+    WHERE is_active = TRUE;
+CREATE INDEX idx_embedded_apps_usage ON embedded_apps(usage_count DESC, display_priority)
+    WHERE is_active = TRUE;
+CREATE INDEX idx_embedded_apps_display_priority ON embedded_apps(display_priority);
+CREATE INDEX idx_embedded_apps_keywords ON embedded_apps USING GIN(primary_keywords);
+CREATE INDEX idx_embedded_apps_keywords_gin ON embedded_apps USING GIN(primary_keywords);
+CREATE INDEX idx_embedded_apps_secondary_keywords ON embedded_apps USING GIN(secondary_keywords);
+CREATE INDEX idx_embedded_apps_mfe_config ON embedded_apps USING GIN(mfe_config);
+CREATE INDEX idx_embedded_apps_regions ON embedded_apps USING GIN(regional_urls);
+CREATE INDEX idx_embedded_apps_fts ON embedded_apps USING GIN(to_tsvector('english', COALESCE(title, '') || ' ' || COALESCE(description, '')));
+CREATE INDEX idx_embedded_apps_search_vector ON embedded_apps USING GIN(search_vector);
+CREATE INDEX idx_embedded_apps_search_text ON embedded_apps USING GIN(to_tsvector('english', search_text))
+    WHERE is_active = TRUE;
+CREATE INDEX idx_embedded_apps_title_trgm ON embedded_apps USING GIN(title gin_trgm_ops);
+CREATE INDEX idx_embedded_apps_description_trgm ON embedded_apps USING GIN(LOWER(description) gin_trgm_ops);
+CREATE INDEX idx_embedded_apps_category_trgm ON embedded_apps USING GIN(LOWER(category) gin_trgm_ops);
+CREATE INDEX idx_embedded_apps_search_text_trgm ON embedded_apps USING GIN(search_text gin_trgm_ops);
+CREATE INDEX idx_embedded_apps_search_covering ON embedded_apps(app_key, title, category, is_active)
+    INCLUDE (description, base_url, usage_count, display_priority)
+    WHERE is_active = TRUE;
+
+CREATE INDEX idx_embedded_apps_loading_strategy ON embedded_apps(loading_strategy);
+CREATE INDEX idx_embedded_apps_active_strategy ON embedded_apps(is_active, loading_strategy) WHERE is_active = TRUE;
+
+-- =====================================================================
+-- INDEXES - Embedded App Routes
+-- =====================================================================
+
+CREATE INDEX idx_embedded_app_routes_app_key ON embedded_app_routes(app_key)
+    WHERE is_active = TRUE;
+CREATE INDEX idx_embedded_app_routes_active ON embedded_app_routes(is_active)
+    WHERE is_active = TRUE;
+CREATE INDEX idx_embedded_app_routes_search_terms ON embedded_app_routes USING GIN(search_terms);
+CREATE INDEX idx_embedded_app_routes_function_key ON embedded_app_routes(app_key, function_key) WHERE is_active = TRUE;
+CREATE INDEX idx_embedded_app_routes_mfe_config ON embedded_app_routes USING GIN(mfe_config);
+
+-- =====================================================================
+-- INDEXES - Embedded App AD Group Functions
+-- =====================================================================
+
+CREATE INDEX idx_emb_app_group ON embedded_app_ad_group_functions(app_key, ad_group_identifier);
+CREATE INDEX idx_emb_group_function ON embedded_app_ad_group_functions(ad_group_identifier, function_key)
+    WHERE is_enabled;
+CREATE INDEX idx_emb_app_function_enabled ON embedded_app_ad_group_functions(app_key, function_key)
+    WHERE is_enabled;
+CREATE INDEX idx_emb_ad_group_lookup ON embedded_app_ad_group_functions(ad_group_identifier) WHERE is_enabled;
+
+-- =====================================================================
+-- INDEXES - Intent App Mappings
+-- =====================================================================
+
+CREATE INDEX idx_intent_app_intent ON intent_app_mappings(intent_name, is_enabled);
+CREATE INDEX idx_intent_app_function ON intent_app_mappings(app_key, function_key, is_enabled);
+
+-- =====================================================================
+-- INDEXES - Admin Notices
+-- =====================================================================
+
+CREATE INDEX idx_admin_notices_status ON admin_notices(status);
+CREATE INDEX idx_admin_notices_start_at ON admin_notices(start_at);
+CREATE INDEX idx_admin_notices_end_at ON admin_notices(end_at);
+
+CREATE INDEX idx_admin_notice_ad_groups_ad_group ON admin_notice_ad_groups(ad_group_identifier);
+CREATE INDEX idx_admin_notice_roles_role_name ON admin_notice_roles(role_name);
+CREATE INDEX idx_admin_notice_user_states_user ON admin_notice_user_states(user_id);
+CREATE INDEX idx_admin_notice_user_states_state ON admin_notice_user_states(state);
+
+-- =====================================================================
+-- TRIGGERS - Auto-Maintain Search Vectors
+-- =====================================================================
+
+-- Document search_vector trigger (for knowledge articles)
+CREATE OR REPLACE FUNCTION update_document_search_vector()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.search_vector :=
+        setweight(to_tsvector('english', coalesce(NEW.title,'')), 'A') ||
+        setweight(to_tsvector('english', coalesce(NEW.content,'')), 'B') ||
+        setweight(to_tsvector('english', coalesce(array_to_string(NEW.tags, ' '),'')), 'C');
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_update_document_search_vector
+    BEFORE INSERT OR UPDATE OF title, content, tags
+    ON documents
+    FOR EACH ROW
+    EXECUTE FUNCTION update_document_search_vector();
+
+-- Embedded app search_vector and search_text trigger
+CREATE OR REPLACE FUNCTION update_embedded_app_search_vector()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Update search_text (concatenated searchable text)
+    NEW.search_text := LOWER(
+        COALESCE(NEW.title, '') || ' ' ||
+        COALESCE(NEW.description, '') || ' ' ||
+        COALESCE(array_to_string(NEW.primary_keywords, ' '), '') || ' ' ||
+        COALESCE(array_to_string(NEW.secondary_keywords, ' '), '') || ' ' ||
+        COALESCE(NEW.category, '')
+    );
+
+    -- Update search_vector (PostgreSQL FTS vector with weighted fields)
+    NEW.search_vector :=
+        setweight(to_tsvector('english', coalesce(NEW.title,'')), 'A') ||
+        setweight(to_tsvector('english', coalesce(NEW.description,'')), 'B') ||
+        setweight(to_tsvector('english', coalesce(array_to_string(NEW.primary_keywords, ' '),'')), 'B') ||
+        setweight(to_tsvector('english', coalesce(array_to_string(NEW.secondary_keywords, ' '),'')), 'C') ||
+        setweight(to_tsvector('english', coalesce(NEW.category,'')), 'C');
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_update_embedded_app_search_vector
+    BEFORE INSERT OR UPDATE OF title, description, primary_keywords, secondary_keywords, category
+    ON embedded_apps
+    FOR EACH ROW
+    EXECUTE FUNCTION update_embedded_app_search_vector();
+
+COMMENT ON FUNCTION update_document_search_vector() IS
+'Automatically maintains search_vector for documents table. Fires on INSERT/UPDATE of searchable fields.';
+
+COMMENT ON FUNCTION update_embedded_app_search_vector() IS
+'Automatically maintains search_text and search_vector for embedded_apps table. Fires on INSERT/UPDATE of searchable fields.';
+
+COMMENT ON TRIGGER trg_update_document_search_vector ON documents IS
+'Auto-updates FTS fields when title, content, or tags change';
+
+COMMENT ON TRIGGER trg_update_embedded_app_search_vector ON embedded_apps IS
+'Auto-updates FTS fields when title, description, keywords, or category changes';
+
+-- =====================================================================
+-- END OF SCRIPT
+-- =====================================================================
+===ENDFILE
+===FILE: ./sql/schema/02-create-demo-tables.sql
+-- =====================================================================
+-- HSBC Platform - Demo/Test Tables
+-- =====================================================================
+-- IMPORTANT: These tables are for LOCAL DEVELOPMENT AND TESTING ONLY
+-- DO NOT use these tables in production environments
+-- Production systems should integrate with external CRM, KMS, and metrics systems
+-- =====================================================================
+-- These tables provide sample data for UI testing and development:
+-- - customers: Demo customer profiles
+-- - customer_interactions: Sample interaction history  
+-- - agent_metrics: Mock agent performance data
+-- - documents: Sample knowledge base articles
+-- =====================================================================
+
+-- Required extensions (idempotent)
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+CREATE EXTENSION IF NOT EXISTS "pg_trgm";
+
+-- =====================================================================
+-- DROP DEMO TABLES
+-- =====================================================================
+
+DROP TABLE IF EXISTS customer_interactions CASCADE;
+DROP TABLE IF EXISTS customers CASCADE;
+DROP TABLE IF EXISTS agent_metrics CASCADE;
+DROP TABLE IF EXISTS documents CASCADE;
+
+-- =====================================================================
+-- CUSTOMER & INTERACTION TABLES
+-- =====================================================================
+
+-- Customers table
+CREATE TABLE customers (
+    account_number VARCHAR(20) PRIMARY KEY,
+    cin VARCHAR(20) UNIQUE,
+    name VARCHAR(100) NOT NULL,
+    tier VARCHAR(50) NOT NULL,
+    phone VARCHAR(30),
+    email VARCHAR(100),
+    location VARCHAR(100),
+    balance NUMERIC,
+    credit_score INTEGER,
+    products TEXT[],
+    member_since DATE,
+    account_type VARCHAR(50),
+    monthly_income NUMERIC,
+    risk_profile VARCHAR(20),
+    occupation VARCHAR(100),
+    age INTEGER,
+    verification_status VARCHAR(20) DEFAULT 'pending',
+    care_need VARCHAR(20) DEFAULT 'none',
+    total_interactions INTEGER DEFAULT 0,
+    last_contact_date TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Customer interactions table
+CREATE TABLE customer_interactions (
+    interaction_id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    account_number VARCHAR(20),
+    interaction_date TIMESTAMP NOT NULL,
+    interaction_type VARCHAR(50),
+    channel VARCHAR(50),
+    interaction_medium VARCHAR(50),
+    social_handle VARCHAR(100),
+    subject VARCHAR(200),
+    description TEXT,
+    interaction_context TEXT,
+    interaction_outcome VARCHAR(50),
+    sentiment VARCHAR(20),
+    duration_minutes INTEGER,
+    response_time_minutes INTEGER,
+    resolution_time_minutes INTEGER,
+    status VARCHAR(20),
+    agent_name VARCHAR(100),
+    resolution_notes TEXT,
+    satisfaction_rating INTEGER,
+    follow_up_required BOOLEAN DEFAULT FALSE,
+    channel_icon VARCHAR(50),
+    priority_level VARCHAR(20),
+    tags TEXT[],
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Agent metrics table
+CREATE TABLE agent_metrics (
+    id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    agent_id VARCHAR(50) NOT NULL,
+    calls_today INTEGER DEFAULT 0,
+    avg_handle_time INTEGER DEFAULT 0,
+    resolution_rate NUMERIC(5,2) DEFAULT 0.00,
+    satisfaction_score NUMERIC(5,2) DEFAULT 0.00,
+    first_call_resolution NUMERIC(5,2) DEFAULT 0.00,
+    calls_handled INTEGER DEFAULT 0,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT agent_metrics_agent_id_timestamp_key UNIQUE (agent_id, timestamp)
+);
+
+-- =====================================================================
+-- KNOWLEDGE MANAGEMENT TABLES
+-- =====================================================================
+
+-- Documents table (knowledge articles)
+CREATE TABLE documents (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    url TEXT,
+    category VARCHAR(100),
+    product VARCHAR(100),
+    country_code VARCHAR(2),
+    locale VARCHAR(10),
+    tags TEXT[],
+    entitlement_groups TEXT[],
+    search_vector TSVECTOR,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+-- =====================================================================
+-- INDEXES - Customer & Interactions
+-- =====================================================================
+
+CREATE INDEX idx_customer_name ON customers(name);
+CREATE INDEX idx_customer_phone ON customers(phone);
+CREATE INDEX idx_customer_account ON customers(account_number);
+
+CREATE INDEX idx_interaction_account ON customer_interactions(account_number);
+CREATE INDEX idx_interaction_date ON customer_interactions(interaction_date DESC);
+CREATE INDEX idx_interaction_type ON customer_interactions(interaction_type);
+CREATE INDEX idx_interaction_agent ON customer_interactions(agent_name);
+
+CREATE INDEX idx_metrics_agent ON agent_metrics(agent_id);
+CREATE INDEX idx_metrics_timestamp ON agent_metrics(timestamp DESC);
+
+-- =====================================================================
+-- INDEXES - Documents (Knowledge Management)
+-- =====================================================================
+
+CREATE INDEX idx_documents_category ON documents(category);
+CREATE INDEX idx_documents_product ON documents(product);
+CREATE INDEX idx_documents_country_locale ON documents(country_code, locale);
+CREATE INDEX idx_documents_category_product_updated ON documents(category, product, updated_at DESC);
+CREATE INDEX idx_documents_search_composite ON documents(category, product, updated_at DESC)
+    WHERE category IS NOT NULL AND product IS NOT NULL;
+CREATE INDEX idx_documents_search_covering ON documents(id, title, url, category, product, updated_at);
+CREATE INDEX idx_documents_search_covering_v2 ON documents(id, title, url, category, product, updated_at, country_code, locale)
+    INCLUDE (content);
+CREATE INDEX idx_documents_entitlements ON documents USING GIN(entitlement_groups);
+CREATE INDEX idx_documents_entitlements_composite ON documents USING GIN(entitlement_groups)
+    WHERE entitlement_groups IS NOT NULL AND array_length(entitlement_groups, 1) > 0;
+CREATE INDEX idx_documents_fts ON documents USING GIN(to_tsvector('english', COALESCE(title, '') || ' ' || COALESCE(content, '')));
+CREATE INDEX idx_documents_search_vector ON documents USING GIN(search_vector);
+CREATE INDEX idx_documents_title_trgm ON documents USING GIN(title gin_trgm_ops);
+
+-- =====================================================================
+===ENDFILE
+===FILE: ./sql/schema/03-create-approval-workflow-tables.sql
+-- =====================================================================
+-- HSBC Platform - Admin Approval Workflow Schema
+-- Table Creation Script for Maker/Checker/Super Admin Workflow
+-- =====================================================================
+-- This script creates tables for the admin approval workflow system
+--
+-- Tables Created:
+--   1. approval_rules - Business rules for L1/L2 approval determination
+--   2. pending_changes - Track pending configuration changes
+--   3. change_audit_log - Full audit trail for compliance
+--
+-- Prerequisites:
+--   - 01-create-core-tables.sql must be run first
+--   - ad_group_layout_assignments table must exist
+--
+-- This script is idempotent (safe to run multiple times)
+-- =====================================================================
+
+-- -----------------------------------------------------------------------------
+-- 1. ALTER ad_group_layout_assignments TABLE
+-- -----------------------------------------------------------------------------
+-- Add columns for Maker/Checker/Super Admin AD group assignments
+-- -----------------------------------------------------------------------------
+
+-- Add columns if they don't exist
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name = 'ad_group_layout_assignments'
+                   AND column_name = 'maker_ad_group') THEN
+        ALTER TABLE ad_group_layout_assignments
+        ADD COLUMN maker_ad_group VARCHAR(500);
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name = 'ad_group_layout_assignments'
+                   AND column_name = 'checker_ad_group') THEN
+        ALTER TABLE ad_group_layout_assignments
+        ADD COLUMN checker_ad_group VARCHAR(500);
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name = 'ad_group_layout_assignments'
+                   AND column_name = 'super_admin_ad_group') THEN
+        ALTER TABLE ad_group_layout_assignments
+        ADD COLUMN super_admin_ad_group VARCHAR(500);
+    END IF;
+END $$;
+
+-- Create indexes for efficient lookup
+CREATE INDEX IF NOT EXISTS idx_maker_ad_group ON ad_group_layout_assignments(maker_ad_group);
+CREATE INDEX IF NOT EXISTS idx_checker_ad_group ON ad_group_layout_assignments(checker_ad_group);
+CREATE INDEX IF NOT EXISTS idx_super_admin_ad_group ON ad_group_layout_assignments(super_admin_ad_group);
+
+-- -----------------------------------------------------------------------------
+-- 2. CREATE approval_rules TABLE
+-- -----------------------------------------------------------------------------
+-- Purpose: Store business rules for L1/L2 approval determination
+-- Management: SQL migrations only (no admin UI)
+-- -----------------------------------------------------------------------------
+
+DROP TABLE IF EXISTS approval_rules CASCADE;
+
+CREATE TABLE approval_rules (
+    id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+
+    -- Rule definition
+    entity_type VARCHAR(50) NOT NULL,       -- 'FIELD', 'APP', 'FUNCTION', 'APP_FUNCTION'
+    entity_key VARCHAR(200) NOT NULL,       -- e.g., 'roleName', 'TRADING', 'TELLER:TRAFX'
+    requires_l2 BOOLEAN NOT NULL DEFAULT true,
+
+    -- Traceability to business requirement
+    jira_ticket VARCHAR(50),
+    confluence_link VARCHAR(500),
+    reason VARCHAR(500) NOT NULL,
+
+    -- Audit
+    created_by VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW(),
+
+    CONSTRAINT uq_approval_rule UNIQUE (entity_type, entity_key)
+);
+
+CREATE INDEX idx_approval_rules_lookup ON approval_rules(entity_type, entity_key);
+
+COMMENT ON TABLE approval_rules IS 'Business rules determining which changes require Level 2 (Super Admin) approval';
+COMMENT ON COLUMN approval_rules.entity_type IS 'Type of entity: FIELD, APP, FUNCTION, APP_FUNCTION';
+COMMENT ON COLUMN approval_rules.entity_key IS 'Identifier of the entity, e.g., roleName, TRADING, TRADEP';
+COMMENT ON COLUMN approval_rules.requires_l2 IS 'If true, changes to this entity require Super Admin approval';
+
+-- -----------------------------------------------------------------------------
+-- 3. CREATE pending_changes TABLE
+-- -----------------------------------------------------------------------------
+-- Purpose: Track all pending configuration changes awaiting approval
+-- Lifecycle: PENDING_LEVEL_ONE -> PENDING_LEVEL_TWO -> APPROVED/REJECTED/CANCELLED/EXPIRED
+-- -----------------------------------------------------------------------------
+
+DROP TABLE IF EXISTS pending_changes CASCADE;
+
+CREATE TABLE pending_changes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    -- Target
+    target_group_identifier VARCHAR(500) NOT NULL,
+    target_group_name VARCHAR(255),
+
+    -- Change details
+    change_type VARCHAR(50) NOT NULL,        -- 'CONFIG_UPDATE', 'APP_UPDATE'
+    current_state JSONB NOT NULL,
+    proposed_state JSONB NOT NULL,
+
+    -- Criticality (evaluated at submission)
+    is_critical BOOLEAN NOT NULL DEFAULT false,
+    matched_rules JSONB,                      -- Rules that triggered critical status
+
+    -- Status
+    status VARCHAR(30) NOT NULL DEFAULT 'PENDING_LEVEL_ONE',
+    -- Values: PENDING_LEVEL_ONE, PENDING_LEVEL_TWO, APPROVED, REJECTED, CANCELLED, EXPIRED
+
+    -- L1 Review (Checker)
+    l1_reviewed_by VARCHAR(100),
+    l1_reviewed_at TIMESTAMP,
+    l1_comment VARCHAR(1000),
+
+    -- L2 Review (Super Admin)
+    l2_reviewed_by VARCHAR(100),
+    l2_reviewed_at TIMESTAMP,
+    l2_comment VARCHAR(1000),
+
+    -- Rejection
+    rejected_by VARCHAR(100),
+    rejected_at TIMESTAMP,
+    rejection_reason VARCHAR(1000),
+
+    -- Metadata
+    created_by VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW(),
+    expires_at TIMESTAMP DEFAULT NOW() + INTERVAL '7 days',
+    config_version BIGINT
+);
+
+CREATE INDEX idx_pending_status ON pending_changes(status);
+CREATE INDEX idx_pending_target ON pending_changes(target_group_identifier);
+CREATE INDEX idx_pending_created_by ON pending_changes(created_by);
+CREATE INDEX idx_pending_expires ON pending_changes(expires_at);
+CREATE INDEX idx_pending_active ON pending_changes(target_group_identifier, status)
+    WHERE status IN ('PENDING_LEVEL_ONE', 'PENDING_LEVEL_TWO');
+
+COMMENT ON TABLE pending_changes IS 'Tracks pending configuration changes awaiting approval in the Maker/Checker workflow';
+COMMENT ON COLUMN pending_changes.status IS 'Workflow status: PENDING_LEVEL_ONE, PENDING_LEVEL_TWO, APPROVED, REJECTED, CANCELLED, EXPIRED';
+COMMENT ON COLUMN pending_changes.is_critical IS 'If true, requires both L1 (Checker) and L2 (Super Admin) approval';
+
+-- -----------------------------------------------------------------------------
+-- 4. CREATE change_audit_log TABLE
+-- -----------------------------------------------------------------------------
+-- Purpose: Full audit trail for compliance with structured fields for business queries
+-- Actions: SUBMIT, L1_APPROVE, L2_APPROVE, REJECT, DIRECT_SAVE, CANCEL
+-- Designed to answer: "Who changed what function?", "How many role changes in HK?", etc.
+-- -----------------------------------------------------------------------------
+
+DROP TABLE IF EXISTS change_audit_log CASCADE;
+
+CREATE TABLE change_audit_log (
+    id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    pending_change_id UUID,
+
+    -- Target identification (denormalized for query performance)
+    target_group_identifier VARCHAR(500) NOT NULL,
+    target_group_name VARCHAR(255),           -- "Voice Agent UK" (human-readable)
+    role_name VARCHAR(100),                   -- 'voice', 'chat', 'supervisor', 'teller'
+    market VARCHAR(10),                       -- 'UK', 'HK', 'SG', 'US'
+    region VARCHAR(20),                       -- 'EMEA', 'APAC', 'NAM'
+
+    -- Action tracking
+    action VARCHAR(50) NOT NULL,              -- 'SUBMIT', 'L1_APPROVE', 'L2_APPROVE', 'REJECT', 'DIRECT_SAVE', 'CANCEL'
+    change_type VARCHAR(50) NOT NULL,         -- 'CONFIG_UPDATE', 'APP_ASSIGNMENT', 'FUNCTION_TOGGLE'
+
+    -- What was changed (structured for querying)
+    entity_type VARCHAR(50),                  -- 'FIELD', 'APP', 'FUNCTION', 'COLUMN', 'WIDGET'
+    entity_key VARCHAR(100),                  -- 'roleName', 'TRADING', 'TRADEP', 'kms.articleViewer'
+    old_value VARCHAR(1000),                  -- Previous value (for field changes)
+    new_value VARCHAR(1000),                  -- New value (for field changes)
+
+    -- For function/app changes
+    app_key VARCHAR(50),                      -- 'TELLER', 'TRADING', 'FX_TRANSFER'
+    function_key VARCHAR(50),                 -- 'TRADEP', 'TRAWD', 'TRAFX'
+    enabled_indicator BOOLEAN,                -- true = enabled, false = disabled
+
+    -- Criticality and escalation tracking
+    critical_indicator BOOLEAN DEFAULT false,
+    matched_rule_keys VARCHAR(500),           -- Comma-separated: 'RISK-1001,RISK-1002'
+    escalation_reason VARCHAR(1000),          -- Why L2 required: "Role template change requires Super Admin approval"
+    completion_reason VARCHAR(500),           -- Why L1 was final: "NON_CRITICAL", "DIRECT_SAVE_BY_SUPER_ADMIN"
+    escalated_to_l2_indicator BOOLEAN,        -- true = went to L2, false = completed at L1
+
+    -- Who performed the action
+    performed_by VARCHAR(100) NOT NULL,
+    performed_by_name VARCHAR(255),           -- "Sarah Jones" (human-readable)
+    performed_by_role VARCHAR(50),            -- 'MAKER', 'CHECKER', 'SUPER_ADMIN'
+
+    -- Client identification (security forensics)
+    ip_address VARCHAR(50),
+    user_agent VARCHAR(500),
+
+    -- Additional context (flexible JSONB for edge cases)
+    details JSONB,
+
+    -- Timing and SLA tracking
+    submitted_at TIMESTAMP,                   -- When change was first submitted (for duration calc)
+    duration_seconds BIGINT,                  -- Time from submission to this action (for SLA)
+
+    -- Timestamps
+    created_at TIMESTAMP DEFAULT NOW(),
+
+    CONSTRAINT fk_audit_pending FOREIGN KEY (pending_change_id)
+        REFERENCES pending_changes(id) ON DELETE SET NULL
+);
+
+-- Indexes for common business queries
+CREATE INDEX idx_audit_target ON change_audit_log(target_group_identifier);
+CREATE INDEX idx_audit_action ON change_audit_log(action);
+CREATE INDEX idx_audit_performed_by ON change_audit_log(performed_by);
+CREATE INDEX idx_audit_created_at ON change_audit_log(created_at);
+CREATE INDEX idx_audit_role_name ON change_audit_log(role_name);
+CREATE INDEX idx_audit_market ON change_audit_log(market);
+CREATE INDEX idx_audit_region ON change_audit_log(region);
+CREATE INDEX idx_audit_change_type ON change_audit_log(change_type);
+CREATE INDEX idx_audit_entity_type ON change_audit_log(entity_type);
+CREATE INDEX idx_audit_app_key ON change_audit_log(app_key);
+CREATE INDEX idx_audit_function_key ON change_audit_log(function_key);
+CREATE INDEX idx_audit_critical ON change_audit_log(critical_indicator);
+
+COMMENT ON TABLE change_audit_log IS 'Full audit trail for compliance with structured fields for business queries';
+COMMENT ON COLUMN change_audit_log.action IS 'Action performed: SUBMIT, L1_APPROVE, L2_APPROVE, REJECT, DIRECT_SAVE, CANCEL';
+
+-- =====================================================================
+-- END OF SCHEMA CREATION
+-- =====================================================================
+===ENDFILE
+===FILE: ./sql/seed/seed-01-ref-regions.sql
+-- =====================================================================
+-- HSBC Platform - Seed Data
+-- Reference Table: Regions
+-- =====================================================================
+
+TRUNCATE TABLE ref_regions CASCADE;
+
+INSERT INTO ref_regions (region_code, region_name, display_order, is_active, created_at, updated_at) VALUES
+('EMEA', 'Europe, Middle East & Africa', 1, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('AMER', 'Americas', 2, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('APAC', 'Asia-Pacific', 3, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+===ENDFILE
+===FILE: ./sql/seed/seed-01b-ref-markets.sql
+-- =====================================================================
+-- HSBC Platform - Seed Data
+-- Reference Table: Markets
+-- =====================================================================
+
+TRUNCATE TABLE ref_markets CASCADE;
+
+INSERT INTO ref_markets (market_code, market_name, region_code, display_order, is_active, created_at, updated_at) VALUES
+-- EMEA Markets
+('UK_CI', 'UK & Channel Islands', 'EMEA', 1, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('CONT_EU', 'Continental Europe', 'EMEA', 2, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('MENA', 'Middle East & North Africa', 'EMEA', 3, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('SSA', 'Sub-Saharan Africa', 'EMEA', 4, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('TR', 'Turkey', 'EMEA', 5, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+-- AMER Markets
+('US', 'United States', 'AMER', 6, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('CA', 'Canada', 'AMER', 7, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('LATAM', 'Latin America', 'AMER', 8, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('MX', 'Mexico', 'AMER', 9, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('BM', 'Bermuda', 'AMER', 10, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+-- APAC Markets
+('HK', 'Hong Kong', 'APAC', 11, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('CN', 'Mainland China', 'APAC', 12, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('SEA', 'Southeast Asia', 'APAC', 13, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('IN', 'India', 'APAC', 14, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('JP_KR', 'Japan & Korea', 'APAC', 15, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('AU_NZ', 'Australia & New Zealand', 'APAC', 16, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+===ENDFILE
+===FILE: ./sql/seed/seed-02-ref-countries.sql
+-- =====================================================================
+-- HSBC Platform - Seed Data
+-- Reference Table: Countries
+-- =====================================================================
+
+TRUNCATE TABLE ref_countries CASCADE;
+
+INSERT INTO ref_countries (country_code, country_name, region_code, market_code, display_order, is_active, created_at, updated_at) VALUES
+-- UK & Channel Islands
+('GB', 'United Kingdom', 'EMEA', 'UK_CI', 1, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('JE', 'Jersey', 'EMEA', 'UK_CI', 2, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('GG', 'Guernsey', 'EMEA', 'UK_CI', 3, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+-- Continental Europe
+('FR', 'France', 'EMEA', 'CONT_EU', 4, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('DE', 'Germany', 'EMEA', 'CONT_EU', 5, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('NL', 'Netherlands', 'EMEA', 'CONT_EU', 6, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('CH', 'Switzerland', 'EMEA', 'CONT_EU', 7, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('LU', 'Luxembourg', 'EMEA', 'CONT_EU', 8, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+-- Middle East & North Africa
+('AE', 'United Arab Emirates', 'EMEA', 'MENA', 9, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('SA', 'Saudi Arabia', 'EMEA', 'MENA', 10, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('EG', 'Egypt', 'EMEA', 'MENA', 11, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('BH', 'Bahrain', 'EMEA', 'MENA', 12, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('QA', 'Qatar', 'EMEA', 'MENA', 13, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+-- Sub-Saharan Africa
+('ZA', 'South Africa', 'EMEA', 'SSA', 14, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('KE', 'Kenya', 'EMEA', 'SSA', 15, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('NG', 'Nigeria', 'EMEA', 'SSA', 16, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+-- Turkey
+('TR', 'Turkey', 'EMEA', 'TR', 17, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+-- United States
+('US', 'United States', 'AMER', 'US', 18, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+-- Canada
+('CA', 'Canada', 'AMER', 'CA', 19, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+-- Latin America
+('BR', 'Brazil', 'AMER', 'LATAM', 20, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('AR', 'Argentina', 'AMER', 'LATAM', 21, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('CL', 'Chile', 'AMER', 'LATAM', 22, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+-- Mexico
+('MX', 'Mexico', 'AMER', 'MX', 23, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+-- Bermuda
+('BM', 'Bermuda', 'AMER', 'BM', 24, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+-- Hong Kong
+('HK', 'Hong Kong', 'APAC', 'HK', 25, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+-- Mainland China
+('CN', 'China', 'APAC', 'CN', 26, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+-- Southeast Asia
+('SG', 'Singapore', 'APAC', 'SEA', 27, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('MY', 'Malaysia', 'APAC', 'SEA', 28, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('TH', 'Thailand', 'APAC', 'SEA', 29, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('VN', 'Vietnam', 'APAC', 'SEA', 30, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('PH', 'Philippines', 'APAC', 'SEA', 31, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('ID', 'Indonesia', 'APAC', 'SEA', 32, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+-- India
+('IN', 'India', 'APAC', 'IN', 33, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+-- Japan & Korea
+('JP', 'Japan', 'APAC', 'JP_KR', 34, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('KR', 'South Korea', 'APAC', 'JP_KR', 35, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+-- Australia & New Zealand
+('AU', 'Australia', 'APAC', 'AU_NZ', 36, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('NZ', 'New Zealand', 'APAC', 'AU_NZ', 37, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+===ENDFILE
+===FILE: ./sql/seed/seed-03-ref-business-units.sql
+-- =====================================================================
+-- HSBC Platform - Seed Data
+-- Reference Table: Business Units
+-- =====================================================================
+
+TRUNCATE TABLE ref_business_units CASCADE;
+
+INSERT INTO ref_business_units (unit_code, unit_name, description, display_order, is_active, created_at, updated_at) VALUES
+('WPB', 'Wealth and Personal Banking', 'Personal banking and wealth management services', 1, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('CMB', 'Commercial Banking', 'Commercial and business banking services', 2, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('GBM', 'Global Banking and Markets', 'Investment banking and capital markets', 3, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+===ENDFILE
+===FILE: ./sql/seed/seed-04-role-layout-templates.sql
+-- =====================================================================
+-- HSBC Platform - Seed Data
+-- Entitlement Table: Role Layout Templates
+-- =====================================================================
+
+TRUNCATE TABLE role_layout_templates CASCADE;
+
+INSERT INTO role_layout_templates (
+    id, role_name, role_display_name,
+    columns, widgets, features, settings_tabs, settings_options, micro_frontends
+) VALUES
+
+-- Admin Role
+('0081dda5-78d7-4aea-9436-8eea0723e38b', 'admin', 'Administrator',
+ '{}'::jsonb,
+ '{"admin.roleTemplatesView": {"stateText": "enabled"}, "admin.adGroupsView": {"stateText": "enabled"}, "admin.pendingApprovalsView": {"stateText": "enabled"}, "admin.systemNoticesView": {"stateText": "enabled"}}'::jsonb,
+ '{"admin.viewRoleTemplates": {"stateText": "enabled"}, "admin.previewDashboards": {"stateText": "enabled"}, "admin.viewAdGroups": {"stateText": "enabled"}, "admin.editBusinessInfo": {"stateText": "enabled"}, "admin.editPermissions": {"stateText": "enabled"}, "admin.editApplications": {"stateText": "enabled"}, "admin.enableDisableGroups": {"stateText": "enabled"}, "admin.directSave": {"stateText": "enabled"}, "admin.viewNotices": {"stateText": "enabled"}, "admin.createNotice": {"stateText": "enabled"}, "admin.editNotice": {"stateText": "enabled"}, "admin.publishNotice": {"stateText": "enabled"}, "admin.archiveNotice": {"stateText": "enabled"}, "admin.saveDraft": {"stateText": "enabled"}, "header.notifications": {"stateText": "enabled"}}'::jsonb,
+ '{"help": {"stateText": "enabled"}, "language": {"stateText": "enabled"}, "accessibility": {"stateText": "enabled"}, "notifications": {"stateText": "enabled"}}'::jsonb,
+ '{"notifications.desktop": {"stateText": "enabled"}, "admin.noticePublishing": {"stateText": "enabled"}}'::jsonb,
+ '{}'::jsonb
+),
+
+-- Voice Agent Role
+('2e1b5559-76d2-4664-b329-7010e6316fd3', 'voice_agent', 'Voice Agent',
+ '{"kms": {"stateText": "enabled"}, "primary": {"stateText": "enabled"}, "embeddedApps": {"stateText": "enabled"}, "spaceCopilot": {"stateText": "enabled"}}'::jsonb,
+ '{"customer.info": {"stateText": "enabled"}, "customer.interactionHistory": {"stateText": "enabled"}, "mediaBar.callControls": {"stateText": "enabled"}}'::jsonb,
+ '{"search.embeddedApps": {"stateText": "enabled"}, "search.knowledgeBase": {"stateText": "enabled"}, "header.notifications": {"stateText": "enabled"}, "header.layoutManager": {"stateText": "enabled"}}'::jsonb,
+ '{"help": {"stateText": "enabled"}, "audio": {"stateText": "enabled"}, "calls": {"stateText": "enabled"}, "language": {"stateText": "enabled"}, "interface": {"stateText": "enabled"}, "privacy": {"stateText": "enabled"}, "notifications": {"stateText": "enabled"}, "accessibility": {"stateText": "enabled"}}'::jsonb,
+ '{"calls.autoAccept": {"stateText": "enabled"}, "calls.doNotDisturb.duration": {"stateText": "enabled"}, "notifications.desktop": {"stateText": "enabled"}, "interface.showTranscript": {"stateText": "enabled"}, "interface.spaceCopilotMode": {"stateText": "enabled"}, "interface.autoCloseKnowledgeOnCallEnd": {"stateText": "enabled"}}'::jsonb,
+ '{"mediaBar": {"stateText": "enabled"}, "spaceCopilot": {"stateText": "enabled"}}'::jsonb
+),
+
+-- Chat Agent Role
+('ab2bc25d-724f-4258-aafe-e98fd2109672', 'chat_agent', 'Chat Agent',
+ '{"kms": {"stateText": "enabled"}, "chat": {"stateText": "enabled"}, "primary": {"stateText": "enabled"}, "embeddedApps": {"stateText": "enabled"}, "spaceCopilot": {"stateText": "enabled"}}'::jsonb,
+ '{"customer.info": {"stateText": "enabled"}, "customer.interactionHistory": {"stateText": "enabled"}, "chat.templates": {"stateText": "enabled"}, "chat.queue": {"stateText": "enabled"}}'::jsonb,
+ '{"search.embeddedApps": {"stateText": "enabled"}, "search.knowledgeBase": {"stateText": "enabled"}, "header.notifications": {"stateText": "enabled"}, "header.layoutManager": {"stateText": "enabled"}}'::jsonb,
+ '{"help": {"stateText": "enabled"}, "language": {"stateText": "enabled"}, "interface": {"stateText": "enabled"}, "privacy": {"stateText": "enabled"}, "notifications": {"stateText": "enabled"}, "accessibility": {"stateText": "enabled"}}'::jsonb,
+ '{"notifications.desktop": {"stateText": "enabled"}, "interface.spaceCopilotMode": {"stateText": "enabled"}}'::jsonb,
+ '{"spaceCopilot": {"stateText": "enabled"}}'::jsonb
+),
+
+-- Supervisor Role
+('0a311bc5-b8aa-4705-8949-fc600fefc8cc', 'supervisor', 'Supervisor',
+ '{"primary": {"stateText": "enabled"}, "embeddedApps": {"stateText": "enabled"}, "spaceCopilot": {"stateText": "enabled"}}'::jsonb,
+ '{"supervisor.teamOverview": {"stateText": "enabled"}, "supervisor.performance": {"stateText": "enabled"}, "supervisor.monitoring": {"stateText": "enabled"}, "supervisor.teamStatus": {"stateText": "enabled"}}'::jsonb,
+ '{"search.embeddedApps": {"stateText": "enabled"}, "search.knowledgeBase": {"stateText": "enabled"}, "header.notifications": {"stateText": "enabled"}, "header.layoutManager": {"stateText": "enabled"}}'::jsonb,
+ '{"help": {"stateText": "enabled"}, "language": {"stateText": "enabled"}, "interface": {"stateText": "enabled"}, "privacy": {"stateText": "enabled"}, "notifications": {"stateText": "enabled"}, "accessibility": {"stateText": "enabled"}}'::jsonb,
+ '{"notifications.desktop": {"stateText": "enabled"}, "interface.spaceCopilotMode": {"stateText": "enabled"}}'::jsonb,
+ '{"spaceCopilot": {"stateText": "enabled"}}'::jsonb
+);
+===ENDFILE
+===FILE: ./sql/seed/seed-05-ad-group-layout-assignments.sql
+-- =====================================================================
+-- HSBC Platform - Seed Data
+-- Entitlement Table: AD Group Layout Assignments
+-- =====================================================================
+
+TRUNCATE TABLE ad_group_layout_assignments CASCADE;
+
+INSERT INTO ad_group_layout_assignments (
+    group_identifier, logical_name, role_name, market, region, country, admin_group_identifier, role_priority, is_active
+) VALUES
+
+-- Admin Groups
+('CN=Admin_EMEA,OU=Admin,OU=Groups,DC=hsbc,DC=com', 'Admin EMEA', 'admin', NULL, 'EMEA', NULL, NULL, 1, TRUE),
+('CN=Admin_AMER,OU=Admin,OU=Groups,DC=hsbc,DC=com', 'Admin AMER', 'admin', NULL, 'AMER', NULL, NULL, 1, TRUE),
+('CN=Admin_APAC,OU=Admin,OU=Groups,DC=hsbc,DC=com', 'Admin APAC', 'admin', NULL, 'APAC', NULL, NULL, 1, TRUE),
+
+-- Voice Agent Groups
+('CN=Voice_Agent_EMEA,OU=Agents,OU=Groups,DC=hsbc,DC=com', 'Voice Agent EMEA', 'voice_agent', 'CONT_EU', 'EMEA', 'FR', 'CN=Admin_EMEA,OU=Admin,OU=Groups,DC=hsbc,DC=com', 1, TRUE),
+('CN=Voice_Agent_AMER,OU=Agents,OU=Groups,DC=hsbc,DC=com', 'Voice Agent AMER', 'voice_agent', 'MX', 'AMER', 'MX', 'CN=Admin_AMER,OU=Admin,OU=Groups,DC=hsbc,DC=com', 1, TRUE),
+('CN=Voice_Agent_APAC,OU=Agents,OU=Groups,DC=hsbc,DC=com', 'Voice Agent APAC', 'voice_agent', 'SEA', 'APAC', 'SG', 'CN=Admin_APAC,OU=Admin,OU=Groups,DC=hsbc,DC=com', 1, TRUE),
+
+-- Voice Agent Premium Groups
+('CN=Voice_Agent_Premium_EMEA,OU=Agents,OU=Groups,DC=hsbc,DC=com', 'Voice Agent Premium EMEA', 'voice_agent', 'UK_CI', 'EMEA', 'GB', 'CN=Admin_EMEA,OU=Admin,OU=Groups,DC=hsbc,DC=com', 1, TRUE),
+('CN=Voice_Agent_Premium_AMER,OU=Agents,OU=Groups,DC=hsbc,DC=com', 'Voice Agent Premium AMER', 'voice_agent', 'US', 'AMER', 'US', 'CN=Admin_AMER,OU=Admin,OU=Groups,DC=hsbc,DC=com', 1, TRUE),
+('CN=Voice_Agent_Premium_APAC,OU=Agents,OU=Groups,DC=hsbc,DC=com', 'Voice Agent Premium APAC', 'voice_agent', 'CN', 'APAC', 'CN', 'CN=Admin_APAC,OU=Admin,OU=Groups,DC=hsbc,DC=com', 1, TRUE),
+
+-- Chat Agent Groups
+('CN=Chat_Agent_EMEA,OU=Agents,OU=Groups,DC=hsbc,DC=com', 'Chat Agent EMEA', 'chat_agent', 'UK_CI', 'EMEA', 'GB', 'CN=Admin_EMEA,OU=Admin,OU=Groups,DC=hsbc,DC=com', 1, TRUE),
+('CN=Chat_Agent_AMER,OU=Agents,OU=Groups,DC=hsbc,DC=com', 'Chat Agent AMER', 'chat_agent', 'US', 'AMER', 'US', 'CN=Admin_AMER,OU=Admin,OU=Groups,DC=hsbc,DC=com', 1, TRUE),
+('CN=Chat_Agent_APAC,OU=Agents,OU=Groups,DC=hsbc,DC=com', 'Chat Agent APAC', 'chat_agent', 'HK', 'APAC', 'HK', 'CN=Admin_APAC,OU=Admin,OU=Groups,DC=hsbc,DC=com', 1, TRUE),
+
+-- Supervisor Groups
+('CN=Supervisor_EMEA,OU=Supervisors,OU=Groups,DC=hsbc,DC=com', 'Supervisor EMEA', 'supervisor', 'UK_CI', 'EMEA', 'GB', 'CN=Admin_EMEA,OU=Admin,OU=Groups,DC=hsbc,DC=com', 1, TRUE),
+('CN=Supervisor_AMER,OU=Supervisors,OU=Groups,DC=hsbc,DC=com', 'Supervisor AMER', 'supervisor', 'CA', 'AMER', 'CA', 'CN=Admin_AMER,OU=Admin,OU=Groups,DC=hsbc,DC=com', 1, TRUE),
+('CN=Supervisor_APAC,OU=Supervisors,OU=Groups,DC=hsbc,DC=com', 'Supervisor APAC', 'supervisor', 'HK', 'APAC', 'HK', 'CN=Admin_APAC,OU=Admin,OU=Groups,DC=hsbc,DC=com', 1, TRUE),
+
+-- =====================================================================
+-- Demo User AD Groups (from mock-users.json)
+-- These AD groups enable demo users to get proper role assignments
+-- =====================================================================
+
+-- Voice Agent Demo Groups (from VOICE_AGENT_DEMO, VOICE_CHAT_AGENT_DEMO, ALL_ROLES_AGENT_DEMO)
+('CN=London_Wealth_Management_Team,OU=Agents,OU=Groups,DC=hsbc,DC=com', 'London Wealth Management Team', 'voice_agent', 'UK_CI', 'EMEA', 'GB', 'CN=Admin_EMEA,OU=Admin,OU=Groups,DC=hsbc,DC=com', 1, TRUE),
+
+-- Chat Agent Demo Groups (from CHAT_AGENT_DEMO, VOICE_CHAT_AGENT_DEMO, ALL_ROLES_AGENT_DEMO)
+('CN=Premium_Support,OU=Groups,DC=hsbc,DC=com', 'Premium Support', 'chat_agent', 'UK_CI', 'EMEA', 'GB', 'CN=Admin_EMEA,OU=Admin,OU=Groups,DC=hsbc,DC=com', 1, TRUE),
+('CN=Standard_Support,OU=Groups,DC=hsbc,DC=com', 'Standard Support', 'chat_agent', 'UK_CI', 'EMEA', 'GB', 'CN=Admin_EMEA,OU=Admin,OU=Groups,DC=hsbc,DC=com', 1, TRUE),
+
+-- Supervisor Demo Groups (from SUPERVISOR_DEMO, VOICE_SUPERVISOR_DEMO, CHAT_SUPERVISOR_DEMO, TRI_AGENT_DEMO, ALL_ROLES_AGENT_DEMO)
+('CN=Team_Leads,OU=Groups,DC=hsbc,DC=com', 'Team Leads', 'supervisor', 'UK_CI', 'EMEA', 'GB', 'CN=Admin_EMEA,OU=Admin,OU=Groups,DC=hsbc,DC=com', 1, TRUE),
+('CN=Department_Managers,OU=Groups,DC=hsbc,DC=com', 'Department Managers', 'supervisor', 'UK_CI', 'EMEA', 'GB', 'CN=Admin_EMEA,OU=Admin,OU=Groups,DC=hsbc,DC=com', 1, TRUE),
+
+-- Multi-Region Voice Agent Demo Groups (from VOICE_SUPERVISOR_DEMO)
+('CN=US_Customer_Service,OU=Groups,DC=hsbc,DC=com', 'US Customer Service', 'voice_agent', 'US', 'AMER', 'US', 'CN=Admin_AMER,OU=Admin,OU=Groups,DC=hsbc,DC=com', 1, TRUE),
+
+-- Multi-Region Chat/Supervisor Demo Groups (from TRI_AGENT_DEMO, CHAT_SUPERVISOR_DEMO)
+('CN=HK_Private_Banking,OU=Groups,DC=hsbc,DC=com', 'HK Private Banking', 'chat_agent', 'HK', 'APAC', 'HK', 'CN=Admin_APAC,OU=Admin,OU=Groups,DC=hsbc,DC=com', 1, TRUE),
+('CN=SG_Wealth_Management,OU=Groups,DC=hsbc,DC=com', 'SG Wealth Management', 'supervisor', 'SEA', 'APAC', 'SG', 'CN=Admin_APAC,OU=Admin,OU=Groups,DC=hsbc,DC=com', 1, TRUE),
+
+-- Admin Demo Groups (from various admin demos)
+('CN=EMEA_Platform_Admins,OU=Admin,OU=Groups,DC=hsbc,DC=com', 'EMEA Platform Admins', 'admin', NULL, 'EMEA', NULL, NULL, 1, TRUE),
+('CN=APAC_Platform_Admins,OU=Admin,OU=Groups,DC=hsbc,DC=com', 'APAC Platform Admins', 'admin', NULL, 'APAC', NULL, NULL, 1, TRUE),
+('CN=AMER_Platform_Admins,OU=Admin,OU=Groups,DC=hsbc,DC=com', 'AMER Platform Admins', 'admin', NULL, 'AMER', NULL, NULL, 1, TRUE),
+('CN=Admin_Checker_GLOBAL,OU=Admin,OU=Groups,DC=hsbc,DC=com', 'Global Admin Checker', 'admin', NULL, NULL, NULL, NULL, 1, TRUE),
+('CN=Admin_Checker_EMEA,OU=Admin,OU=Groups,DC=hsbc,DC=com', 'EMEA Admin Checker', 'admin', NULL, 'EMEA', NULL, NULL, 1, TRUE),
+('CN=Admin_Checker_AMER,OU=Admin,OU=Groups,DC=hsbc,DC=com', 'AMER Admin Checker', 'admin', NULL, 'AMER', NULL, NULL, 1, TRUE),
+('CN=Admin_Checker_APAC,OU=Admin,OU=Groups,DC=hsbc,DC=com', 'APAC Admin Checker', 'admin', NULL, 'APAC', NULL, NULL, 1, TRUE),
+('CN=Super_Admin_EMEA,OU=Admin,OU=Groups,DC=hsbc,DC=com', 'EMEA Super Admin', 'admin', NULL, 'EMEA', NULL, NULL, 1, TRUE),
+('CN=Super_Admin_AMER,OU=Admin,OU=Groups,DC=hsbc,DC=com', 'AMER Super Admin', 'admin', NULL, 'AMER', NULL, NULL, 1, TRUE),
+('CN=Super_Admin_APAC,OU=Admin,OU=Groups,DC=hsbc,DC=com', 'APAC Super Admin', 'admin', NULL, 'APAC', NULL, NULL, 1, TRUE);
+
+-- =====================================================================
+-- Approval Workflow: Assign checker and super-admin AD groups
+-- Maps each AD group to the checker/super-admin groups that can approve changes
+-- =====================================================================
+
+-- EMEA groups
+UPDATE ad_group_layout_assignments
+SET checker_ad_group = 'CN=Admin_Checker_EMEA,OU=Admin,OU=Groups,DC=hsbc,DC=com',
+    super_admin_ad_group = 'CN=Super_Admin_EMEA,OU=Admin,OU=Groups,DC=hsbc,DC=com'
+WHERE group_identifier LIKE '%EMEA%'
+   OR group_identifier IN (
+       'CN=London_Wealth_Management_Team,OU=Agents,OU=Groups,DC=hsbc,DC=com',
+       'CN=Premium_Support,OU=Groups,DC=hsbc,DC=com',
+       'CN=Standard_Support,OU=Groups,DC=hsbc,DC=com',
+       'CN=Team_Leads,OU=Groups,DC=hsbc,DC=com',
+       'CN=Department_Managers,OU=Groups,DC=hsbc,DC=com'
+   );
+
+-- AMER groups
+UPDATE ad_group_layout_assignments
+SET checker_ad_group = 'CN=Admin_Checker_AMER,OU=Admin,OU=Groups,DC=hsbc,DC=com',
+    super_admin_ad_group = 'CN=Super_Admin_AMER,OU=Admin,OU=Groups,DC=hsbc,DC=com'
+WHERE group_identifier LIKE '%AMER%'
+   OR group_identifier = 'CN=US_Customer_Service,OU=Groups,DC=hsbc,DC=com';
+
+-- APAC groups
+UPDATE ad_group_layout_assignments
+SET checker_ad_group = 'CN=Admin_Checker_APAC,OU=Admin,OU=Groups,DC=hsbc,DC=com',
+    super_admin_ad_group = 'CN=Super_Admin_APAC,OU=Admin,OU=Groups,DC=hsbc,DC=com'
+WHERE group_identifier LIKE '%APAC%'
+   OR group_identifier IN (
+       'CN=HK_Private_Banking,OU=Groups,DC=hsbc,DC=com',
+       'CN=SG_Wealth_Management,OU=Groups,DC=hsbc,DC=com'
+   );
+
+-- Global checker group
+UPDATE ad_group_layout_assignments
+SET checker_ad_group = 'CN=Admin_Checker_GLOBAL,OU=Admin,OU=Groups,DC=hsbc,DC=com',
+    super_admin_ad_group = 'CN=Super_Admin_EMEA,OU=Admin,OU=Groups,DC=hsbc,DC=com'
+WHERE group_identifier = 'CN=Admin_Checker_GLOBAL,OU=Admin,OU=Groups,DC=hsbc,DC=com';
+===ENDFILE
+===FILE: ./sql/seed/seed-06-customers.sql
+-- =====================================================================
+-- HSBC Platform - Seed Data
+-- Customer Table: Customers
+-- =====================================================================
+
+TRUNCATE TABLE customers CASCADE;
+
+INSERT INTO customers (
+    account_number, cin, name, tier, phone, email, location,
+    balance, credit_score, products, member_since, account_type,
+    verification_status, care_need, total_interactions, created_at, updated_at
+) VALUES
+
+-- Premier Banking Customers
+('HSBC0001234', 'CIN-789456123', 'Jonathan Mitchell', 'Premier Banking',
+ '+44-20-7946-0958', 'j.mitchell@email.com', 'London, UK',
+ 125000.00, 780,
+ ARRAY['Premier Account', 'Mortgage', 'Credit Card', 'Investment ISA'],
+ '2015-03-15', 'Premier Current Account',
+ 'verified', 'none', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+
+('HSBC0001236', 'CIN-321654987', 'Victoria Pemberton', 'Premier Banking',
+ '+44-161-999-8877', 'v.pemberton@email.com', 'Manchester, UK',
+ 95000.00, 750,
+ ARRAY['Premier Account', 'Travel Insurance', 'Premier Credit Card'],
+ '2018-11-08', 'Premier Current Account',
+ 'verified', 'none', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+
+('HSBC0002223', 'CIN-889977665', 'Audrey Gertrude Antimony', 'Personal Banking',
+ '+44-161-234-5678', 'audrey.antimony@email.com', 'Manchester, UK',
+ 2847.00, 720,
+ ARRAY['Personal Current Account', 'Fixed Term Savings Account ****2223'],
+ '2012-03-15', 'Personal Banking Package',
+ 'verified', 'none', 9, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+
+-- Jade Banking Customers
+('HSBC0002001', 'CIN-147258369', 'Sarah Chen Wei', 'Jade Banking',
+ '+852-2234-5678', 's.chenwei@email.com', 'Hong Kong',
+ 8500000.00, 850,
+ ARRAY['Jade Account', 'Wealth Management', 'Private Banking', 'Multiple Properties'],
+ '2018-01-20', 'Jade Account',
+ 'verified', 'none', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+
+('HSBC0002002', 'CIN-963852741', 'Michael Zhang', 'Jade Banking',
+ '+86-21-6234-5678', 'm.zhang@email.com', 'Shanghai, China',
+ 15000000.00, 830,
+ ARRAY['Jade Account', 'Investment Advisory', 'Art Finance', 'Global Transfers'],
+ '2016-05-12', 'Jade Account',
+ 'verified', 'none', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+
+-- HSBC Advance Customer
+('HSBC0003002', 'CIN-369258147', 'Emily Davis', 'HSBC Advance',
+ '+1-617-555-0234', 'e.davis@email.com', 'Boston, MA',
+ 42000.00, 690,
+ ARRAY['Advance Account', 'Student Loan Refinance'],
+ '2021-06-28', 'Advance Account',
+ 'verified', 'none', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+
+-- Student Banking Customers
+('HSBC0006001', 'CIN-975318642', 'Oliver Chen', 'Student Banking',
+ '+44-1865-234567', 'o.chen@student.com', 'Oxford, UK',
+ 850.00, 600,
+ ARRAY['Student Account', 'Student Overdraft'],
+ '2022-09-01', 'Student Account',
+ 'verified', 'none', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+
+('HSBC0006002', 'CIN-642975318', 'Emma Thompson', 'Student Banking',
+ '+44-113-555-0123', 'e.thompson@student.com', 'Leeds, UK',
+ 420.00, 580,
+ ARRAY['Student Account', 'Student Credit Card'],
+ '2023-09-15', 'Student Account',
+ 'verified', 'none', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+===ENDFILE
+===FILE: ./sql/seed/seed-07-embedded-apps.sql
+--
+-- Seed data for embedded_apps table
+-- INSERT format for compatibility with V2.1 schema
+--
+-- NOTE: search_text and search_vector fields are NOT manually provided
+-- They are automatically computed by the trigger:
+--   trg_update_embedded_app_search_vector (defined in 01-create-tables.sql)
+-- This trigger fires BEFORE INSERT/UPDATE and populates both fields based on:
+--   - title (weight A)
+--   - description (weight B)
+--   - primary_keywords (weight B)
+--   - category (weight C)
+--
+
+-- Clear existing data
+TRUNCATE TABLE embedded_apps RESTART IDENTITY CASCADE;
+
+-- Account Management
+INSERT INTO embedded_apps (id, app_key, title, description, primary_keywords, category, is_active, created_at, updated_at, regional_urls, base_url, loading_strategy, usage_count, display_priority, function_definitions, created_by, updated_by) VALUES
+('7a4248d8-ac7f-410e-a69e-67307298b049', 'account-management', 'Account Management', 'View account details, download statements, update contact information, reverse transactions, manage account settings', '{account,profile,statements,contact,settings,upgrade,close,reverse,transaction}', 'Account Services', true, '2025-10-02 16:12:49.376972+00', '2025-10-06 12:12:17.376499+00', '{"HK": "http://localhost:5175/embedded-apps/account-management?region=HK", "SG": "http://localhost:5175/embedded-apps/account-management?region=SG", "UK": "http://localhost:5175/embedded-apps/account-management?region=UK", "US": "http://localhost:5175/embedded-apps/account-management?region=US", "AMER": "http://localhost:5175/embedded-apps/account-management?region=AMER", "APAC": "http://localhost:5175/embedded-apps/account-management?region=APAC", "EMEA": "http://localhost:5175/embedded-apps/account-management?region=EMEA"}', 'http://localhost:5175/embedded-apps/account-management', 'iframe', 0, 40, '{"close-account": {"key": "close-account", "displayName": "Close Account", "categoryText": "write", "description": "Initiate account closure", "requiresApprovalFlag": true}, "view-accounts": {"key": "view-accounts", "displayName": "View Accounts", "categoryText": "read", "description": "View account details and balances"}, "update-contact": {"key": "update-contact", "displayName": "Update Contact Info", "categoryText": "write", "description": "Update contact details"}, "upgrade-account": {"key": "upgrade-account", "displayName": "Upgrade Account", "categoryText": "write", "description": "Request account upgrade", "requiresApprovalFlag": true}, "view-statements": {"key": "view-statements", "displayName": "View Statements", "categoryText": "read", "description": "Access account statements"}, "download-statement": {"key": "download-statement", "displayName": "Download Statement", "categoryText": "read", "description": "Download PDF statements"}, "reverse-transaction": {"key": "reverse-transaction", "displayName": "Reverse Transaction", "categoryText": "write", "description": "Reverse incorrect fees or charges", "requiresApprovalFlag": true}}', NULL, 'system-cleanup');
+
+-- Business Loan
+INSERT INTO embedded_apps (id, app_key, title, description, primary_keywords, category, is_active, created_at, updated_at, regional_urls, base_url, loading_strategy, usage_count, display_priority, function_definitions, created_by, updated_by) VALUES
+('8451a858-6257-47f0-a104-c7e28fbe40a0', 'business-loan', 'Business Loan', 'Business loan calculator, eligibility check, application submission, document upload', '{"business loan","business finance","SME loan","commercial loan","business plan"}', 'Lending', true, '2025-10-02 16:17:18.462271+00', '2025-10-06 12:12:17.376499+00', '{"HK": "http://localhost:5175/embedded-apps/business-loan?region=HK", "SG": "http://localhost:5175/embedded-apps/business-loan?region=SG", "UK": "http://localhost:5175/embedded-apps/business-loan?region=UK", "US": "http://localhost:5175/embedded-apps/business-loan?region=US", "AMER": "http://localhost:5175/embedded-apps/business-loan?region=AMER", "APAC": "http://localhost:5175/embedded-apps/business-loan?region=APAC", "EMEA": "http://localhost:5175/embedded-apps/business-loan?region=EMEA"}', 'http://localhost:5175/embedded-apps/business-loan', 'iframe', 0, 90, '{"apply-loan": {"key": "apply-loan", "displayName": "Apply for Loan", "categoryText": "write", "description": "Submit business loan application", "requiresApprovalFlag": true}, "view-status": {"key": "view-status", "displayName": "View Status", "categoryText": "read", "description": "Track application status"}, "view-products": {"key": "view-products", "displayName": "View Products", "categoryText": "read", "description": "See business loan products"}, "check-eligibility": {"key": "check-eligibility", "displayName": "Check Eligibility", "categoryText": "read", "description": "Check business loan eligibility"}, "upload-financials": {"key": "upload-financials", "displayName": "Upload Financials", "categoryText": "write", "description": "Upload business financial statements"}, "business-calculator": {"key": "business-calculator", "displayName": "Business Loan Calculator", "categoryText": "read", "description": "Calculate business loan payments"}, "upload-business-plan": {"key": "upload-business-plan", "displayName": "Upload Business Plan", "categoryText": "write", "description": "Upload business plan document"}}', NULL, NULL);
+
+-- Credit Card
+INSERT INTO embedded_apps (id, app_key, title, description, primary_keywords, category, is_active, created_at, updated_at, regional_urls, base_url, loading_strategy, usage_count, display_priority, function_definitions, created_by, updated_by) VALUES
+('91e796a0-6c90-44f1-8122-acf469083e75', 'credit-card', 'Credit Card Management', 'Manage your card, track spending, protect against fraud, dispute transactions', '{"credit card","card management",fraud,dispute,"freeze card",transactions}', 'Banking Operations', true, '2025-10-02 16:12:49.356096+00', '2025-10-03 08:42:07.821298+00', '{"HK": "http://localhost:5175/embedded-apps/credit-card?region=HK", "SG": "http://localhost:5175/embedded-apps/credit-card?region=SG", "UK": "http://localhost:5175/embedded-apps/credit-card?region=UK", "US": "http://localhost:5175/embedded-apps/credit-card?region=US", "AMER": "http://localhost:5175/embedded-apps/credit-card?region=AMER", "APAC": "http://localhost:5175/embedded-apps/credit-card?region=APAC", "EMEA": "http://localhost:5175/embedded-apps/credit-card?region=EMEA"}', 'http://localhost:5175/embedded-apps/credit-card', 'iframe', 0, 20, '{"view-card": {"key": "view-card", "displayName": "View Card Details", "categoryText": "read", "description": "View card information and balance"}, "block-card": {"key": "block-card", "displayName": "Block Card", "categoryText": "write", "description": "Permanently block card", "requiresApprovalFlag": true}, "freeze-card": {"key": "freeze-card", "displayName": "Freeze Card", "categoryText": "write", "description": "Temporarily freeze card"}, "report-fraud": {"key": "report-fraud", "displayName": "Report Fraud", "categoryText": "write", "description": "Report fraudulent activity"}, "view-transactions": {"key": "view-transactions", "displayName": "View Transactions", "categoryText": "read", "description": "View transaction history and categories"}, "dispute-transaction": {"key": "dispute-transaction", "displayName": "Dispute Transaction", "categoryText": "write", "description": "Dispute a charge"}, "request-limit-increase": {"key": "request-limit-increase", "displayName": "Request Limit Increase", "categoryText": "write", "description": "Request credit limit increase", "requiresApprovalFlag": true}}', NULL, NULL);
+
+-- Debit Card
+INSERT INTO embedded_apps (id, app_key, title, description, primary_keywords, category, is_active, created_at, updated_at, regional_urls, base_url, loading_strategy, usage_count, display_priority, function_definitions, created_by, updated_by) VALUES
+('08d7652c-0af2-4092-af11-49573516253a', 'debit-card', 'Debit Card Services', 'Manage debit card, order replacement, set PIN, freeze card, report lost or stolen', '{"debit card","card services",PIN,contactless,freeze,lost,stolen}', 'Banking Operations', true, '2025-10-02 16:14:22.779561+00', '2025-10-06 12:12:17.376499+00', '{"HK": "http://localhost:5175/embedded-apps/debit-card?region=HK", "SG": "http://localhost:5175/embedded-apps/debit-card?region=SG", "UK": "http://localhost:5175/embedded-apps/debit-card?region=UK", "US": "http://localhost:5175/embedded-apps/debit-card?region=US", "AMER": "http://localhost:5175/embedded-apps/debit-card?region=AMER", "APAC": "http://localhost:5175/embedded-apps/debit-card?region=APAC", "EMEA": "http://localhost:5175/embedded-apps/debit-card?region=EMEA"}', 'http://localhost:5175/embedded-apps/debit-card', 'iframe', 0, 70, '{"set-pin": {"key": "set-pin", "displayName": "Set PIN", "categoryText": "write", "description": "Change card PIN"}, "view-card": {"key": "view-card", "displayName": "View Card Details", "categoryText": "read", "description": "View debit card information"}, "freeze-card": {"key": "freeze-card", "displayName": "Freeze Card", "categoryText": "write", "description": "Temporarily freeze card"}, "report-lost": {"key": "report-lost", "displayName": "Report Lost/Stolen", "categoryText": "write", "description": "Report lost or stolen card"}, "order-replacement": {"key": "order-replacement", "displayName": "Order Replacement", "categoryText": "write", "description": "Request replacement card"}, "update-contactless-limit": {"key": "update-contactless-limit", "displayName": "Update Contactless Limit", "categoryText": "write", "description": "Change contactless payment limit"}}', NULL, NULL);
+
+-- First Credit Card
+INSERT INTO embedded_apps (id, app_key, title, description, primary_keywords, category, is_active, created_at, updated_at, regional_urls, base_url, loading_strategy, usage_count, display_priority, function_definitions, created_by, updated_by) VALUES
+('11617a29-2fd6-472a-8623-1fab4b01cee0', 'first-credit-card', 'Credit Card Application', 'Check eligibility, view offers, apply for first credit card, track application status', '{"first credit card","credit card application",eligibility,offers,apply}', 'Lending', true, '2025-10-02 16:17:18.439413+00', '2025-10-06 12:12:17.376499+00', '{"HK": "http://localhost:5175/embedded-apps/first-credit-card?region=HK", "SG": "http://localhost:5175/embedded-apps/first-credit-card?region=SG", "UK": "http://localhost:5175/embedded-apps/first-credit-card?region=UK", "US": "http://localhost:5175/embedded-apps/first-credit-card?region=US", "AMER": "http://localhost:5175/embedded-apps/first-credit-card?region=AMER", "APAC": "http://localhost:5175/embedded-apps/first-credit-card?region=APAC", "EMEA": "http://localhost:5175/embedded-apps/first-credit-card?region=EMEA"}', 'http://localhost:5175/embedded-apps/first-credit-card', 'iframe', 0, 75, '{"apply-card": {"key": "apply-card", "displayName": "Apply for Card", "categoryText": "write", "description": "Submit credit card application", "requiresApprovalFlag": true}, "view-offers": {"key": "view-offers", "displayName": "View Offers", "categoryText": "read", "description": "See available credit card offers"}, "upload-documents": {"key": "upload-documents", "displayName": "Upload Documents", "categoryText": "write", "description": "Upload supporting documents"}, "check-eligibility": {"key": "check-eligibility", "displayName": "Check Eligibility", "categoryText": "read", "description": "Check credit card eligibility"}, "view-application-status": {"key": "view-application-status", "displayName": "View Application Status", "categoryText": "read", "description": "Check application progress"}}', NULL, NULL);
+
+-- Fraud Alert
+INSERT INTO embedded_apps (id, app_key, title, description, primary_keywords, category, is_active, created_at, updated_at, regional_urls, base_url, loading_strategy, usage_count, display_priority, function_definitions, created_by, updated_by) VALUES
+('4b85215a-d575-4d46-b8c6-bc33ade5784a', 'fraud-alert', 'Fraud & Security Alerts', 'View fraud alerts, report suspicious activity, block cards, configure security settings', '{fraud,security,alert,suspicious,"block card",dispute}', 'Security', true, '2025-10-02 16:14:22.777672+00', '2025-10-06 12:12:17.376499+00', '{"HK": "http://localhost:5175/embedded-apps/fraud-alert?region=HK", "SG": "http://localhost:5175/embedded-apps/fraud-alert?region=SG", "UK": "http://localhost:5175/embedded-apps/fraud-alert?region=UK", "US": "http://localhost:5175/embedded-apps/fraud-alert?region=US", "AMER": "http://localhost:5175/embedded-apps/fraud-alert?region=AMER", "APAC": "http://localhost:5175/embedded-apps/fraud-alert?region=APAC", "EMEA": "http://localhost:5175/embedded-apps/fraud-alert?region=EMEA"}', 'http://localhost:5175/embedded-apps/fraud-alert', 'iframe', 0, 60, '{"block-card": {"key": "block-card", "displayName": "Block Card", "categoryText": "write", "description": "Immediately block compromised card"}, "view-alerts": {"key": "view-alerts", "displayName": "View Alerts", "categoryText": "read", "description": "View fraud alerts and notifications"}, "report-fraud": {"key": "report-fraud", "displayName": "Report Fraud", "categoryText": "write", "description": "Report fraudulent activity"}, "enable-alerts": {"key": "enable-alerts", "displayName": "Enable Alerts", "categoryText": "write", "description": "Configure fraud alert notifications"}, "security-settings": {"key": "security-settings", "displayName": "Security Settings", "categoryText": "write", "description": "Update security preferences"}, "dispute-transaction": {"key": "dispute-transaction", "displayName": "Dispute Transaction", "categoryText": "write", "description": "Dispute suspicious transaction"}}', NULL, NULL);
+
+-- Money Transfer
+INSERT INTO embedded_apps (id, app_key, title, description, primary_keywords, category, is_active, created_at, updated_at, regional_urls, base_url, loading_strategy, usage_count, display_priority, function_definitions, created_by, updated_by) VALUES
+('d80162fa-3aa8-4b2b-8d5b-56573f184c3d', 'money-transfer', 'Money Transfer', 'Transfer money between accounts, send domestic and international payments, schedule recurring transfers', '{transfer,payment,"send money",wire,domestic,international,scheduled,recurring}', 'Banking Operations', true, '2025-09-29 07:58:47.00002+00', '2025-10-06 12:12:17.376499+00', '{"HK": "http://localhost:5175/embedded-apps/money-transfer?region=HK", "SG": "http://localhost:5175/embedded-apps/money-transfer?region=SG", "UK": "http://localhost:5175/embedded-apps/money-transfer?region=UK", "US": "http://localhost:5175/embedded-apps/money-transfer?region=US", "AMER": "http://localhost:5175/embedded-apps/money-transfer?region=AMER", "APAC": "http://localhost:5175/embedded-apps/money-transfer?region=APAC", "EMEA": "http://localhost:5175/embedded-apps/money-transfer?region=EMEA"}', 'http://localhost:5175/embedded-apps/money-transfer', 'iframe', 6257, 10, '{"quick-transfer": {"key": "quick-transfer", "displayName": "Quick Transfer", "categoryText": "write", "description": "Fast transfer between own accounts"}, "view-transfers": {"key": "view-transfers", "displayName": "View Transfers", "categoryText": "read", "description": "View transfer history and transaction details"}, "domestic-transfer": {"key": "domestic-transfer", "displayName": "Domestic Transfer", "categoryText": "write", "description": "UK domestic bank transfers"}, "recurring-transfer": {"key": "recurring-transfer", "displayName": "Recurring Transfer", "categoryText": "write", "description": "Set up recurring payment instructions", "requiresApprovalFlag": true}, "scheduled-transfer": {"key": "scheduled-transfer", "displayName": "Scheduled Transfer", "categoryText": "write", "description": "Schedule future transfers"}, "international-transfer": {"key": "international-transfer", "displayName": "International Transfer", "categoryText": "write", "description": "Cross-border wire transfers", "requiresApprovalFlag": true}}', NULL, NULL);
+
+-- Mortgage
+INSERT INTO embedded_apps (id, app_key, title, description, primary_keywords, category, is_active, created_at, updated_at, regional_urls, base_url, loading_strategy, usage_count, display_priority, function_definitions, created_by, updated_by) VALUES
+('039e5c54-adef-4444-b6a9-1c267758f4a1', 'mortgage', 'Mortgage Application', 'Calculate mortgage payments, get pre-qualified, submit full application, track status', '{mortgage,"home loan",property,"mortgage calculator",pre-qualification}', 'Lending', true, '2025-10-02 16:17:18.460925+00', '2025-10-06 12:12:17.376499+00', '{"HK": "http://localhost:5175/embedded-apps/mortgage?region=HK", "SG": "http://localhost:5175/embedded-apps/mortgage?region=SG", "UK": "http://localhost:5175/embedded-apps/mortgage?region=UK", "US": "http://localhost:5175/embedded-apps/mortgage?region=US", "AMER": "http://localhost:5175/embedded-apps/mortgage?region=AMER", "APAC": "http://localhost:5175/embedded-apps/mortgage?region=APAC", "EMEA": "http://localhost:5175/embedded-apps/mortgage?region=EMEA"}', 'http://localhost:5175/embedded-apps/mortgage', 'iframe', 0, 80, '{"view-rates": {"key": "view-rates", "displayName": "View Rates", "categoryText": "read", "description": "Current mortgage interest rates"}, "full-application": {"key": "full-application", "displayName": "Full Application", "categoryText": "write", "description": "Submit full mortgage application", "requiresApprovalFlag": true}, "upload-documents": {"key": "upload-documents", "displayName": "Upload Documents", "categoryText": "write", "description": "Upload financial documents"}, "pre-qualification": {"key": "pre-qualification", "displayName": "Pre-Qualification", "categoryText": "read", "description": "Get pre-qualified borrowing amount"}, "property-valuation": {"key": "property-valuation", "displayName": "Property Valuation", "categoryText": "write", "description": "Request property valuation", "requiresApprovalFlag": true}, "mortgage-calculator": {"key": "mortgage-calculator", "displayName": "Mortgage Calculator", "categoryText": "read", "description": "Calculate mortgage payments and affordability"}, "view-application-status": {"key": "view-application-status", "displayName": "View Application Status", "categoryText": "read", "description": "Track mortgage application"}}', NULL, NULL);
+
+-- Personal Loan
+INSERT INTO embedded_apps (id, app_key, title, description, primary_keywords, category, is_active, created_at, updated_at, regional_urls, base_url, loading_strategy, usage_count, display_priority, function_definitions, created_by, updated_by) VALUES
+('0bc1c43d-a57e-446f-894f-073f9512d4ce', 'personal-loan', 'Personal Loan', 'Apply for personal loans, calculate payments, check eligibility, track application status', '{"personal loan","loan application","loan calculator",eligibility,"interest rates"}', 'Lending', true, '2025-10-02 16:12:49.375041+00', '2025-10-06 12:12:17.376499+00', '{"HK": "http://localhost:5175/embedded-apps/personal-loan?region=HK", "SG": "http://localhost:5175/embedded-apps/personal-loan?region=SG", "UK": "http://localhost:5175/embedded-apps/personal-loan?region=UK", "US": "http://localhost:5175/embedded-apps/personal-loan?region=US", "AMER": "http://localhost:5175/embedded-apps/personal-loan?region=AMER", "APAC": "http://localhost:5175/embedded-apps/personal-loan?region=APAC", "EMEA": "http://localhost:5175/embedded-apps/personal-loan?region=EMEA"}', 'http://localhost:5175/embedded-apps/personal-loan', 'iframe', 0, 30, '{"apply-loan": {"key": "apply-loan", "displayName": "Apply for Loan", "categoryText": "write", "description": "Submit loan application", "requiresApprovalFlag": true}, "view-rates": {"key": "view-rates", "displayName": "View Rates", "categoryText": "read", "description": "See current interest rates"}, "calculate-loan": {"key": "calculate-loan", "displayName": "Loan Calculator", "categoryText": "read", "description": "Calculate monthly payments and interest"}, "upload-documents": {"key": "upload-documents", "displayName": "Upload Documents", "categoryText": "write", "description": "Upload proof of income and identity"}, "check-eligibility": {"key": "check-eligibility", "displayName": "Check Eligibility", "categoryText": "read", "description": "Check loan eligibility criteria"}, "view-application-status": {"key": "view-application-status", "displayName": "View Application Status", "categoryText": "read", "description": "Track application progress"}}', NULL, NULL);
+
+-- Standing Order
+INSERT INTO embedded_apps (id, app_key, title, description, primary_keywords, category, is_active, created_at, updated_at, regional_urls, base_url, loading_strategy, usage_count, display_priority, function_definitions, created_by, updated_by) VALUES
+('13bfd7ce-2c53-4434-9ae3-e71d5660ca68', 'standing-order', 'Standing Orders', 'Create, modify, cancel, and suspend standing orders for recurring payments', '{"standing order","recurring payment","automatic payment",scheduled,regular}', 'Banking Operations', true, '2025-10-02 16:14:22.740284+00', '2025-10-06 12:12:17.376499+00', '{"HK": "http://localhost:5175/embedded-apps/standing-order?region=HK", "SG": "http://localhost:5175/embedded-apps/standing-order?region=SG", "UK": "http://localhost:5175/embedded-apps/standing-order?region=UK", "US": "http://localhost:5175/embedded-apps/standing-order?region=US", "AMER": "http://localhost:5175/embedded-apps/standing-order?region=AMER", "APAC": "http://localhost:5175/embedded-apps/standing-order?region=APAC", "EMEA": "http://localhost:5175/embedded-apps/standing-order?region=EMEA"}', 'http://localhost:5175/embedded-apps/standing-order', 'iframe', 0, 50, '{"view-orders": {"key": "view-orders", "displayName": "View Orders", "categoryText": "read", "description": "View existing standing orders"}, "cancel-order": {"key": "cancel-order", "displayName": "Cancel Order", "categoryText": "write", "description": "Cancel standing order"}, "create-order": {"key": "create-order", "displayName": "Create Order", "categoryText": "write", "description": "Set up new standing order"}, "modify-order": {"key": "modify-order", "displayName": "Modify Order", "categoryText": "write", "description": "Change existing order details"}, "suspend-order": {"key": "suspend-order", "displayName": "Suspend Order", "categoryText": "write", "description": "Temporarily pause order"}}', NULL, NULL);
+===ENDFILE
+===FILE: ./sql/seed/seed-08-intent-app-mappings.sql
+--
+-- Seed data for intent_app_mappings table
+-- Maps AI-detected intents to embedded apps for automatic tab creation
+--
+
+-- Clear existing mappings
+TRUNCATE TABLE intent_app_mappings RESTART IDENTITY CASCADE;
+
+-- Insert intent to app mappings
+INSERT INTO intent_app_mappings (intent_name, app_key, route_key, is_enabled, created_by, updated_by, created_at, updated_at) VALUES
+-- Account Management intents
+('account_management', 'account-management', NULL, TRUE, 'droid', 'droid', NOW(), NOW()),
+('account_inquiry', 'account-management', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('account_details', 'account-management', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('view_account', 'account-management', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('account_statement', 'account-management', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('update_contact', 'account-management', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('account_upgrade', 'account-management', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('close_account', 'account-management', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+
+-- Credit Card intents
+('credit_card', 'credit-card', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('credit_card_inquiry', 'credit-card', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('card_management', 'credit-card', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('credit_card_dispute', 'credit-card', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('freeze_card', 'credit-card', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('block_card', 'credit-card', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('card_limit_increase', 'credit-card', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('report_lost_card', 'credit-card', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+
+-- Debit Card intents
+('debit_card', 'debit-card', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('debit_card_inquiry', 'debit-card', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('order_replacement_card', 'debit-card', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('set_pin', 'debit-card', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('contactless_limit', 'debit-card', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+
+-- First Credit Card Application intents
+('first_credit_card', 'first-credit-card', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('credit_card_application', 'first-credit-card', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('apply_credit_card', 'first-credit-card', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('check_credit_eligibility', 'first-credit-card', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+
+-- Fraud & Security intents
+('fraud_alert', 'fraud-alert', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('fraud_detection', 'fraud-alert', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('report_fraud', 'fraud-alert', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('suspicious_activity', 'fraud-alert', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('security_alert', 'fraud-alert', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('dispute_transaction', 'fraud-alert', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+
+-- Money Transfer intents
+('money_transfer', 'money-transfer', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('transfer_funds', 'money-transfer', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('send_money', 'money-transfer', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('domestic_transfer', 'money-transfer', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('international_transfer', 'money-transfer', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('wire_transfer', 'money-transfer', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('payment_processing', 'money-transfer', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('quick_transfer', 'money-transfer', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+
+-- Mortgage intents
+('mortgage', 'mortgage', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('mortgage_application', 'mortgage', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('home_loan', 'mortgage', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('mortgage_inquiry', 'mortgage', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('mortgage_calculator', 'mortgage', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('property_financing', 'mortgage', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('remortgage', 'mortgage', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+
+-- Personal Loan intents
+('personal_loan', 'personal-loan', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('loan_application', 'personal-loan', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('loan_inquiry', 'personal-loan', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('check_loan_eligibility', 'personal-loan', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('loan_calculator', 'personal-loan', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('apply_loan', 'personal-loan', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+
+-- Business Loan intents
+('business_loan', 'business-loan', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('commercial_loan', 'business-loan', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('sme_loan', 'business-loan', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('business_financing', 'business-loan', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('business_loan_application', 'business-loan', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+
+-- Standing Order intents
+('standing_order', 'standing-order', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('recurring_payment', 'standing-order', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('automatic_payment', 'standing-order', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('regular_payment', 'standing-order', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('scheduled_payment', 'standing-order', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('create_standing_order', 'standing-order', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('cancel_standing_order', 'standing-order', NULL, TRUE, 'system', 'system', NOW(), NOW()),
+('modify_standing_order', 'standing-order', NULL, TRUE, 'system', 'system', NOW(), NOW());
+
+-- Verification query
+SELECT 
+    COUNT(*) as total_mappings,
+    COUNT(DISTINCT intent_name) as unique_intents,
+    COUNT(DISTINCT app_key) as unique_apps
+FROM intent_app_mappings
+WHERE is_enabled = TRUE;
+
+-- Show mappings by app
+SELECT 
+    app_key,
+    COUNT(*) as intent_count,
+    STRING_AGG(intent_name, ', ' ORDER BY intent_name) as intents
+FROM intent_app_mappings
+WHERE is_enabled = TRUE
+GROUP BY app_key
+ORDER BY app_key;
+===ENDFILE
+===FILE: ./sql/seed/seed-10-customer-interactions.sql
+-- =====================================================================
+-- HSBC Platform - Seed Data
+-- Customer Interactions Table: Customer Interaction History
+-- =====================================================================
+
+\echo 'Loading Customer Interactions...'
+
+TRUNCATE TABLE customer_interactions CASCADE;
+
+INSERT INTO customer_interactions (
+    account_number, interaction_date, interaction_type, channel, interaction_medium,
+    social_handle, subject, description, interaction_context, interaction_outcome,
+    sentiment, duration_minutes, response_time_minutes, resolution_time_minutes,
+    status, agent_name, resolution_notes, satisfaction_rating, follow_up_required,
+    channel_icon, priority_level, tags, created_at
+) VALUES
+
+-- =====================================================================
+-- Jonathan Mitchell (HSBC0001234) - Premier Banking
+-- =====================================================================
+('HSBC0001234', '2024-10-01 10:30:00', 'Service Request', 'Voice', 'Phone Call',
+ NULL, 'Mortgage Rate Review', 'Customer called to discuss current mortgage rates and potential refinancing options',
+ 'Customer has existing mortgage and wants to explore rate reduction opportunities', 'Resolved',
+ 'Positive', 18, 2, 18, 'Resolved', 'Sarah Johnson', 'Provided current rates and scheduled meeting with mortgage advisor',
+ 5, false, 'phone', 'Medium', ARRAY['mortgage', 'refinancing', 'rates'], '2024-10-01 10:30:00'),
+
+('HSBC0001234', '2024-09-15 14:20:00', 'Account Management', 'Web Chat', 'Online Chat',
+ NULL, 'Credit Card Limit Increase', 'Request to increase credit limit on Premier Credit Card',
+ 'Customer planning international travel and needs higher credit limit', 'Resolved',
+ 'Positive', 12, 1, 12, 'Resolved', 'James Chen', 'Approved £5,000 limit increase. New limit: £20,000',
+ 4, false, 'message-circle', 'Low', ARRAY['credit-card', 'limit-increase', 'approved'], '2024-09-15 14:20:00'),
+
+('HSBC0001234', '2024-08-22 09:45:00', 'Inquiry', 'Email', 'Email',
+ NULL, 'Investment ISA Performance', 'Question about current ISA performance and contribution limits',
+ 'Customer wants to maximize ISA contributions before tax year end', 'Resolved',
+ 'Neutral', NULL, 45, 180, 'Resolved', 'Emma Williams', 'Sent portfolio performance report and contribution details',
+ 4, false, 'mail', 'Low', ARRAY['investment', 'ISA', 'contributions'], '2024-08-22 09:45:00'),
+
+-- =====================================================================
+-- Audrey Gertrude Antimony (****2223) - Personal Banking
+-- =====================================================================
+('HSBC0002223', NOW() - INTERVAL '15 minutes', 'Complaint', 'Web Chat', 'Online Chat',
+ NULL, 'Account Closure Request', 'Customer stated: "I want to close my account". Agent asked which account and transfer destination.',
+ 'Customer wants to close savings account ending in ****2223. Balance: £2,847. Dissatisfied with £5 monthly fee. Escalated from chat to voice for retention discussion.', 'Escalated to Voice',
+ 'Negative', 8, 1, NULL, 'Escalated to Voice', 'Chat Agent', 'Customer requested closure of account ****2223. Escalated to voice agent for retention conversation.',
+ 2, true, 'message-circle', 'High', ARRAY['account-closure', 'complaint', 'retention', 'fees'], NOW() - INTERVAL '15 minutes'),
+
+('HSBC0002223', '2024-09-20 10:15:00', 'Service Request', 'Voice', 'Phone Call',
+ NULL, 'Lost Debit Card Replacement', 'Customer lost debit card while shopping in Manchester city center',
+ 'Card last used at Sainsbury''s. No suspicious transactions. Needs emergency replacement.', 'Resolved',
+ 'Neutral', 12, 2, 12, 'Resolved', 'Marcus Williams', 'Old card canceled. New card dispatched. Expected delivery 3-5 business days. Temporary card available at branch.',
+ 4, false, 'phone', 'High', ARRAY['lost-card', 'replacement', 'security'], '2024-09-20 10:15:00'),
+
+('HSBC0002223', '2024-08-14 14:30:00', 'Inquiry', 'Email', 'Email',
+ NULL, 'Standing Order Setup Question', 'Needs help setting up monthly standing order for rent payment',
+ 'Monthly rent £850 to landlord account. First payment next month.', 'Resolved',
+ 'Positive', NULL, 30, 90, 'Resolved', 'Jennifer Parker', 'Provided step-by-step guide. Standing order configured successfully.',
+ 5, false, 'mail', 'Low', ARRAY['standing-order', 'rent', 'setup'], '2024-08-14 14:30:00'),
+
+('HSBC0002223', '2024-07-22 16:45:00', 'Complaint', 'Voice', 'Phone Call',
+ NULL, 'Unexpected Monthly Fee Charge', 'Charged £5 monthly maintenance fee without prior notification',
+ 'Customer not aware of fee changes. Account had free banking for 12 years.', 'Resolved',
+ 'Negative', 18, 3, 18, 'Resolved', 'David Roberts', 'Explained fee structure change. Offered fee waiver if minimum balance maintained. Customer accepted.',
+ 3, false, 'phone', 'Medium', ARRAY['fees', 'complaint', 'account-maintenance'], '2024-07-22 16:45:00'),
+
+('HSBC0002223', '2024-06-10 11:20:00', 'Service Request', 'In-Branch', 'Branch Visit',
+ NULL, 'Update Contact Information', 'Customer moved house, needs to update address and phone number',
+ 'New address: 42 Oxford Road, Manchester M13 9PL', 'Resolved',
+ 'Positive', 15, 0, 15, 'Resolved', 'Branch Staff', 'Updated address, phone, and email. Confirmed all contact details.',
+ 5, false, 'building', 'Low', ARRAY['contact-update', 'address-change'], '2024-06-10 11:20:00'),
+
+('HSBC0002223', '2024-05-05 09:30:00', 'Inquiry', 'Web Chat', 'Online Chat',
+ NULL, 'Savings Account Interest Rate Query', 'Question about current interest rates on savings accounts',
+ 'Considering opening additional savings account for emergency fund', 'Resolved',
+ 'Neutral', 10, 1, 10, 'Resolved', 'Sophie Taylor', 'Provided current rates: Easy Access 1.5%, Fixed Term 3.2%. Customer opened Fixed Term Savings account ending in 2223.',
+ 4, false, 'message-circle', 'Low', ARRAY['savings', 'interest-rates', 'inquiry'], '2024-05-05 09:30:00'),
+
+('HSBC0002223', '2024-03-18 13:00:00', 'Service Request', 'Voice', 'Phone Call',
+ NULL, 'Overdraft Protection Request', 'Requesting overdraft facility for account',
+ 'Recently started part-time work, needs £500 overdraft buffer for emergencies', 'Resolved',
+ 'Positive', 22, 2, 22, 'Resolved', 'Lisa Anderson', 'Approved £500 overdraft. 19.9% APR on used amount. Buffer active.',
+ 4, false, 'phone', 'Medium', ARRAY['overdraft', 'credit-facility', 'approved'], '2024-03-18 13:00:00'),
+
+('HSBC0002223', '2024-01-25 15:50:00', 'Account Management', 'Email', 'Email',
+ NULL, 'Annual Statement Request', 'Needs annual statement for 2023 tax purposes',
+ 'Self-employed, requires full transaction history for tax return', 'Resolved',
+ 'Positive', NULL, 60, 120, 'Resolved', 'Back Office Team', 'Annual statement generated and sent via secure email. Covers Jan-Dec 2023.',
+ 5, false, 'mail', 'Low', ARRAY['statement', 'tax', 'annual-report'], '2024-01-25 15:50:00'),
+
+-- =====================================================================
+-- Victoria Pemberton (HSBC0001236) - Premier Banking
+-- =====================================================================
+('HSBC0001236', '2024-10-10 16:15:00', 'Service Request', 'Voice', 'Phone Call',
+ NULL, 'Travel Insurance Claim', 'Filing claim for delayed luggage during recent trip to Spain',
+ 'Flight delayed 8 hours, luggage arrived 2 days late', 'In Progress',
+ 'Neutral', 25, 3, NULL, 'In Progress', 'Michael Brown', 'Claim submitted. Reference: TRV-2024-1236. Processing time 5-7 business days',
+ NULL, true, 'phone', 'High', ARRAY['insurance', 'claim', 'travel', 'luggage'], '2024-10-10 16:15:00'),
+
+('HSBC0001236', '2024-09-28 11:30:00', 'Inquiry', 'Web Chat', 'Online Chat',
+ NULL, 'Foreign Exchange Rates', 'Query about EUR exchange rates for upcoming trip',
+ 'Customer traveling to France next week and wants to exchange £2,000', 'Resolved',
+ 'Positive', 8, 1, 8, 'Resolved', 'Sophie Taylor', 'Provided current rates. Order placed for currency pickup at Manchester branch',
+ 5, false, 'message-circle', 'Low', ARRAY['forex', 'currency', 'travel'], '2024-09-28 11:30:00'),
+
+('HSBC0001236', '2024-08-05 13:45:00', 'Complaint', 'Email', 'Email',
+ NULL, 'Unauthorized Transaction Alert', 'Received alert for transaction not recognized',
+ 'Transaction for £450 at online retailer - customer claims did not authorize', 'Resolved',
+ 'Negative', NULL, 30, 120, 'Resolved', 'David Roberts', 'Verified transaction was legitimate - customer spouse made purchase. Alert resolved',
+ 3, false, 'mail', 'High', ARRAY['fraud-alert', 'transaction', 'security'], '2024-08-05 13:45:00'),
+
+-- =====================================================================
+-- Sarah Chen Wei (HSBC0002001) - Jade Banking
+-- =====================================================================
+('HSBC0002001', '2024-10-12 10:00:00', 'Service Request', 'In-Branch', 'Branch Visit',
+ NULL, 'Wealth Management Review', 'Quarterly portfolio review with relationship manager',
+ 'Review investment strategy and rebalancing recommendations', 'Resolved',
+ 'Positive', 60, 0, 60, 'Resolved', 'Richard Thompson', 'Portfolio performing well. Recommended 5% reallocation to emerging markets',
+ 5, true, 'building', 'High', ARRAY['wealth-management', 'portfolio', 'review'], '2024-10-12 10:00:00'),
+
+('HSBC0002001', '2024-09-20 15:30:00', 'Service Request', 'Voice', 'Phone Call',
+ NULL, 'International Wire Transfer', 'Large wire transfer to property purchase in Singapore',
+ 'Purchasing investment property - transfer of $2.5M USD', 'Resolved',
+ 'Positive', 35, 1, 35, 'Resolved', 'Jennifer Lee', 'Transfer initiated. Provided SWIFT details and expected completion date',
+ 5, false, 'phone', 'High', ARRAY['wire-transfer', 'international', 'property'], '2024-09-20 15:30:00'),
+
+('HSBC0002001', '2024-08-15 14:00:00', 'Inquiry', 'Email', 'Email',
+ NULL, 'Jade Credit Card Benefits', 'Question about airport lounge access in Europe',
+ 'Traveling to multiple European cities and wants to confirm lounge access', 'Resolved',
+ 'Positive', NULL, 60, 120, 'Resolved', 'Amanda Zhang', 'Confirmed access to all LoungeKey partner lounges. Sent complete list',
+ 4, false, 'mail', 'Low', ARRAY['credit-card', 'benefits', 'travel', 'lounge-access'], '2024-08-15 14:00:00'),
+
+-- =====================================================================
+-- Michael Zhang (HSBC0002002) - Jade Banking  
+-- =====================================================================
+-- RECENT: Account Closure Request - Chat to Voice Escalation (Demo Story)
+('HSBC0002002', '2024-10-14 14:30:00', 'Complaint', 'Web Chat', 'Online Chat',
+ NULL, 'Incorrect Overdraft Fee - Account Closure Request', 'Customer charged £35 overdraft fee incorrectly. Very frustrated and wants to close account.',
+ 'Customer claims never went into overdraft. Fee charged on 2024-10-10. Requesting account closure.', 'Escalated to Voice',
+ 'Negative', 8, 1, NULL, 'Pending Voice Call', 'James Chen', 'Escalated to voice agent for immediate resolution. Customer accepted call transfer.',
+ NULL, true, 'message-circle', 'Urgent', ARRAY['overdraft-fee', 'incorrect-charge', 'account-closure', 'escalation', 'voice-transfer'], '2024-10-14 14:30:00'),
+
+('HSBC0002002', '2024-10-08 09:30:00', 'Service Request', 'Voice', 'Phone Call',
+ NULL, 'Art Finance Consultation', 'Inquiry about financing for contemporary art acquisition',
+ 'Considering purchase of artwork valued at $3M USD', 'In Progress',
+ 'Positive', 42, 2, NULL, 'In Progress', 'Catherine Moore', 'Art finance specialist scheduled for consultation on Oct 15th',
+ NULL, true, 'phone', 'High', ARRAY['art-finance', 'lending', 'consultation'], '2024-10-08 09:30:00'),
+
+('HSBC0002002', '2024-09-25 11:15:00', 'Account Management', 'Web Chat', 'Online Chat',
+ NULL, 'Multi-Currency Account Setup', 'Request to add USD and EUR sub-accounts',
+ 'Customer expanding business operations to US and Europe', 'Resolved',
+ 'Positive', 15, 1, 15, 'Resolved', 'Kevin Liu', 'Added USD and EUR sub-accounts. Activated same-day',
+ 5, false, 'message-circle', 'Medium', ARRAY['multi-currency', 'account-setup', 'business'], '2024-09-25 11:15:00'),
+
+('HSBC0002002', '2024-08-30 16:00:00', 'Service Request', 'Email', 'Email',
+ NULL, 'Global Transfers Fee Waiver', 'Request fee waiver for multiple international transfers',
+ 'High volume of transfers due to property transactions', 'Resolved',
+ 'Neutral', NULL, 120, 240, 'Resolved', 'Patricia Anderson', 'Applied Jade privilege fee waiver for next 6 months',
+ 4, false, 'mail', 'Medium', ARRAY['fees', 'waiver', 'transfers', 'jade-privilege'], '2024-08-30 16:00:00'),
+
+-- =====================================================================
+-- Emily Davis (HSBC0003002) - HSBC Advance
+-- =====================================================================
+('HSBC0003002', '2024-10-11 13:45:00', 'Service Request', 'Web Chat', 'Online Chat',
+ NULL, 'Student Loan Refinancing Options', 'Exploring refinancing to reduce monthly payments',
+ 'Recent salary increase allows for better refinancing terms', 'Resolved',
+ 'Positive', 20, 2, 20, 'Resolved', 'Brian Mitchell', 'Provided refinancing options. Could save $150/month. Application link sent',
+ 5, true, 'message-circle', 'Medium', ARRAY['student-loan', 'refinancing', 'savings'], '2024-10-11 13:45:00'),
+
+('HSBC0003002', '2024-09-18 10:30:00', 'Complaint', 'Social Media', 'Twitter',
+ '@emilydavis', 'Mobile App Login Issues', 'Cannot login to mobile app for 2 days',
+ 'App crashes on launch after recent update', 'Resolved',
+ 'Negative', NULL, 15, 90, 'Resolved', 'Tech Support Team', 'App cache issue. Provided fix instructions. Working now',
+ 3, false, 'twitter', 'High', ARRAY['mobile-app', 'technical-issue', 'login'], '2024-09-18 10:30:00'),
+
+('HSBC0003002', '2024-08-12 15:20:00', 'Inquiry', 'Voice', 'Phone Call',
+ NULL, 'Overdraft Protection Setup', 'Questions about overdraft protection features',
+ 'Wants to avoid overdraft fees and understand protection options', 'Resolved',
+ 'Neutral', 14, 1, 14, 'Resolved', 'Lisa Anderson', 'Explained overdraft protection. Customer opted for account alerts instead',
+ 4, false, 'phone', 'Low', ARRAY['overdraft', 'protection', 'fees'], '2024-08-12 15:20:00'),
+
+-- =====================================================================
+-- Oliver Chen (HSBC0006001) - Student Banking
+-- =====================================================================
+('HSBC0006001', '2024-10-09 14:00:00', 'Service Request', 'Web Chat', 'Online Chat',
+ NULL, 'Student Overdraft Increase', 'Request to increase overdraft limit for tuition payment',
+ 'Tuition fee payment due, current overdraft insufficient', 'Resolved',
+ 'Positive', 18, 2, 18, 'Resolved', 'Hannah Wilson', 'Increased overdraft from £1,000 to £1,500. Interest-free maintained',
+ 5, false, 'message-circle', 'High', ARRAY['student', 'overdraft', 'tuition', 'increase'], '2024-10-09 14:00:00'),
+
+('HSBC0006001', '2024-09-22 11:00:00', 'Inquiry', 'Email', 'Email',
+ NULL, 'Contactless Payment Limit', 'Question about contactless payment limits',
+ 'Card declined at supermarket for £65 purchase', 'Resolved',
+ 'Neutral', NULL, 30, 60, 'Resolved', 'Ryan Martinez', 'Explained £100 contactless limit. Transaction required PIN. All normal',
+ 4, false, 'mail', 'Low', ARRAY['contactless', 'payment', 'limits'], '2024-09-22 11:00:00'),
+
+('HSBC0006001', '2024-08-28 16:30:00', 'Account Management', 'Voice', 'Phone Call',
+ NULL, 'Update Contact Details', 'Need to update phone number and address',
+ 'Moved to new student accommodation', 'Resolved',
+ 'Positive', 8, 1, 8, 'Resolved', 'Claire Thompson', 'Updated address and mobile number in system',
+ 5, false, 'phone', 'Low', ARRAY['contact-details', 'update', 'address'], '2024-08-28 16:30:00'),
+
+-- =====================================================================
+-- Emma Thompson (HSBC0006002) - Student Banking
+-- =====================================================================
+('HSBC0006002', '2024-10-13 12:30:00', 'Service Request', 'Social Media', 'Instagram',
+ '@emmathompson', 'Student Credit Card Application', 'Wants to apply for student credit card',
+ 'Starting part-time job and wants to build credit history', 'In Progress',
+ 'Positive', NULL, 20, NULL, 'Open', 'Digital Banking Team', 'Application link sent. Awaiting completed application',
+ NULL, true, 'instagram', 'Medium', ARRAY['credit-card', 'application', 'student'], '2024-10-13 12:30:00'),
+
+('HSBC0006002', '2024-09-30 09:15:00', 'Complaint', 'Web Chat', 'Online Chat',
+ NULL, 'Unauthorized Fee Charge', 'Charged £5 monthly fee despite student status',
+ 'Should have free banking as full-time student', 'Resolved',
+ 'Negative', 22, 3, 22, 'Resolved', 'Oliver Harris', 'Verified student status. Refunded £5. Updated account to prevent future charges',
+ 4, false, 'message-circle', 'Medium', ARRAY['fees', 'refund', 'student', 'complaint'], '2024-09-30 09:15:00'),
+
+('HSBC0006002', '2024-09-05 14:45:00', 'Inquiry', 'Voice', 'Phone Call',
+ NULL, 'Direct Debit Setup Help', 'Need help setting up direct debit for rent',
+ 'First time setting up direct debit, needs guidance', 'Resolved',
+ 'Positive', 12, 2, 12, 'Resolved', 'Natalie Green', 'Walked through direct debit setup process. Successfully configured',
+ 5, false, 'phone', 'Low', ARRAY['direct-debit', 'setup', 'rent'], '2024-09-05 14:45:00'),
+
+('HSBC0006002', '2024-08-20 10:00:00', 'Service Request', 'Email', 'Email',
+ NULL, 'Graduation Account Transition', 'Questions about transitioning from student to graduate account',
+ 'Graduating next summer, wants to understand account options', 'Resolved',
+ 'Neutral', NULL, 90, 180, 'Resolved', 'Mark Stevens', 'Explained graduate account benefits. Will follow up 3 months before graduation',
+ 4, true, 'mail', 'Low', ARRAY['student', 'graduate', 'account-transition', 'planning'], '2024-08-20 10:00:00');
+
+\echo 'Customer Interactions loaded successfully!'
+\echo ''
+
+-- Display summary
+SELECT 
+    account_number,
+    COUNT(*) as interaction_count,
+    COUNT(CASE WHEN status = 'Resolved' THEN 1 END) as resolved_count,
+    COUNT(CASE WHEN status = 'In Progress' THEN 1 END) as in_progress_count,
+    COUNT(CASE WHEN status = 'Open' THEN 1 END) as open_count,
+    ROUND(AVG(CASE WHEN satisfaction_rating IS NOT NULL THEN satisfaction_rating END), 2) as avg_satisfaction
+FROM customer_interactions
+GROUP BY account_number
+ORDER BY account_number;
+===ENDFILE
+===FILE: ./sql/seed/seed-11-approval-rules.sql
+-- =====================================================================
+-- HSBC Platform - Approval Rules Seed Data
+-- =====================================================================
+-- Seed default approval rules and update existing AD groups
+-- with maker/checker/super admin assignments
+-- =====================================================================
+
+-- -----------------------------------------------------------------------------
+-- 1. Update existing AD groups with admin role columns
+-- -----------------------------------------------------------------------------
+-- Set default admin AD groups based on market and region
+-- Pattern: maker/checker are market-specific, super_admin is region-specific
+-- -----------------------------------------------------------------------------
+
+UPDATE ad_group_layout_assignments SET
+    maker_ad_group = admin_group_identifier,
+    checker_ad_group = 'CN=Admin_Checker_' || COALESCE(region, 'GLOBAL') || ',OU=Admin,OU=Groups,DC=hsbc,DC=com',
+    super_admin_ad_group = 'CN=Super_Admin_' || COALESCE(region, 'GLOBAL') || ',OU=Admin,OU=Groups,DC=hsbc,DC=com'
+WHERE admin_group_identifier IS NOT NULL AND maker_ad_group IS NULL;
+
+-- -----------------------------------------------------------------------------
+-- 2. Seed default approval rules
+-- -----------------------------------------------------------------------------
+-- IMPORTANT: These rules determine which changes require Level 2 approval
+-- Changes matching these rules are marked as "critical" and need Super Admin
+-- -----------------------------------------------------------------------------
+
+-- Clear existing rules (for idempotency)
+TRUNCATE TABLE approval_rules RESTART IDENTITY;
+
+-- FIELD rules (structural changes require L2)
+INSERT INTO approval_rules (entity_type, entity_key, requires_l2, jira_ticket, reason, created_by) VALUES
+('FIELD', 'roleName', true, 'RISK-1001', 'Role template changes affect entire permission structure', 'system'),
+('FIELD', 'maker_ad_group', true, 'RISK-1001', 'Controls who can submit changes', 'system'),
+('FIELD', 'checker_ad_group', true, 'RISK-1001', 'Controls who can approve changes', 'system'),
+('FIELD', 'super_admin_ad_group', true, 'RISK-1001', 'Controls highest privilege access', 'system'),
+('FIELD', 'market', true, 'RISK-1002', 'Market changes affect regional compliance', 'system'),
+('FIELD', 'region', true, 'RISK-1002', 'Region changes affect data residency', 'system');
+
+-- APP rules (high-risk applications require L2)
+INSERT INTO approval_rules (entity_type, entity_key, requires_l2, jira_ticket, reason, created_by) VALUES
+('APP', 'TRADING', true, 'RISK-1045', 'Trading platform - financial risk', 'system'),
+('APP', 'WIRE_TRANSFER', true, 'RISK-1046', 'Wire transfers - fraud risk', 'system'),
+('APP', 'BULK_PAYMENT', true, 'RISK-1047', 'Bulk payments - high value risk', 'system');
+
+-- FUNCTION rules (high-risk functions require L2)
+INSERT INTO approval_rules (entity_type, entity_key, requires_l2, jira_ticket, reason, created_by) VALUES
+('FUNCTION', 'APPROVE_PAYMENT', true, 'RISK-1050', 'Payment approval - financial risk', 'system'),
+('FUNCTION', 'BULK_TRANSFER', true, 'RISK-1051', 'Bulk transfers - high value risk', 'system'),
+('FUNCTION', 'OVERRIDE_LIMIT', true, 'RISK-1052', 'Override transaction limits - risk control', 'system'),
+('FUNCTION', 'ADMIN_ACCESS', true, 'RISK-1053', 'Administrative access - security risk', 'system');
+
+-- APP_FUNCTION rules (specific combinations require L2)
+INSERT INTO approval_rules (entity_type, entity_key, requires_l2, jira_ticket, reason, created_by) VALUES
+('APP_FUNCTION', 'TELLER:TRAFX', true, 'RISK-1060', 'Teller FX transactions - currency risk', 'system'),
+('APP_FUNCTION', 'TELLER:TRAZEL', true, 'RISK-1061', 'Zelle transfers - fraud risk', 'system');
+
+-- Verify insertion
+DO $$
+DECLARE
+    rule_count INTEGER;
+BEGIN
+    SELECT COUNT(*) INTO rule_count FROM approval_rules;
+    RAISE NOTICE 'Approval rules seeded: % rules', rule_count;
+END $$;
+
+-- =====================================================================
+-- END OF SEED DATA
+-- =====================================================================
+===ENDFILE
+===FILE: ./validate-database.sh
+#!/bin/bash
+# =====================================================================
+# CCaaS Platform - Database Validation Script
+# =====================================================================
+# Validates that all tables exist, have correct structure, and contain
+# expected seed data. Run after setup-database.sh to verify.
+#
+# Usage:
+#   ./validate-database.sh
+#   ./validate-database.sh --host db.example.com
+# =====================================================================
+
+set -euo pipefail
+
+DB_HOST="${PGHOST:-localhost}"
+DB_PORT="${PGPORT:-5432}"
+DB_NAME="${PGDATABASE:-hsbc_ccaas}"
+DB_USER="${PGUSER:-hsbc_user}"
+DB_PASS="${PGPASSWORD:-hsbc_secure_pass}"
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --host) DB_HOST="$2"; shift 2 ;;
+        --port) DB_PORT="$2"; shift 2 ;;
+        --db) DB_NAME="$2"; shift 2 ;;
+        --user) DB_USER="$2"; shift 2 ;;
+        --pass) DB_PASS="$2"; shift 2 ;;
+        *) shift ;;
+    esac
+done
+
+export PGPASSWORD="$DB_PASS"
+PSQL="psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -t -A"
+
+PASS=0
+FAIL=0
+
+check() {
+    local desc="$1"
+    local sql="$2"
+    local expected="$3"
+
+    result=$($PSQL -c "$sql" 2>/dev/null | tr -d '[:space:]')
+    if [ "$result" = "$expected" ]; then
+        echo "  PASS: $desc (got: $result)"
+        PASS=$((PASS + 1))
+    else
+        echo "  FAIL: $desc (expected: $expected, got: $result)"
+        FAIL=$((FAIL + 1))
+    fi
+}
+
+echo "====================================================================="
+echo "CCaaS Platform - Database Validation"
+echo "====================================================================="
+echo "Target: $DB_USER@$DB_HOST:$DB_PORT/$DB_NAME"
+echo ""
+
+# --- Extensions ---
+echo "Extensions:"
+check "uuid-ossp installed" "SELECT COUNT(*) FROM pg_extension WHERE extname='uuid-ossp'" "1"
+check "pgcrypto installed" "SELECT COUNT(*) FROM pg_extension WHERE extname='pgcrypto'" "1"
+check "pg_trgm installed" "SELECT COUNT(*) FROM pg_extension WHERE extname='pg_trgm'" "1"
+echo ""
+
+# --- Tables exist ---
+echo "Tables (existence):"
+EXPECTED_TABLES=(
+    ref_regions ref_markets ref_countries ref_business_units
+    customers customer_interactions agent_metrics documents
+    role_layout_templates ad_group_layout_assignments
+    user_layout_configurations user_role_assignments
+    embedded_apps embedded_app_routes embedded_app_ad_group_functions
+    intent_app_mappings
+    admin_notices admin_notice_ad_groups admin_notice_roles admin_notice_user_states
+    approval_rules pending_changes change_audit_log
+)
+
+for table in "${EXPECTED_TABLES[@]}"; do
+    check "$table exists" "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public' AND table_name='$table'" "1"
+done
+echo ""
+
+# --- Row counts (seed data) ---
+echo "Seed data row counts:"
+check "ref_regions = 3" "SELECT COUNT(*) FROM ref_regions" "3"
+check "ref_markets = 16" "SELECT COUNT(*) FROM ref_markets" "16"
+check "ref_countries = 37" "SELECT COUNT(*) FROM ref_countries" "37"
+check "ref_business_units = 3" "SELECT COUNT(*) FROM ref_business_units" "3"
+check "role_layout_templates = 4" "SELECT COUNT(*) FROM role_layout_templates" "4"
+check "ad_group_layout_assignments >= 25" "SELECT CASE WHEN COUNT(*) >= 25 THEN 'ok' ELSE 'low' END FROM ad_group_layout_assignments" "ok"
+check "embedded_apps >= 10" "SELECT CASE WHEN COUNT(*) >= 10 THEN 'ok' ELSE 'low' END FROM embedded_apps" "ok"
+check "intent_app_mappings >= 60" "SELECT CASE WHEN COUNT(*) >= 60 THEN 'ok' ELSE 'low' END FROM intent_app_mappings" "ok"
+check "approval_rules >= 14" "SELECT CASE WHEN COUNT(*) >= 14 THEN 'ok' ELSE 'low' END FROM approval_rules" "ok"
+check "customers >= 8" "SELECT CASE WHEN COUNT(*) >= 8 THEN 'ok' ELSE 'low' END FROM customers" "ok"
+check "customer_interactions >= 25" "SELECT CASE WHEN COUNT(*) >= 25 THEN 'ok' ELSE 'low' END FROM customer_interactions" "ok"
+echo ""
+
+# --- Critical columns ---
+echo "Critical columns:"
+check "ad_group has maker_ad_group" "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='ad_group_layout_assignments' AND column_name='maker_ad_group'" "1"
+check "ad_group has checker_ad_group" "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='ad_group_layout_assignments' AND column_name='checker_ad_group'" "1"
+check "ad_group has super_admin_ad_group" "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='ad_group_layout_assignments' AND column_name='super_admin_ad_group'" "1"
+check "ad_group has version" "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='ad_group_layout_assignments' AND column_name='version'" "1"
+check "pending_changes has config_version" "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='pending_changes' AND column_name='config_version'" "1"
+echo ""
+
+# --- Triggers ---
+echo "Triggers:"
+check "document search_vector trigger" "SELECT COUNT(*) FROM pg_trigger WHERE tgname='trg_update_document_search_vector'" "1"
+check "embedded_app search_vector trigger" "SELECT COUNT(*) FROM pg_trigger WHERE tgname='trg_update_embedded_app_search_vector'" "1"
+echo ""
+
+# --- Data integrity ---
+echo "Data integrity:"
+check "All markets reference valid regions" "SELECT CASE WHEN COUNT(*) = 0 THEN 'ok' ELSE 'bad' END FROM ref_markets m LEFT JOIN ref_regions r ON m.region_code = r.region_code WHERE r.region_code IS NULL" "ok"
+check "All countries reference valid regions" "SELECT CASE WHEN COUNT(*) = 0 THEN 'ok' ELSE 'bad' END FROM ref_countries c LEFT JOIN ref_regions r ON c.region_code = r.region_code WHERE r.region_code IS NULL" "ok"
+check "All role templates have distinct names" "SELECT CASE WHEN COUNT(*) = COUNT(DISTINCT role_name) THEN 'ok' ELSE 'dup' END FROM role_layout_templates" "ok"
+check "All AD groups have unique identifiers" "SELECT CASE WHEN COUNT(*) = COUNT(DISTINCT group_identifier) THEN 'ok' ELSE 'dup' END FROM ad_group_layout_assignments" "ok"
+echo ""
+
+# --- Summary ---
+echo "====================================================================="
+TOTAL=$((PASS + FAIL))
+echo "Results: $PASS/$TOTAL passed, $FAIL failed"
+echo "====================================================================="
+
+if [ "$FAIL" -gt 0 ]; then
+    echo "VALIDATION FAILED - $FAIL check(s) did not pass"
+    exit 1
+else
+    echo "ALL CHECKS PASSED"
+    exit 0
+fi
+===ENDFILE
