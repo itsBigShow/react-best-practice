@@ -1,5 +1,5 @@
 # CCaaS Entitlement SAPI - Source Bundle
-# Generated: 2026-02-10 12:52:22
+# Generated: 2026-02-10 16:12:45
 # Total files: 352
 # Categories: 1 pom.xml, 2 CLAUDE.md, 2 docs, 2 resources, 125 YAML specs, 139 main Java, 68 test Java, 13 other
 # Note: target/generated-sources NOT included - run 'mvn generate-sources' after extraction
@@ -5479,6 +5479,32 @@ sonar.coverage.exclusions=**/controller/model/**,**/controller/api/**,**/entity/
     </Match>
     <Match>
         <Package name="~com\.hsbc\.ccaas\.sapi\.controller\.model.*"/>
+    </Match>
+
+    <!--
+        Suppress EI_EXPOSE_REP2 (storing mutable object references) project-wide.
+        In a Spring Boot + JPA application these are overwhelmingly false positives:
+        - Spring DI constructors intentionally store shared singleton references
+        - JPA entity setters must store Hibernate-managed collections directly
+        - DTO/record constructors are internal; defensive copies add no safety
+    -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+    </Match>
+
+    <!--
+        Suppress EI_EXPOSE_REP (returning mutable object references) project-wide.
+        - JPA entity getters must return Hibernate-proxied collections for dirty checking
+        - Record accessors return component references by design
+        - DTOs are internal to the SAPI; no untrusted callers
+    -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP"/>
+    </Match>
+
+    <!-- Exclude MapStruct-generated mapper implementations (NPE false positives) -->
+    <Match>
+        <Class name="~com\.hsbc\.ccaas\.sapi\.mapper\..*Impl"/>
     </Match>
 </FindBugsFilter>
 ===ENDFILE
@@ -12798,6 +12824,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.security.InvalidParameterException;
+import java.util.Map;
 import java.util.Optional;
 
 @RestController
@@ -12819,13 +12846,13 @@ public class DirectSaveController implements DirectSavesApi {
 
         DirectSaveRequest data = Optional.ofNullable(envelope.getData())
                 .orElseThrow(() -> new InvalidParameterException("Request data is required"));
-        Optional.ofNullable(data.getTargetGroupIdentifier())
+        String targetGroupId = Optional.ofNullable(data.getTargetGroupIdentifier())
                 .filter(s -> !s.isBlank())
                 .orElseThrow(() -> new IllegalArgumentException("targetGroupIdentifier is required"));
-        Optional.ofNullable(data.getProposedState())
+        Map<String, Object> proposedState = Optional.ofNullable(data.getProposedState())
                 .filter(m -> !m.isEmpty())
                 .orElseThrow(() -> new IllegalArgumentException("proposedState is required"));
-        Optional.ofNullable(data.getSuperAdminIdText())
+        String superAdminId = Optional.ofNullable(data.getSuperAdminIdText())
                 .filter(s -> !s.isBlank())
                 .orElseThrow(() -> new IllegalArgumentException("superAdminIdText is required"));
 
@@ -12835,14 +12862,14 @@ public class DirectSaveController implements DirectSavesApi {
         }
 
         log.info("Direct save: target={}, superAdmin={}, changeType={}",
-                data.getTargetGroupIdentifier(), data.getSuperAdminIdText(), changeType);
+                targetGroupId, superAdminId, changeType);
 
         pendingChangeService.directSave(
-                data.getTargetGroupIdentifier(),
+                targetGroupId,
                 data.getCurrentState(),
-                data.getProposedState(),
+                proposedState,
                 changeType,
-                data.getSuperAdminIdText(),
+                superAdminId,
                 data.getSuperAdminNameText(),
                 data.getConfigVersionNumber(),
                 data.getSuperAdminAdGroupValues());
@@ -13463,6 +13490,10 @@ public record AdGroupPage(
         long totalElements,
         AdGroupSummary summary) {
 
+    public AdGroupPage {
+        items = items == null ? null : List.copyOf(items);
+    }
+
     public AdGroupPage(List<AdGroupLayoutAssignment> items, long totalElements) {
         this(items, totalElements, null);
     }
@@ -13493,6 +13524,10 @@ public record AdGroupSearchCriteria(
         String region,
         String country,
         String businessUnit) {
+
+    public AdGroupSearchCriteria {
+        adminGroups = adminGroups == null ? null : List.copyOf(adminGroups);
+    }
 }
 ===ENDFILE
 ===FILE: ./src/main/java/com/hsbc/ccaas/sapi/dto/AdGroupSummary.java
@@ -13521,7 +13556,13 @@ public record AppAdGroupConfigDto(
     @JsonProperty("groupIdentifier") String groupIdentifier,
     @JsonProperty("functions") List<AppFunctionDto> functions,
     @JsonProperty("assignedFunctions") List<String> assignedFunctions
-) {}
+) {
+
+    public AppAdGroupConfigDto {
+        functions = functions == null ? null : List.copyOf(functions);
+        assignedFunctions = assignedFunctions == null ? null : List.copyOf(assignedFunctions);
+    }
+}
 ===ENDFILE
 ===FILE: ./src/main/java/com/hsbc/ccaas/sapi/dto/AppFunctionDto.java
 package com.hsbc.ccaas.sapi.dto;
@@ -13559,7 +13600,13 @@ public record AppSummaryDto(
     @JsonProperty("category") String category,
     @JsonProperty("functionDefinitions") Map<String, FunctionDefinitionDto> functionDefinitions,
     @JsonProperty("assignedFunctions") List<String> assignedFunctions
-) {}
+) {
+
+    public AppSummaryDto {
+        functionDefinitions = functionDefinitions == null ? null : Map.copyOf(functionDefinitions);
+        assignedFunctions = assignedFunctions == null ? null : List.copyOf(assignedFunctions);
+    }
+}
 ===ENDFILE
 ===FILE: ./src/main/java/com/hsbc/ccaas/sapi/dto/ApproveResult.java
 package com.hsbc.ccaas.sapi.dto;
@@ -13656,11 +13703,11 @@ public class CopyResult {
 
     @JsonProperty("copiedFields")
     public List<String> getCopiedFields() {
-        return copiedFields;
+        return copiedFields == null ? null : new ArrayList<>(copiedFields);
     }
 
     public void setCopiedFields(List<String> copiedFields) {
-        this.copiedFields = copiedFields;
+        this.copiedFields = copiedFields == null ? null : new ArrayList<>(copiedFields);
     }
 
     @JsonProperty("updatedGroup")
@@ -13692,11 +13739,11 @@ public class CopyResult {
 
     @JsonProperty("errorDetails")
     public Map<String, String> getErrorDetails() {
-        return errorDetails;
+        return errorDetails == null ? null : new HashMap<>(errorDetails);
     }
 
     public void setErrorDetails(Map<String, String> errorDetails) {
-        this.errorDetails = errorDetails;
+        this.errorDetails = errorDetails == null ? null : new HashMap<>(errorDetails);
     }
 
     @JsonProperty("workflowStatusCode")
@@ -13737,11 +13784,11 @@ public class CopyResult {
 
     @JsonProperty("unavailableAppFunctionValues")
     public List<String> getUnavailableAppFunctionValues() {
-        return unavailableAppFunctionValues;
+        return unavailableAppFunctionValues == null ? null : new ArrayList<>(unavailableAppFunctionValues);
     }
 
     public void setUnavailableAppFunctionValues(List<String> unavailableAppFunctionValues) {
-        this.unavailableAppFunctionValues = unavailableAppFunctionValues;
+        this.unavailableAppFunctionValues = unavailableAppFunctionValues == null ? null : new ArrayList<>(unavailableAppFunctionValues);
     }
 }
 ===ENDFILE
@@ -13791,6 +13838,10 @@ import java.util.List;
 import java.util.Map;
 
 public record SubmitResult(PendingChange pendingChange, boolean critical, List<Map<String, Object>> matchedRules) {
+
+    public SubmitResult {
+        matchedRules = matchedRules == null ? null : List.copyOf(matchedRules);
+    }
 }
 ===ENDFILE
 ===FILE: ./src/main/java/com/hsbc/ccaas/sapi/dto/UserRoleAssignmentDTO.java
@@ -15957,11 +16008,7 @@ public class EmbeddedAppRowMapper implements RowMapper<EmbeddedAppDto> {
                 }
 
                 if (functionNode.hasNonNull("mfeConfig")) {
-                    try {
-                        dto.setMfeConfig(objectMapper.treeToValue(functionNode.get("mfeConfig"), MfeConfigDto.class));
-                    } catch (JsonProcessingException e) {
-                        logger.warn("Failed to parse mfeConfig in function_definitions for app {} function {}", appKey, functionKey);
-                    }
+                    parseMfeConfig(functionNode, dto, appKey, functionKey);
                 }
 
                 normalized.put(functionKey, dto);
@@ -15971,6 +16018,14 @@ public class EmbeddedAppRowMapper implements RowMapper<EmbeddedAppDto> {
         } catch (JsonProcessingException e) {
             logger.error("Failed to parse function_definitions for app {}", appKey, e);
             return Collections.emptyMap();
+        }
+    }
+
+    private void parseMfeConfig(JsonNode functionNode, FunctionDefinitionDto dto, String appKey, String functionKey) {
+        try {
+            dto.setMfeConfig(objectMapper.treeToValue(functionNode.get("mfeConfig"), MfeConfigDto.class));
+        } catch (JsonProcessingException e) {
+            logger.warn("Failed to parse mfeConfig in function_definitions for app {} function {}", appKey, functionKey);
         }
     }
 
@@ -16321,7 +16376,7 @@ public class EntitlementStateValue {
             if (value == null) {
                 return ENABLED;
             }
-            for (StateEnum stateEnum : StateEnum.values()) {
+            for (StateEnum stateEnum : values()) {
                 if (stateEnum.value.equalsIgnoreCase(value)) {
                     return stateEnum;
                 }
@@ -18000,6 +18055,7 @@ public class ChangeAuditLogService {
      * Combined filter query for audit log search.
      * All filter parameters are optional (null = ignored for non-primitives).
      */
+    @SuppressWarnings("java:S107")
     public Page<ChangeAuditLog> findWithFilters(
             ChangeAuditLog.Action action,
             String groupId,
@@ -18237,14 +18293,22 @@ public class ConfigApplyService {
         // Collect all app keys that need existing function lookups (assigned apps only)
         List<String> assignedAppKeys = applications.stream()
                 .filter(app -> Boolean.TRUE.equals(app.get("assignedIndicator")))
-                .map(app -> {
-                    Object ak = app.get("appKey");
-                    return ak instanceof String s ? s : null;
-                })
+                .map(app -> app.get("appKey") instanceof String s ? s : null)
                 .filter(Objects::nonNull)
                 .toList();
 
-        // Pre-fetch all existing functions for assigned apps in one query (avoids N+1)
+        Map<String, Set<String>> existingByApp = prefetchExistingFunctions(targetGroup, assignedAppKeys);
+
+        // Process each application: assigned apps get upserted, unassigned apps get cleared
+        for (Map<String, Object> app : applications) {
+            processApplicationEntry(app, targetGroup, appliedBy, existingByApp);
+        }
+
+        log.debug("APP_UPDATE applied to AD group: {}", targetGroup);
+    }
+
+    // Pre-fetch all existing functions for assigned apps in one query (avoids N+1)
+    private Map<String, Set<String>> prefetchExistingFunctions(String targetGroup, List<String> assignedAppKeys) {
         Map<String, Set<String>> existingByApp = new HashMap<>();
         if (!assignedAppKeys.isEmpty()) {
             String placeholders = String.join(",", Collections.nCopies(assignedAppKeys.size(), "?"));
@@ -18261,32 +18325,29 @@ public class ConfigApplyService {
                 existingByApp.computeIfAbsent(appKey, k -> new HashSet<>()).add(functionKey);
             }, params);
         }
+        return existingByApp;
+    }
 
-        // Process each application: assigned apps get upserted, unassigned apps get cleared
-        for (Map<String, Object> app : applications) {
-            Object appKeyRaw = app.get("appKey");
-            String appKey = appKeyRaw instanceof String s ? s : null;
-            Object assignedRaw = app.get("assignedIndicator");
-            Boolean assignedIndicator = assignedRaw instanceof Boolean b ? b : null;
-            Object functionKeysRaw = app.get("functionKeys");
-            List<String> functionKeys = Collections.emptyList();
-            if (functionKeysRaw instanceof List<?> fkList) {
-                functionKeys = fkList.stream()
-                        .filter(String.class::isInstance)
-                        .map(String.class::cast)
-                        .toList();
-            }
+    private void processApplicationEntry(Map<String, Object> app, String targetGroup, String appliedBy,
+                                          Map<String, Set<String>> existingByApp) {
+        String appKey = app.get("appKey") instanceof String s ? s : null;
+        Boolean assignedIndicator = app.get("assignedIndicator") instanceof Boolean b ? b : null;
 
-            if (Boolean.TRUE.equals(assignedIndicator)) {
-                Set<String> existingSet = existingByApp.getOrDefault(appKey, Collections.emptySet());
-                applyAppFunctions(targetGroup, appKey, functionKeys, appliedBy, existingSet);
-            } else {
-                // Unassigned apps: remove all function rows for this app+group combination
-                deleteAllFunctionsForApp(targetGroup, appKey);
-            }
+        List<String> functionKeys = Collections.emptyList();
+        Object functionKeysRaw = app.get("functionKeys");
+        if (functionKeysRaw instanceof List<?> fkList) {
+            functionKeys = fkList.stream()
+                    .filter(String.class::isInstance)
+                    .map(String.class::cast)
+                    .toList();
         }
 
-        log.debug("APP_UPDATE applied to AD group: {}", targetGroup);
+        if (Boolean.TRUE.equals(assignedIndicator)) {
+            Set<String> existingSet = existingByApp.getOrDefault(appKey, Collections.emptySet());
+            applyAppFunctions(targetGroup, appKey, functionKeys, appliedBy, existingSet);
+        } else {
+            deleteAllFunctionsForApp(targetGroup, appKey);
+        }
     }
 
     /**
@@ -18397,7 +18458,7 @@ public class ConfigApplyService {
      * Tries "state"/"reason" keys first, then falls back to "enabledIndicator" for legacy format.
      */
     private EntitlementStateValue convertMapToEntitlementState(Map<String, Object> valueMap) {
-        // Preferred format: { "state": "enabled", "reason": "optional" }
+        // Preferred format uses "state" and optional "reason" keys
         Object stateRaw = valueMap.get("state");
         String state = stateRaw instanceof String s ? s : null;
         if (state != null) {
@@ -18407,7 +18468,7 @@ public class ConfigApplyService {
                 .state(EntitlementStateValue.StateEnum.fromValue(state))
                 .reason(reason);
         }
-        // Legacy format: { "enabledIndicator": true/false }
+        // Legacy format uses "enabledIndicator" boolean key
         Object enabledIndicator = valueMap.get("enabledIndicator");
         if (enabledIndicator instanceof Boolean bool) {
             return new EntitlementStateValue().state(
@@ -18989,6 +19050,8 @@ public class PendingChangeApprovalService {
     // Role-based group field names used to resolve the required AD group from the target assignment
     private static final String GROUP_FIELD_CHECKER = "checker";
     private static final String GROUP_FIELD_SUPER_ADMIN = "super_admin";
+    private static final String MSG_PENDING_CHANGE_ID_NULL = "pendingChangeId must not be null";
+    private static final String MSG_APPROVER_ID_NULL = "approverId must not be null";
 
     private final PendingChangeRepository pendingChangeRepository;
     private final AdGroupLayoutAssignmentRepository adGroupRepository;
@@ -19014,8 +19077,8 @@ public class PendingChangeApprovalService {
     @Transactional
     public ApproveResult approveL1(UUID pendingChangeId, String approverId, String approverName,
                                     String comment, List<String> approverAdGroups) {
-        Objects.requireNonNull(pendingChangeId, "pendingChangeId must not be null");
-        Objects.requireNonNull(approverId, "approverId must not be null");
+        Objects.requireNonNull(pendingChangeId, MSG_PENDING_CHANGE_ID_NULL);
+        Objects.requireNonNull(approverId, MSG_APPROVER_ID_NULL);
 
         PendingChange pendingChange = getPendingChangeOrThrow(pendingChangeId);
 
@@ -19062,8 +19125,8 @@ public class PendingChangeApprovalService {
     @Transactional
     public ApproveResult approveL2(UUID pendingChangeId, String approverId, String approverName,
                                     String comment, List<String> approverAdGroups) {
-        Objects.requireNonNull(pendingChangeId, "pendingChangeId must not be null");
-        Objects.requireNonNull(approverId, "approverId must not be null");
+        Objects.requireNonNull(pendingChangeId, MSG_PENDING_CHANGE_ID_NULL);
+        Objects.requireNonNull(approverId, MSG_APPROVER_ID_NULL);
 
         PendingChange pendingChange = getPendingChangeOrThrow(pendingChangeId);
 
@@ -19109,7 +19172,7 @@ public class PendingChangeApprovalService {
     public Optional<ApproveResult> approve(UUID changeId, String approverId, String approverName,
                                             String comment, List<String> approverAdGroups) {
         Objects.requireNonNull(changeId, "changeId must not be null");
-        Objects.requireNonNull(approverId, "approverId must not be null");
+        Objects.requireNonNull(approverId, MSG_APPROVER_ID_NULL);
 
         Optional<PendingChange> found = pendingChangeRepository.findById(changeId);
         if (found.isEmpty()) {
@@ -19134,7 +19197,7 @@ public class PendingChangeApprovalService {
     public PendingChange reject(UUID pendingChangeId, String rejecterId, String rejecterName,
                                  ChangeAuditLog.PerformerRole rejecterRole, String reason,
                                  List<String> rejecterAdGroups) {
-        Objects.requireNonNull(pendingChangeId, "pendingChangeId must not be null");
+        Objects.requireNonNull(pendingChangeId, MSG_PENDING_CHANGE_ID_NULL);
         Objects.requireNonNull(rejecterId, "rejecterId must not be null");
 
         PendingChange pendingChange = getPendingChangeOrThrow(pendingChangeId);
@@ -19188,7 +19251,7 @@ public class PendingChangeApprovalService {
      */
     @Transactional
     public PendingChange cancel(UUID pendingChangeId, String userId, String userName) {
-        Objects.requireNonNull(pendingChangeId, "pendingChangeId must not be null");
+        Objects.requireNonNull(pendingChangeId, MSG_PENDING_CHANGE_ID_NULL);
         Objects.requireNonNull(userId, "userId must not be null");
 
         PendingChange pendingChange = getPendingChangeOrThrow(pendingChangeId);
@@ -19593,6 +19656,7 @@ public class PendingChangeSubmissionService {
     private static final Logger log = LoggerFactory.getLogger(PendingChangeSubmissionService.class);
     // Matches the PostgreSQL partial unique index name for duplicate-change detection
     private static final String ACTIVE_PENDING_CHANGE_INDEX = "uq_pending_changes_active_group";
+    private static final String MSG_PROPOSED_STATE_NULL = "proposedState must not be null";
 
     private final PendingChangeRepository pendingChangeRepository;
     private final AdGroupLayoutAssignmentRepository adGroupRepository;
@@ -19646,7 +19710,7 @@ public class PendingChangeSubmissionService {
             Long configVersion) {
 
         Objects.requireNonNull(targetGroupIdentifier, "targetGroupIdentifier must not be null");
-        Objects.requireNonNull(proposedState, "proposedState must not be null");
+        Objects.requireNonNull(proposedState, MSG_PROPOSED_STATE_NULL);
         Objects.requireNonNull(submittedBy, "submittedBy must not be null");
 
         // Duplicate-change prevention: only one active pending change per AD group is allowed
@@ -19763,7 +19827,7 @@ public class PendingChangeSubmissionService {
             Long configVersionNumber) {
 
         Objects.requireNonNull(targetGroupId, "targetGroupId must not be null");
-        Objects.requireNonNull(proposedState, "proposedState must not be null");
+        Objects.requireNonNull(proposedState, MSG_PROPOSED_STATE_NULL);
         Objects.requireNonNull(submittedBy, "submittedBy must not be null");
 
         // Extract app/function context from the proposed state
@@ -19792,7 +19856,7 @@ public class PendingChangeSubmissionService {
      * used by the ApprovalRuleService to evaluate criticality.
      */
     public SubmissionContext prepareSubmissionContext(Map<String, Object> proposedState) {
-        Objects.requireNonNull(proposedState, "proposedState must not be null");
+        Objects.requireNonNull(proposedState, MSG_PROPOSED_STATE_NULL);
 
         List<String> changedFields = extractChangedFields(proposedState);
         List<String> changedApps = extractChangedApps(proposedState);
@@ -19824,38 +19888,36 @@ public class PendingChangeSubmissionService {
     // Extract app codes from the "applicationChanges" list in the proposed state
     private List<String> extractChangedApps(Map<String, Object> proposedState) {
         List<String> changedApps = new ArrayList<>();
-        Object appChanges = proposedState.get("applicationChanges");
-        if (appChanges instanceof List<?> appList) {
-            for (Object item : appList) {
-                if (item instanceof Map<?, ?> appMap) {
-                    Object appCode = appMap.get("appCode");
-                    if (appCode instanceof String code && !code.isBlank()) {
-                        changedApps.add(code);
-                    }
-                }
-            }
-        }
-
-        // Also support direct APP_UPDATE style payload ("applications")
-        Object applications = proposedState.get("applications");
-        if (applications instanceof List<?> appList) {
-            for (Object item : appList) {
-                if (item instanceof Map<?, ?> appMap) {
-                    Object appKey = appMap.get("appKey");
-                    if (appKey instanceof String key && !key.isBlank()) {
-                        changedApps.add(key);
-                    }
-                }
-            }
-        }
+        extractAppCodesFromList(proposedState.get("applicationChanges"), "appCode", changedApps);
+        extractAppCodesFromList(proposedState.get("applications"), "appKey", changedApps);
         return changedApps;
+    }
+
+    private void extractAppCodesFromList(Object listObj, String fieldName, List<String> target) {
+        if (listObj instanceof List<?> list) {
+            for (Object item : list) {
+                if (item instanceof Map<?, ?> map) {
+                    Object val = map.get(fieldName);
+                    if (val instanceof String code && !code.isBlank()) {
+                        target.add(code);
+                    }
+                }
+            }
+        }
     }
 
     // Extract function codes and app:function pairs from "appFunctionChanges"
     private AppFunctionData extractAppFunctionData(Map<String, Object> proposedState) {
         List<String> appFunctionPairs = new ArrayList<>();
         Set<String> functionSet = new LinkedHashSet<>();
-        Object afChanges = proposedState.get("appFunctionChanges");
+
+        extractFromAppFunctionChanges(proposedState.get("appFunctionChanges"), functionSet, appFunctionPairs);
+        extractFromApplicationsFunctions(proposedState.get("applications"), functionSet, appFunctionPairs);
+
+        return new AppFunctionData(new ArrayList<>(functionSet), appFunctionPairs);
+    }
+
+    private void extractFromAppFunctionChanges(Object afChanges, Set<String> functionSet, List<String> appFunctionPairs) {
         if (afChanges instanceof List<?> afList) {
             for (Object item : afList) {
                 if (item instanceof Map<?, ?> afMap) {
@@ -19863,28 +19925,31 @@ public class PendingChangeSubmissionService {
                 }
             }
         }
+    }
 
-        // Also support direct APP_UPDATE style payload ("applications")
-        Object applications = proposedState.get("applications");
+    private void extractFromApplicationsFunctions(Object applications, Set<String> functionSet, List<String> appFunctionPairs) {
         if (applications instanceof List<?> appList) {
             for (Object item : appList) {
                 if (item instanceof Map<?, ?> appMap) {
-                    String appKey = appMap.get("appKey") instanceof String s ? s : null;
-                    Object functionKeysRaw = appMap.get("functionKeys");
-                    if (functionKeysRaw instanceof List<?> functionKeys) {
-                        for (Object functionKeyRaw : functionKeys) {
-                            if (functionKeyRaw instanceof String functionKey && !functionKey.isBlank()) {
-                                functionSet.add(functionKey);
-                                if (appKey != null && !appKey.isBlank()) {
-                                    appFunctionPairs.add(appKey + ":" + functionKey);
-                                }
-                            }
-                        }
+                    processApplicationFunctionKeys(appMap, functionSet, appFunctionPairs);
+                }
+            }
+        }
+    }
+
+    private void processApplicationFunctionKeys(Map<?, ?> appMap, Set<String> functionSet, List<String> appFunctionPairs) {
+        String appKey = appMap.get("appKey") instanceof String s ? s : null;
+        Object functionKeysRaw = appMap.get("functionKeys");
+        if (functionKeysRaw instanceof List<?> functionKeys) {
+            for (Object functionKeyRaw : functionKeys) {
+                if (functionKeyRaw instanceof String functionKey && !functionKey.isBlank()) {
+                    functionSet.add(functionKey);
+                    if (appKey != null && !appKey.isBlank()) {
+                        appFunctionPairs.add(appKey + ":" + functionKey);
                     }
                 }
             }
         }
-        return new AppFunctionData(new ArrayList<>(functionSet), appFunctionPairs);
     }
 
     // Parse a single app-function entry and collect distinct functions and app:function pairs
@@ -20296,21 +20361,21 @@ public class AdGroupCopyService {
         List<String> copiedFields = new ArrayList<>();
 
         if (options.copyRoleAndPermissions()) {
-            putIfNotNull(proposedState, "roleName", source.getRoleName(), copiedFields, "roleName");
-            putMapIfNotEmpty(proposedState, "columnAssignments", source.getColumnAssignments(), copiedFields, "columnAssignments");
-            putMapIfNotEmpty(proposedState, "widgetAssignments", source.getWidgetAssignments(), copiedFields, "widgetAssignments");
-            putMapIfNotEmpty(proposedState, "featureAssignments", source.getFeatureAssignments(), copiedFields, "featureAssignments");
-            putMapIfNotEmpty(proposedState, "settingsTabAssignments", source.getSettingsTabAssignments(), copiedFields, "settingsTabAssignments");
-            putMapIfNotEmpty(proposedState, "settingsOptionAssignments", source.getSettingsOptionAssignments(), copiedFields, "settingsOptionAssignments");
-            putMapIfNotEmpty(proposedState, "microFrontendAssignments", source.getMicroFrontendAssignments(), copiedFields, "microFrontendAssignments");
+            putIfNotNull(proposedState, "roleName", source.getRoleName(), copiedFields);
+            putMapIfNotEmpty(proposedState, "columnAssignments", source.getColumnAssignments(), copiedFields);
+            putMapIfNotEmpty(proposedState, "widgetAssignments", source.getWidgetAssignments(), copiedFields);
+            putMapIfNotEmpty(proposedState, "featureAssignments", source.getFeatureAssignments(), copiedFields);
+            putMapIfNotEmpty(proposedState, "settingsTabAssignments", source.getSettingsTabAssignments(), copiedFields);
+            putMapIfNotEmpty(proposedState, "settingsOptionAssignments", source.getSettingsOptionAssignments(), copiedFields);
+            putMapIfNotEmpty(proposedState, "microFrontendAssignments", source.getMicroFrontendAssignments(), copiedFields);
         }
 
         if (options.copyBusinessInfo()) {
-            putIfNotNull(proposedState, "market", source.getMarket(), copiedFields, "market");
-            putIfNotNull(proposedState, "region", source.getRegion(), copiedFields, "region");
-            putIfNotNull(proposedState, "businessUnit", source.getBusinessUnit(), copiedFields, "businessUnit");
-            putIfNotNull(proposedState, "country", source.getCountry(), copiedFields, "country");
-            putIfNotNull(proposedState, "channel", source.getChannel(), copiedFields, "channel");
+            putIfNotNull(proposedState, "market", source.getMarket(), copiedFields);
+            putIfNotNull(proposedState, "region", source.getRegion(), copiedFields);
+            putIfNotNull(proposedState, "businessUnit", source.getBusinessUnit(), copiedFields);
+            putIfNotNull(proposedState, "country", source.getCountry(), copiedFields);
+            putIfNotNull(proposedState, "channel", source.getChannel(), copiedFields);
         }
 
         if (options.copyApplications() && !effectiveApps.isEmpty()) {
@@ -20337,22 +20402,20 @@ public class AdGroupCopyService {
     private void putIfNotNull(Map<String, Object> proposedState,
                               String key,
                               Object value,
-                              List<String> copiedFields,
-                              String copiedFieldKey) {
+                              List<String> copiedFields) {
         if (value != null) {
             proposedState.put(key, value);
-            copiedFields.add(copiedFieldKey);
+            copiedFields.add(key);
         }
     }
 
     private void putMapIfNotEmpty(Map<String, Object> proposedState,
                                   String key,
                                   Map<String, EntitlementStateValue> value,
-                                  List<String> copiedFields,
-                                  String copiedFieldKey) {
+                                  List<String> copiedFields) {
         if (value != null && !value.isEmpty()) {
             proposedState.put(key, new HashMap<>(value));
-            copiedFields.add(copiedFieldKey);
+            copiedFields.add(key);
         }
     }
 
@@ -20901,7 +20964,7 @@ public class DefaultAdGroupLayoutAssignmentService implements AdGroupLayoutAssig
         }
 
         boolean hasAdminGroups = adminAdGroups != null && !adminAdGroups.isEmpty();
-        List<String> adminGroups = hasAdminGroups ? adminAdGroups : java.util.Collections.emptyList();
+        List<String> adminGroups = hasAdminGroups ? adminAdGroups : Collections.emptyList();
         String normalizedSearch = StringUtils.hasText(searchTerm) ? searchTerm.trim() : null;
 
         try {
@@ -21279,8 +21342,8 @@ public class DefaultAdminNoticeService implements AdminNoticeService {
      * Targeting constraints are intentionally disabled — this method is
      * retained as a hook for future re-enablement of per-initiator scoping.
      */
-    @SuppressWarnings("java:S1186") // intentionally empty — see Javadoc
-    private static void applyTargetingConstraints(AdminNoticeRequest request) { // NOSONAR request kept for future use
+    @SuppressWarnings({"java:S1186", "PMD.UnusedFormalParameter"}) // intentionally empty — see Javadoc; request kept for future use
+    private static void applyTargetingConstraints(AdminNoticeRequest request) {
     }
 
     private static LocalDateTime unwrapDateTime(OffsetDateTime value) {
@@ -22721,7 +22784,7 @@ public class SessionLayoutResolver {
                 Boolean.TRUE.equals(assignment.getIsPrimaryAssignment()) ? 0 : 1)
             .thenComparing(assignment -> {
                 Integer priority = assignment.getAssignmentPriority();
-                return priority == null ? Integer.MAX_VALUE : priority;
+                return priority != null ? priority : Integer.valueOf(Integer.MAX_VALUE);
             });
 
     private final RoleLayoutTemplateRepository roleTemplateRepository;
