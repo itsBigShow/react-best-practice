@@ -1,5 +1,5 @@
 # CCaaS Admin MFE - Source Bundle
-# Generated: 2026-02-10 17:57:05
+# Generated: 2026-02-10 18:12:01
 # Total files: 242
 # Categories: 95 TypeScript, 99 React (TSX), 1 CSS, 5 Config, 4 Docs, 38 Other
 # Note: node_modules and dist NOT included - run 'npm install && npm run build' after extraction
@@ -35252,7 +35252,7 @@ export function useEmbeddedAppsApi(): UseEmbeddedAppsApiReturn {
       const appsWithStatus: EmbeddedAppWithStatus[] = allApps.map(app => {
         const assignedApp = assignedAppsMap.get(app.appIdentifier)
         const assignedAccess = assignedApp?.adGroupAccessObject?.[groupIdentifier]
-        const assignedFunctionKeys = assignedAccess?.functionKeys || []
+        const assignedFunctionKeys = assignedAccess?.functionValues || []
         const isAssignedIndicator = assignedFunctionKeys.length > 0
 
         return {
@@ -40658,8 +40658,9 @@ interface FunctionDefinition {
  * AD Group access configuration following PAPI naming conventions.
  */
 interface AdGroupAccess {
-  functionKeys: string[];
+  functionValues: string[];
   lastModifiedByText?: string;
+  marketCode?: string;
 }
 
 /**
