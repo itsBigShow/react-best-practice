@@ -1,5 +1,5 @@
 # CCaaS Admin MFE - Source Bundle
-# Generated: 2026-02-10 18:12:01
+# Generated: 2026-02-10 18:18:41
 # Total files: 242
 # Categories: 95 TypeScript, 99 React (TSX), 1 CSS, 5 Config, 4 Docs, 38 Other
 # Note: node_modules and dist NOT included - run 'npm install && npm run build' after extraction
@@ -645,6 +645,126 @@ Source: `src/services/api/admin-approval.service.ts`
   - `BERR_20024`: existing pending change
   - `BERR_20025`: concurrent update/version mismatch
 - Approve `403` with self-approval text is normalized to a clear message.
+
+### 4.5 Embedded Apps APIs
+
+Source: `src/hooks/api/use-embedded-apps-api.ts`
+
+#### `fetchAllEmbeddedApps()`
+- Method: `GET /papi/v1/embedded-apps`
+- Response:
+```json
+{
+  "data": {
+    "embeddedApps": [
+      {
+        "appKey": "money-transfer",
+        "titleText": "Money Transfer",
+        "description": "Transfer funds between accounts",
+        "categoryText": "Banking",
+        "baseUrlText": "https://app.example.com/money-transfer",
+        "loadingStrategyText": "lazy",
+        "primaryKeywordValues": ["transfer", "send"],
+        "secondaryKeywordValues": ["wire", "payment"],
+        "mfeConfig": {},
+        "regionalUrls": {},
+        "isActiveFlag": true,
+        "appFunctionValues": ["quick-transfer", "view-transfers"],
+        "functionDefinitionMap": {
+          "quick-transfer": {
+            "displayName": "Quick Transfer",
+            "description": "Transfer within same bank",
+            "categoryText": "Transfers",
+            "searchKeywordValues": ["quick", "fast"],
+            "requiresApprovalFlag": false,
+            "mfeConfig": {}
+          }
+        },
+        "adGroupAccess": {
+          "CN=Group,DC=hsbc,DC=com": {
+            "functionValues": ["quick-transfer"],
+            "lastModifiedByText": "600021",
+            "marketCode": "HK"
+          }
+        }
+      }
+    ]
+  }
+}
+```
+- Frontend mapping (`transformPapiApp`):
+  - `appKey -> appIdentifier`
+  - `description -> descriptionText`
+  - `categoryText -> categoryName`
+  - `baseUrlText -> baseUrlAddress`
+  - `loadingStrategyText -> loadingStrategyCode`
+  - `primaryKeywordValues -> primaryKeywordsText`
+  - `secondaryKeywordValues -> secondaryKeywordsText`
+  - `mfeConfig -> mfeConfigObject`
+  - `regionalUrls -> regionalUrlsObject`
+  - `isActiveFlag -> isActiveIndicator`
+  - `functionDefinitionMap -> functionDefinitionsObject`
+  - `adGroupAccess -> adGroupAccessObject`
+  - `appFunctionValues -> appFunctionKeys`
+- Nested `adGroupAccess` entries use `functionValues` (not `functionKeys`).
+
+#### `fetchAssignedApps(groupIdentifier)`
+- Method: `POST /papi/v1/embedded-apps-ad-groups`
+- Request:
+```json
+{
+  "data": {
+    "groupIdentifier": "CN=Group,DC=hsbc,DC=com"
+  }
+}
+```
+- Response: same shape as `fetchAllEmbeddedApps`, filtered to assigned apps.
+- Returns `[]` on `404` (no apps assigned yet).
+
+#### `saveAppAssignment(appKey, ...)`
+- Method: `PUT /papi/v1/embedded-apps-ad-groups/{appKey}`
+- Request:
+```json
+{
+  "data": {
+    "groupIdentifier": "CN=Group,DC=hsbc,DC=com",
+    "functionValues": ["quick-transfer", "view-transfers"],
+    "defaultFunctionText": "quick-transfer"
+  }
+}
+```
+- Empty `functionValues` array removes the app assignment.
+
+### 4.6 Pending Change Proposed State Formats
+
+Two formats exist for app changes stored in `proposedConfig`:
+
+**Copy/direct-save format** (from `POST /papi/v1/ad-group-configuration-copies`):
+```json
+{
+  "applications": [
+    {
+      "appKey": "money-transfer",
+      "assignedIndicator": true,
+      "functionKeys": ["quick-transfer", "view-transfers"]
+    }
+  ]
+}
+```
+
+**MFE approval format** (from `POST /papi/v1/pending-changes` via admin MFE):
+```json
+{
+  "applicationChanges": [
+    { "appCode": "money-transfer", "proposedStateIndicator": true, "currentStateIndicator": false }
+  ],
+  "appFunctionChanges": [
+    { "appCode": "money-transfer", "functionCode": "quick-transfer", "enabledIndicator": true }
+  ]
+}
+```
+
+The `what-changed-diff.tsx` component handles both: copy format via `formatApplicationsArray()` (reads `functionKeys`), MFE format via structured `appsChanges`/`functionsChanges` props.
 
 ## 6. Where Save Actually Routes
 
@@ -34993,7 +35113,7 @@ describe('useEmbeddedAppsApi', () => {
                 description: 'D',
                 categoryText: 'C',
                 adGroupAccess: {
-                  'CN=test-group': { functionKeys: ['fn1', 'fn2'] }
+                  'CN=test-group': { functionValues: ['fn1', 'fn2'] }
                 }
               }]
             }
