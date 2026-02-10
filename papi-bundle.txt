@@ -1,5 +1,5 @@
 # CCaaS Entitlement PAPI - Source Bundle
-# Generated: 2026-02-10 16:12:57
+# Generated: 2026-02-10 17:09:06
 # Total files: 284
 # Categories: 1 pom.xml, 2 CLAUDE.md, 3 docs, 1 resources, 131 YAML specs, 86 main Java, 52 test Java, 8 other
 # Note: target/generated-sources NOT included - run 'mvn generate-sources' after extraction
@@ -18120,21 +18120,24 @@ public class DefaultAdGroupLayoutAssignmentService implements AdGroupLayoutAssig
 
         if (result != null) {
             List<String> userAdGroups = identity.adGroups();
-            // Resolve access level via parent admin group's access fields
-            String adminId = result.getAdminGroupIdentifier();
-            if (adminId != null && !adminId.isBlank() && !adminId.equals(groupIdentifier)) {
-                AdGroupLayoutResponse adminGroup = SapiExceptionHandler.executeWithNotFoundDefault(
-                    () -> sapiAdGroupClient.getAdGroupByIdentifier(adminId),
-                    () -> null
-                );
-                if (adminGroup != null) {
-                    result.setUserAccessCode(userAccessEnricher.computeAccessLevel(userAdGroups, adminGroup));
-                } else {
-                    result.setUserAccessCode(userAccessEnricher.computeAccessLevel(userAdGroups, result));
+            // Prefer the group's own maker/checker/super_admin fields for access level.
+            // Only fall back to parent admin group when the item has no access fields.
+            AdGroupLayoutResponse accessSource = result;
+            if (result.getMakerAdGroupIdentifier() == null
+                    && result.getCheckerAdGroupIdentifier() == null
+                    && result.getSuperAdminAdGroupIdentifier() == null) {
+                String adminId = result.getAdminGroupIdentifier();
+                if (adminId != null && !adminId.isBlank() && !adminId.equals(groupIdentifier)) {
+                    AdGroupLayoutResponse adminGroup = SapiExceptionHandler.executeWithNotFoundDefault(
+                        () -> sapiAdGroupClient.getAdGroupByIdentifier(adminId),
+                        () -> null
+                    );
+                    if (adminGroup != null) {
+                        accessSource = adminGroup;
+                    }
                 }
-            } else {
-                result.setUserAccessCode(userAccessEnricher.computeAccessLevel(userAdGroups, result));
             }
+            result.setUserAccessCode(userAccessEnricher.computeAccessLevel(userAdGroups, accessSource));
         }
 
         return result;
@@ -18222,15 +18225,22 @@ public class DefaultAdGroupLayoutAssignmentService implements AdGroupLayoutAssig
                 }
             }
 
-            // Resolve access level for each group using its parent admin group
+            // Resolve access level for each group using its own maker/checker/super_admin fields.
+            // Agent groups carry the correct access DN fields; the parent admin group row
+            // may have NULL values, so always prefer the item's own fields.
             for (AdGroupLayoutResponse item : response.items()) {
-                String adminId = item.getAdminGroupIdentifier();
-                AdGroupLayoutResponse adminGroup = adminId != null ? adminGroupMap.get(adminId) : null;
-                if (adminGroup != null) {
-                    item.setUserAccessCode(userAccessEnricher.computeAccessLevel(userAdGroups, adminGroup));
-                } else {
-                    item.setUserAccessCode(userAccessEnricher.computeAccessLevel(userAdGroups, item));
+                AdGroupLayoutResponse accessSource = item;
+                // Fall back to parent admin group only when the item itself has no access fields
+                if (item.getMakerAdGroupIdentifier() == null
+                        && item.getCheckerAdGroupIdentifier() == null
+                        && item.getSuperAdminAdGroupIdentifier() == null) {
+                    String adminId = item.getAdminGroupIdentifier();
+                    AdGroupLayoutResponse adminGroup = adminId != null ? adminGroupMap.get(adminId) : null;
+                    if (adminGroup != null) {
+                        accessSource = adminGroup;
+                    }
                 }
+                item.setUserAccessCode(userAccessEnricher.computeAccessLevel(userAdGroups, accessSource));
             }
         }
 
