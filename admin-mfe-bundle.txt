@@ -1,7 +1,7 @@
 # CCaaS Admin MFE - Source Bundle
-# Generated: 2026-02-10 16:13:48
-# Total files: 241
-# Categories: 95 TypeScript, 99 React (TSX), 1 CSS, 5 Config, 3 Docs, 38 Other
+# Generated: 2026-02-10 17:57:05
+# Total files: 242
+# Categories: 95 TypeScript, 99 React (TSX), 1 CSS, 5 Config, 4 Docs, 38 Other
 # Note: node_modules and dist NOT included - run 'npm install && npm run build' after extraction
 ===FILE: ./.env.example
 VITE_PAPI_PROXY_TARGET=http://localhost:8095
@@ -144,6 +144,520 @@ const AdminMFE = React.lazy(() => import('adminMfeRemote/AdminMFE'))
 Detailed host integration guide:
 
 - `docs/HOST_APP_INTEGRATION.md`
+- `docs/API_INTEGRATION.md` (request/response contracts and data mapping)
+===ENDFILE
+===FILE: ./docs/API_INTEGRATION.md
+# API Integration Guide (Request/Response)
+
+This document describes how `ccaas-admin-mfe` integrates with backend APIs, including request/response envelopes and frontend mapping behavior.
+
+## 1. Runtime Flow
+
+1. UI hooks/components call service methods in `src/services/api/*`.
+2. Services call `apiFetch` / `apiFetchJson` from `src/services/core/api-client.ts`.
+3. Requests go to relative paths (`/papi/*`) and are routed by Vite proxy in standalone mode.
+4. Responses are transformed to frontend types (for example: `marketCode -> market`, `enabledIndicator -> { state: 'enabled' | 'disabled' }`).
+
+## 2. Auth and Proxy
+
+Source: `src/services/core/api-client.ts`
+
+- `getAuthToken()` is required unless `skipAuth` is set.
+- Token is sent in two places:
+  - Header: `AMToken`
+  - Cookie: `AMToken=<token>; path=/; SameSite=Lax`
+- `credentials: 'include'` is always enabled.
+- `401` responses clear the stored token.
+
+Standalone dev proxy:
+
+- Env var: `VITE_PAPI_PROXY_TARGET`
+- Default: `http://localhost:8095`
+- If proxy is wrong, `/papi/*` can return HTML instead of JSON.
+
+## 3. Common Envelope Patterns
+
+Most endpoints use:
+
+- Request body: `{ "data": { ... } }`
+- Response body: `{ "data": { ... } }`
+
+List endpoints often add pagination:
+
+- `meta.pagination.offset`
+- `meta.pagination.limit`
+- `meta.pagination.total`
+- `meta.pagination.hasMore`
+
+## 4. Service-to-Endpoint Map
+
+### 4.1 AD Group and Notice APIs
+
+Source: `src/services/api/admin.service.ts`
+
+#### `getAllAdGroups()`
+- Method: `GET /papi/v1/ad-groups`
+- Expected response:
+```json
+{
+  "data": {
+    "items": [
+      {
+        "groupIdentifier": "CN=Chat_Agent_AMER,OU=Agents,OU=Groups,DC=hsbc,DC=com",
+        "logicalName": "Chat Agent AMER",
+        "roleName": "chat_agent",
+        "marketCode": "US",
+        "regionCode": "AMER",
+        "countryCode": "US",
+        "businessUnitName": "Retail Banking",
+        "activeIndicator": true,
+        "userAccessCode": "MAKER",
+        "pendingChangeIndicator": false,
+        "versionNumber": 3,
+        "userCountNumber": 15,
+        "updatedAtDatetime": "2026-02-10T12:00:00Z",
+        "currentConfig": {
+          "permissionChanges": {
+            "columnPermissions": {
+              "chat": { "enabledIndicator": true }
+            }
+          }
+        }
+      }
+    ]
+  }
+}
+```
+- Frontend mapping:
+  - `marketCode -> market`
+  - `regionCode -> region`
+  - `countryCode -> country`
+  - `activeIndicator -> isActive`
+  - `userAccessCode -> accessLevel`
+  - `userCountNumber -> userCount`
+  - Permission blocks map to `{ state: 'enabled' | 'disabled' }`
+
+#### `lookupAdGroup(groupIdentifier)`
+- Method: `POST /papi/v1/ad-groups/lookup`
+- Request:
+```json
+{
+  "data": {
+    "groupIdentifier": "CN=Chat_Agent_AMER,OU=Agents,OU=Groups,DC=hsbc,DC=com"
+  }
+}
+```
+- Expected response:
+```json
+{
+  "data": {
+    "groupIdentifier": "CN=Chat_Agent_AMER,OU=Agents,OU=Groups,DC=hsbc,DC=com",
+    "logicalName": "Chat Agent AMER"
+  }
+}
+```
+
+#### `searchAdGroups(search, limit)`
+- Method: `GET /papi/v1/ad-groups?search=<term>&limit=<n>`
+- Expected response: same shape as `getAllAdGroups()`.
+
+#### `updateAdGroup(groupIdentifier, updateData)`
+- Method: `POST /papi/v1/ad-group-configs`
+- Request:
+```json
+{
+  "data": {
+    "targetGroupIdentifier": "CN=Chat_Agent_AMER,OU=Agents,OU=Groups,DC=hsbc,DC=com",
+    "proposedState": {
+      "logicalName": "Chat Agent AMER Updated",
+      "activeIndicator": true
+    },
+    "configVersionNumber": 3
+  }
+}
+```
+- Notes:
+  - If `updateData.isActive` is provided, service converts it to `activeIndicator`.
+  - `undefined` fields are removed from `proposedState`.
+
+#### `copyAdGroupConfiguration(source, target, options)`
+- Method: `POST /papi/v1/ad-group-configuration-copies`
+- Request:
+```json
+{
+  "data": {
+    "sourceGroupIdentifier": "CN=Source,OU=Groups,DC=hsbc,DC=com",
+    "targetGroupIdentifier": "CN=Target,OU=Groups,DC=hsbc,DC=com",
+    "copyOptions": {
+      "copyRoleAndPermissionsFlag": true,
+      "copyBusinessInfoFlag": true,
+      "copyApplicationsFlag": true,
+      "overwriteExistingFlag": false,
+      "copyWorkflowModeCode": "SUBMIT_FOR_APPROVAL",
+      "functionMismatchPolicyCode": "FAIL_ON_MISMATCH"
+    }
+  }
+}
+```
+- Expected response:
+```json
+{
+  "data": {
+    "copyResult": {
+      "successFlag": true,
+      "messageText": "Copy submitted",
+      "workflowStatusCode": "SUBMITTED_FOR_APPROVAL",
+      "pendingChangeIdentifier": "pc-123",
+      "criticalIndicator": false,
+      "levelTwoApprovalRequiredIndicator": false,
+      "unavailableAppFunctionValues": []
+    }
+  }
+}
+```
+
+#### Notices (`createNotice`, `listNotices`, `updateNotice`, `updateNoticeStatus`)
+- Endpoints:
+  - `POST /papi/v1/notices`
+  - `GET /papi/v1/notices?statusCode=<STATUS>`
+  - `PUT /papi/v1/notices/{noticeId}`
+  - `PATCH /papi/v1/notices/{noticeId}/status`
+- Request payload mapping (`AdminNoticeRequest -> PAPI`):
+  - `title -> titleText`
+  - `message -> messageText`
+  - `severity -> severityValue`
+  - `broadcastToAll -> broadcastToAllFlag`
+  - `requiresAcknowledgement -> requiresAckFlag`
+  - `targetRoles -> targetRoleValues`
+  - `targetAdGroups -> targetAdGroupValues`
+  - `startAt -> startAtDate`
+  - `endAt -> endAtDate`
+  - `createdBy -> createdByText`
+
+Expected notice response item:
+```json
+{
+  "identifier": "notice-001",
+  "titleText": "Maintenance Notice",
+  "messageText": "System update at 02:00 UTC",
+  "severityValue": "INFO",
+  "statusCode": "ACTIVE",
+  "broadcastToAllFlag": true,
+  "targetRoleValues": [],
+  "targetAdGroupValues": [],
+  "requiresAckFlag": false,
+  "startAtDate": "2026-02-10T00:00:00Z",
+  "endAtDate": "2026-02-11T00:00:00Z",
+  "createdByText": "admin-user",
+  "createdAtDate": "2026-02-10T00:00:00Z"
+}
+```
+
+### 4.2 Approval Workflow APIs
+
+Source: `src/services/api/admin-approval.service.ts`
+
+#### `submitChange(groupId, request)`
+- Method: `POST /papi/v1/pending-changes`
+- Request sent by service:
+```json
+{
+  "data": {
+    "targetGroupIdentifier": "CN=Chat_Agent_AMER,OU=Agents,OU=Groups,DC=hsbc,DC=com",
+    "changeDescription": "Configuration update",
+    "proposedConfig": {
+      "businessInfoChanges": {
+        "logicalName": "Chat Agent AMER Updated"
+      }
+    },
+    "changedFields": ["logicalName"],
+    "configVersionNumber": 3
+  }
+}
+```
+- Response expected:
+```json
+{
+  "data": {
+    "pendingChange": {
+      "changeIdentifier": "pc-001",
+      "statusCode": "PENDING_LEVEL_ONE",
+      "isCriticalIndicator": false
+    }
+  }
+}
+```
+- Special errors:
+  - `409 + BERR_20024` -> pending change already exists
+  - `409 + BERR_20025` -> version conflict / stale config
+
+#### `directSave(groupId, request)`
+- Method: `POST /papi/v1/ad-group-configs`
+- Request:
+```json
+{
+  "data": {
+    "targetGroupIdentifier": "CN=Chat_Agent_AMER,OU=Agents,OU=Groups,DC=hsbc,DC=com",
+    "currentState": {},
+    "proposedState": {}
+  }
+}
+```
+- Response:
+```json
+{
+  "data": {
+    "successIndicator": true,
+    "messageText": "Saved"
+  }
+}
+```
+
+#### `listPendingChanges(filters)`
+- Method: `GET /papi/v1/pending-changes`
+- Query params used:
+  - `statusCode` (mapped from first `filters.status` item if supported)
+  - `offset`
+  - `limit`
+- Response:
+```json
+{
+  "data": {
+    "pendingChanges": [
+      {
+        "changeIdentifier": "pc-001",
+        "targetGroupIdentifier": "CN=Group,DC=hsbc,DC=com",
+        "targetGroupName": "Group",
+        "changeType": "CONFIG_UPDATE",
+        "currentConfig": {},
+        "proposedConfig": {},
+        "isCriticalIndicator": false,
+        "statusCode": "PENDING_LEVEL_ONE",
+        "createdByText": "maker.user",
+        "createdAtDatetime": "2026-02-10T10:00:00Z"
+      }
+    ]
+  },
+  "meta": {
+    "pagination": {
+      "offset": 0,
+      "limit": 25,
+      "total": 1,
+      "hasMore": false
+    }
+  }
+}
+```
+- Service also:
+  - unwraps nested config wrappers (`businessInfoChanges`, `permissionChanges`, etc.)
+  - computes `appsChanges` and `functionsChanges` when not provided top-level
+
+#### `getPendingChange(changeId)`
+- Method: `GET /papi/v1/pending-changes/{changeId}`
+- Response:
+```json
+{
+  "data": {
+    "pendingChange": {
+      "changeIdentifier": "pc-001",
+      "targetGroupIdentifier": "CN=Group,DC=hsbc,DC=com",
+      "statusCode": "PENDING_LEVEL_ONE"
+    }
+  }
+}
+```
+
+#### `approveChange(changeId, { comment })`
+- Method: `POST /papi/v1/change-approvals`
+- Request:
+```json
+{
+  "data": {
+    "changeIdentifier": "pc-001",
+    "commentText": "Looks good"
+  }
+}
+```
+- Response:
+```json
+{
+  "data": {
+    "approval": {
+      "changeIdentifier": "pc-001",
+      "statusCode": "APPROVED",
+      "messageText": "Approved",
+      "approvedAtDatetime": "2026-02-10T10:05:00Z"
+    }
+  }
+}
+```
+
+#### `rejectChange(changeId, { rejectionReason })`
+- Method: `POST /papi/v1/change-rejections`
+- Request:
+```json
+{
+  "data": {
+    "changeIdentifier": "pc-001",
+    "reasonText": "Insufficient details"
+  }
+}
+```
+- Response:
+```json
+{
+  "data": {
+    "rejection": {
+      "changeIdentifier": "pc-001",
+      "statusCode": "REJECTED",
+      "messageText": "Rejected",
+      "rejectedAtDatetime": "2026-02-10T10:07:00Z"
+    }
+  }
+}
+```
+
+#### `cancelChange(changeId)`
+- Method: `DELETE /papi/v1/pending-changes/{changeId}`
+- Response:
+```json
+{
+  "data": {
+    "statusCode": "CANCELLED",
+    "messageText": "Pending change cancelled"
+  }
+}
+```
+
+#### `getMyActivity(page, size, timeRange)`
+- Method: `GET /papi/v1/my-activity?offset=&limit=&timeRange=`
+- Response:
+```json
+{
+  "data": {
+    "activityValues": [
+      {
+        "changeIdentifier": "pc-001",
+        "actionCode": "L1_APPROVE",
+        "changeType": "CONFIG_UPDATE",
+        "targetGroupIdentifier": "CN=Group,DC=hsbc,DC=com",
+        "targetGroupName": "Group",
+        "isCriticalIndicator": false,
+        "createdAtDatetime": "2026-02-10T10:05:00Z",
+        "performedByRoleCode": "CHECKER",
+        "completionReasonText": "Approved"
+      }
+    ]
+  },
+  "meta": {
+    "pagination": {
+      "offset": 0,
+      "limit": 25,
+      "total": 1,
+      "hasMore": false
+    }
+  }
+}
+```
+
+### 4.3 Reference Data APIs
+
+Source: `src/services/api/reference-data.service.ts`
+
+- `GET /papi/v1/regions` -> `{ data: { regions: [...] } }`
+- `GET /papi/v1/business-units` -> `{ data: { businessUnits: [...] } }`
+- `GET /papi/v1/countries` -> `{ data: { countries: [...] } }`
+- `GET /papi/v1/regions-countries/{regionCode}` -> `{ data: { countries: [...] } }`
+- `GET /papi/v1/markets` -> `{ data: { markets: [...] } }`
+- `GET /papi/v1/regions-markets/{regionCode}` -> `{ data: { markets: [...] } }`
+
+Normalization rule:
+
+- Service accepts both canonical and alternate backend field names:
+  - `displayOrder` or `displayOrderNumber`
+  - `isActive` or `isActiveFlag`
+
+### 4.4 Role Template APIs
+
+Source: `src/services/api/role-template.service.ts`
+
+#### List templates
+- `GET /papi/v1/role-layout-templates`
+- Response:
+```json
+{
+  "data": {
+    "roleLayoutTemplates": [
+      {
+        "roleNameCode": "voice_agent",
+        "roleDisplayName": "Voice Agent"
+      }
+    ]
+  }
+}
+```
+
+#### Template by role
+- `GET /papi/v1/role-layout-templates/{roleNameCode}`
+- Response:
+```json
+{
+  "data": {
+    "roleNameCode": "voice_agent",
+    "roleDisplayName": "Voice Agent",
+    "columns": {
+      "chat": { "stateText": "disabled" }
+    },
+    "widgets": {
+      "timer": { "stateText": "enabled" }
+    },
+    "features": {},
+    "settingsTabs": {},
+    "settingsOptions": {},
+    "microFrontends": {}
+  }
+}
+```
+
+Frontend mapping in `use-ad-group-form`:
+
+- `stateText` is normalized to lowercase.
+- Only `'enabled'` maps to enabled.
+- Any other value maps to disabled.
+
+## 5. Error Handling Strategy
+
+### `apiFetchJson`
+- Throws on non-2xx.
+- Error message comes from raw response text when available.
+
+### `handleApiResponse`
+Source: `src/utils/api/response-handler.ts`
+
+- Throws on non-2xx.
+- Detects HTML/non-JSON responses and throws a proxy-specific hint:
+  - "Expected JSON ... Check Vite /papi proxy configuration (VITE_PAPI_PROXY_TARGET)."
+
+### Approval-specific errors
+Source: `src/services/api/admin-approval.service.ts`
+
+- Submit conflict handling:
+  - `BERR_20024`: existing pending change
+  - `BERR_20025`: concurrent update/version mismatch
+- Approve `403` with self-approval text is normalized to a clear message.
+
+## 6. Where Save Actually Routes
+
+Source: `src/hooks/admin/use-config-save.ts`
+
+- If user is allowed direct save and selects direct save:
+  - calls `adminApprovalService.directSave(...)`
+- Otherwise:
+  - calls `adminApprovalService.submitChange(...)`
+- Payload includes:
+  - business info deltas
+  - permission deltas
+  - app/function deltas (when staged app changes exist)
 ===ENDFILE
 ===FILE: ./docs/HOST_APP_INTEGRATION.md
 # Admin MFE Host App Integration
@@ -31316,8 +31830,18 @@ function buildSavePayload(
   let appPayload: ReturnType<typeof buildAppChangePayload> | null = null
   if (hasAppChanges) {
     appPayload = buildAppChangePayload(stagedAppChanges)
-    proposedState.applicationChanges = appPayload.applicationChanges
-    proposedState.appFunctionChanges = appPayload.appFunctionChanges
+    // Transform diff format into SAPI's flat array format
+    const { applicationChanges, appFunctionChanges } = appPayload
+    proposedState.applicationChanges = [
+      ...applicationChanges.added.map(app => ({ appCode: app, proposedStateIndicator: true, currentStateIndicator: false })),
+      ...applicationChanges.removed.map(app => ({ appCode: app, proposedStateIndicator: false, currentStateIndicator: true })),
+      ...applicationChanges.unchanged.map(app => ({ appCode: app, proposedStateIndicator: true, currentStateIndicator: true }))
+    ]
+    proposedState.appFunctionChanges = [
+      ...appFunctionChanges.added.map(fn => ({ appCode: fn.appIdentifier, functionCode: fn.functionIdentifier, enabledIndicator: true })),
+      ...appFunctionChanges.removed.map(fn => ({ appCode: fn.appIdentifier, functionCode: fn.functionIdentifier, enabledIndicator: false })),
+      ...appFunctionChanges.unchanged.map(fn => ({ appCode: fn.appIdentifier, functionCode: fn.functionIdentifier, enabledIndicator: true }))
+    ]
   }
 
   const hasConfigChanges = hasEntries(businessInfoChanges) || hasEntries(permissionChanges)
