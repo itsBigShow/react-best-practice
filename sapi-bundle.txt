@@ -1,7 +1,7 @@
 # CCaaS Entitlement SAPI - Source Bundle
-# Generated: 2026-02-10 17:56:29
-# Total files: 352
-# Categories: 1 pom.xml, 2 CLAUDE.md, 2 docs, 2 resources, 125 YAML specs, 139 main Java, 68 test Java, 13 other
+# Generated: 2026-02-10 20:58:58
+# Total files: 356
+# Categories: 1 pom.xml, 2 CLAUDE.md, 2 docs, 2 resources, 129 YAML specs, 139 main Java, 68 test Java, 13 other
 # Note: target/generated-sources NOT included - run 'mvn generate-sources' after extraction
 ===FILE: ./AGENTS.md
 # AGENTS.md - ccaas-entitlement-sapi
@@ -2076,7 +2076,7 @@ class ExampleControllerTest {
 }
 ```
 
-## Key Endpoints (24 operations, all working)
+## Key Endpoints (26 operations, all working)
 ```
 # AD Groups
 POST /sapi/v1/ad-groups                                          # List (paginated, filterable)
@@ -2121,6 +2121,10 @@ GET  /sapi/v1/regions-countries/{regionCode}                     # Countries by 
 GET  /sapi/v1/business-units                                     # All business units
 GET  /sapi/v1/markets                                            # All markets
 GET  /sapi/v1/regions-markets/{regionCode}                       # Markets by region
+
+# Role Layout Templates
+GET  /sapi/v1/role-layout-templates                              # All templates (summary)
+GET  /sapi/v1/role-layout-templates/{roleNameCode}               # Full template by name
 
 # User Roles
 POST /sapi/v1/users/{userIdentifier}/primaries/{roleName}        # Set primary
@@ -5554,6 +5558,8 @@ tags:
     description: Retrieves all HSBC markets
   - name: regions-markets
     description: Retrieves markets filtered by a specific region code
+  - name: role-layout-templates
+    description: Retrieves role layout template definitions
   - name: notices
     description: Administrative notice management
   - name: embedded-apps
@@ -5634,6 +5640,10 @@ paths:
     $ref: "paths/ReferenceDataController/get-all-markets.yaml"
   /regions-markets/{regionCode}:
     $ref: "paths/ReferenceDataController/get-markets-by-region.yaml"
+  /role-layout-templates:
+    $ref: "paths/ReferenceDataController/get-all-role-layout-templates.yaml"
+  /role-layout-templates/{roleNameCode}:
+    $ref: "paths/ReferenceDataController/get-role-layout-template-by-name.yaml"
   /users/{userIdentifier}/primaries:
     $ref: "paths/UserRoleAssignmentController/set-primary-assignment.yaml"
   /my-activity:
@@ -8268,6 +8278,72 @@ properties:
     description: Whether the region is active
     example: true
 ===ENDFILE
+===FILE: ./src/main/api/components/schemas/ReferenceDataController/response/role-layout-template-response.yaml
+title: RoleLayoutTemplateResponse
+description: Full role layout template with entitlement maps
+type: object
+properties:
+  roleNameCode:
+    type: string
+    description: Unique role name code identifier
+    minLength: 1
+    maxLength: 100
+    example: "voice_agent"
+  roleDisplayName:
+    type: string
+    description: Human-readable display name for the role
+    minLength: 1
+    maxLength: 150
+    example: "Voice Agent"
+  columns:
+    type: object
+    description: Column visibility entitlements
+    additionalProperties:
+      $ref: "../../common/entitlement-state-value-dto.yaml"
+  widgets:
+    type: object
+    description: Widget visibility entitlements
+    additionalProperties:
+      $ref: "../../common/entitlement-state-value-dto.yaml"
+  features:
+    type: object
+    description: Feature toggle entitlements
+    additionalProperties:
+      $ref: "../../common/entitlement-state-value-dto.yaml"
+  settingsTabs:
+    type: object
+    description: Settings tab visibility entitlements
+    additionalProperties:
+      $ref: "../../common/entitlement-state-value-dto.yaml"
+  settingsOptions:
+    type: object
+    description: Settings option entitlements
+    additionalProperties:
+      $ref: "../../common/entitlement-state-value-dto.yaml"
+  microFrontends:
+    type: object
+    description: Micro frontend entitlements
+    additionalProperties:
+      $ref: "../../common/entitlement-state-value-dto.yaml"
+===ENDFILE
+===FILE: ./src/main/api/components/schemas/ReferenceDataController/response/role-layout-template-summary-response.yaml
+title: RoleLayoutTemplateSummaryResponse
+description: Summary of a role layout template
+type: object
+properties:
+  roleNameCode:
+    type: string
+    description: Unique role name code identifier
+    minLength: 1
+    maxLength: 100
+    example: "voice_agent"
+  roleDisplayName:
+    type: string
+    description: Human-readable display name for the role
+    minLength: 1
+    maxLength: 150
+    example: "Voice Agent"
+===ENDFILE
 ===FILE: ./src/main/api/components/schemas/RejectChangeRequest.yaml
 type: object
 description: Request to reject a pending configuration change.
@@ -9391,6 +9467,56 @@ get:
             $ref: "../../components/schemas/common/error-post-400.yaml"
   operationId: get-all-regions
 ===ENDFILE
+===FILE: ./src/main/api/paths/ReferenceDataController/get-all-role-layout-templates.yaml
+description: |
+  API endpoint to retrieve all role layout templates (summary only).
+get:
+  summary: Get all role layout templates
+  description: |
+    Retrieves a summary list of all role layout templates.
+    Returns roleNameCode and roleDisplayName for each template.
+
+    Use Case: Populate role template dropdown in AD group configuration form
+  tags:
+    - role-layout-templates
+  responses:
+    '200':
+      description: Successfully retrieved role layout templates
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Role layout templates response payload
+            properties:
+              data:
+                type: object
+                description: Container for role layout template list
+                properties:
+                  roleLayoutTemplates:
+                    type: array
+                    description: List of role layout template summaries
+                    items:
+                      $ref: "../../components/schemas/ReferenceDataController/response/role-layout-template-summary-response.yaml"
+    '400':
+      description: Bad request - fields missing or in wrong format.
+    '401':
+      description: Authorisation failure.
+    '403':
+      description: Authentication failure.
+    '429':
+      description: Too Many Requests.
+    '500':
+      description: Internal Server Error
+    '503':
+      description: Service unavailable
+    '504':
+      description: backend timeout error code
+      content:
+        application/json:
+          schema:
+            $ref: "../../components/schemas/common/error-post-400.yaml"
+  operationId: get-all-role-layout-templates
+===ENDFILE
 ===FILE: ./src/main/api/paths/ReferenceDataController/get-countries-by-region.yaml
 description: |
   API endpoint to retrieve countries filtered by a specific HSBC region.
@@ -9520,6 +9646,61 @@ get:
           schema:
             $ref: "../../components/schemas/common/error-post-400.yaml"
   operationId: get-markets-by-region
+===ENDFILE
+===FILE: ./src/main/api/paths/ReferenceDataController/get-role-layout-template-by-name.yaml
+description: |
+  API endpoint to retrieve a single role layout template by role name code.
+get:
+  summary: Get role layout template by name
+  description: |
+    Retrieves the full role layout template including all entitlement maps
+    (columns, widgets, features, settingsTabs, settingsOptions, microFrontends).
+
+    Use Case: Load base template defaults for the Permissions tab in AD group configuration
+  tags:
+    - role-layout-templates
+  parameters:
+    - name: roleNameCode
+      in: path
+      required: true
+      description: The unique role name code identifier
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 100
+        example: "voice_agent"
+  responses:
+    '200':
+      description: Successfully retrieved role layout template
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Role layout template response payload
+            properties:
+              data:
+                $ref: "../../components/schemas/ReferenceDataController/response/role-layout-template-response.yaml"
+    '400':
+      description: Bad request - fields missing or in wrong format.
+    '401':
+      description: Authorisation failure.
+    '403':
+      description: Authentication failure.
+    '404':
+      description: Role layout template not found
+    '429':
+      description: Too Many Requests.
+    '500':
+      description: Internal Server Error
+    '503':
+      description: Service unavailable
+    '504':
+      description: backend timeout error code
+      content:
+        application/json:
+          schema:
+            $ref: "../../components/schemas/common/error-post-400.yaml"
+  operationId: get-role-layout-template-by-name
 ===ENDFILE
 ===FILE: ./src/main/api/paths/UserRoleAssignmentController/set-primary-assignment.yaml
 description: |
@@ -10885,19 +11066,31 @@ package com.hsbc.ccaas.sapi.application;
 
 import com.hsbc.ccaas.sapi.controller.model.BusinessUnitResponse;
 import com.hsbc.ccaas.sapi.controller.model.CountryResponse;
+import com.hsbc.ccaas.sapi.controller.model.EntitlementStateValueDto;
 import com.hsbc.ccaas.sapi.controller.model.MarketResponse;
 import com.hsbc.ccaas.sapi.controller.model.RegionResponse;
+import com.hsbc.ccaas.sapi.controller.model.RoleLayoutTemplateSummaryResponse;
+import com.hsbc.ccaas.sapi.controller.model.RoleLayoutTemplateResponse;
+import com.hsbc.ccaas.sapi.entity.RoleLayoutTemplate;
+import com.hsbc.ccaas.sapi.model.EntitlementStateValue;
+import com.hsbc.ccaas.sapi.repository.RoleLayoutTemplateRepository;
 import com.hsbc.ccaas.sapi.service.ReferenceDataService;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import org.springframework.stereotype.Component;
 
 @Component
 public class DefaultReferenceDataFacade implements ReferenceDataFacade {
 
     private final ReferenceDataService referenceDataService;
+    private final RoleLayoutTemplateRepository roleLayoutTemplateRepository;
 
-    public DefaultReferenceDataFacade(ReferenceDataService referenceDataService) {
+    public DefaultReferenceDataFacade(ReferenceDataService referenceDataService,
+                                      RoleLayoutTemplateRepository roleLayoutTemplateRepository) {
         this.referenceDataService = referenceDataService;
+        this.roleLayoutTemplateRepository = roleLayoutTemplateRepository;
     }
 
     @Override
@@ -10933,6 +11126,53 @@ public class DefaultReferenceDataFacade implements ReferenceDataFacade {
     @Override
     public List<CountryResponse> getCountriesByMarket(String marketCode) {
         return referenceDataService.getCountriesByMarket(marketCode);
+    }
+
+    @Override
+    public List<RoleLayoutTemplateSummaryResponse> getAllRoleLayoutTemplates() {
+        return roleLayoutTemplateRepository.findAll().stream()
+            .map(entity -> new RoleLayoutTemplateSummaryResponse()
+                .roleNameCode(entity.getRoleName())
+                .roleDisplayName(entity.getRoleDisplayName()))
+            .toList();
+    }
+
+    @Override
+    public Optional<RoleLayoutTemplateResponse> getRoleLayoutTemplateByName(String roleNameCode) {
+        return roleLayoutTemplateRepository.findByRoleName(roleNameCode)
+            .map(this::toRoleLayoutTemplateResponse);
+    }
+
+    private RoleLayoutTemplateResponse toRoleLayoutTemplateResponse(RoleLayoutTemplate entity) {
+        return new RoleLayoutTemplateResponse()
+            .roleNameCode(entity.getRoleName())
+            .roleDisplayName(entity.getRoleDisplayName())
+            .columns(toEntitlementStateValueDtoMap(entity.getColumns()))
+            .widgets(toEntitlementStateValueDtoMap(entity.getWidgets()))
+            .features(toEntitlementStateValueDtoMap(entity.getFeatures()))
+            .settingsTabs(toEntitlementStateValueDtoMap(entity.getSettingsTabs()))
+            .settingsOptions(toEntitlementStateValueDtoMap(entity.getSettingsOptions()))
+            .microFrontends(toEntitlementStateValueDtoMap(entity.getMicroFrontends()));
+    }
+
+    private Map<String, EntitlementStateValueDto> toEntitlementStateValueDtoMap(
+            Map<String, EntitlementStateValue> entityMap) {
+        if (entityMap == null) {
+            return new LinkedHashMap<>();
+        }
+        Map<String, EntitlementStateValueDto> dtoMap = new LinkedHashMap<>();
+        entityMap.forEach((key, value) -> dtoMap.put(key, toEntitlementStateValueDto(value)));
+        return dtoMap;
+    }
+
+    private EntitlementStateValueDto toEntitlementStateValueDto(EntitlementStateValue value) {
+        EntitlementStateValueDto dto = new EntitlementStateValueDto();
+        if (value.getState() != null) {
+            dto.setStateText(
+                EntitlementStateValueDto.StateTextEnum.fromValue(value.getState().getValue()));
+        }
+        dto.setReasonText(value.getReason());
+        return dto;
     }
 }
 ===ENDFILE
@@ -11080,7 +11320,10 @@ import com.hsbc.ccaas.sapi.controller.model.BusinessUnitResponse;
 import com.hsbc.ccaas.sapi.controller.model.CountryResponse;
 import com.hsbc.ccaas.sapi.controller.model.MarketResponse;
 import com.hsbc.ccaas.sapi.controller.model.RegionResponse;
+import com.hsbc.ccaas.sapi.controller.model.RoleLayoutTemplateSummaryResponse;
+import com.hsbc.ccaas.sapi.controller.model.RoleLayoutTemplateResponse;
 import java.util.List;
+import java.util.Optional;
 
 public interface ReferenceDataFacade {
 
@@ -11097,6 +11340,10 @@ public interface ReferenceDataFacade {
     List<CountryResponse> getCountriesByRegion(String regionCode);
 
     List<CountryResponse> getCountriesByMarket(String marketCode);
+
+    List<RoleLayoutTemplateSummaryResponse> getAllRoleLayoutTemplates();
+
+    Optional<RoleLayoutTemplateResponse> getRoleLayoutTemplateByName(String roleNameCode);
 }
 ===ENDFILE
 ===FILE: ./src/main/java/com/hsbc/ccaas/sapi/application/RoleTemplateEntitlementFacade.java
@@ -13193,6 +13440,7 @@ import com.hsbc.ccaas.sapi.controller.api.MarketsApi;
 import com.hsbc.ccaas.sapi.controller.api.RegionsApi;
 import com.hsbc.ccaas.sapi.controller.api.RegionsCountriesApi;
 import com.hsbc.ccaas.sapi.controller.api.RegionsMarketsApi;
+import com.hsbc.ccaas.sapi.controller.api.RoleLayoutTemplatesApi;
 import com.hsbc.ccaas.sapi.controller.model.BusinessUnitResponse;
 import com.hsbc.ccaas.sapi.controller.model.CountryResponse;
 import com.hsbc.ccaas.sapi.controller.model.GetAllBusinessUnits200Response;
@@ -13203,13 +13451,19 @@ import com.hsbc.ccaas.sapi.controller.model.GetAllMarkets200Response;
 import com.hsbc.ccaas.sapi.controller.model.GetAllMarkets200ResponseData;
 import com.hsbc.ccaas.sapi.controller.model.GetAllRegions200Response;
 import com.hsbc.ccaas.sapi.controller.model.GetAllRegions200ResponseData;
+import com.hsbc.ccaas.sapi.controller.model.GetAllRoleLayoutTemplates200Response;
+import com.hsbc.ccaas.sapi.controller.model.GetAllRoleLayoutTemplates200ResponseData;
 import com.hsbc.ccaas.sapi.controller.model.GetCountriesByRegion200Response;
 import com.hsbc.ccaas.sapi.controller.model.GetCountriesByRegion200ResponseData;
 import com.hsbc.ccaas.sapi.controller.model.GetMarketsByRegion200Response;
 import com.hsbc.ccaas.sapi.controller.model.GetMarketsByRegion200ResponseData;
+import com.hsbc.ccaas.sapi.controller.model.GetRoleLayoutTemplateByName200Response;
 import com.hsbc.ccaas.sapi.controller.model.MarketResponse;
 import com.hsbc.ccaas.sapi.controller.model.RegionResponse;
+import com.hsbc.ccaas.sapi.controller.model.RoleLayoutTemplateSummaryResponse;
+import com.hsbc.ccaas.sapi.controller.model.RoleLayoutTemplateResponse;
 import com.hsbc.ccaas.sapi.application.ReferenceDataFacade;
+import com.hsbc.ccaas.sapi.exception.SourceNotFoundException;
 import com.hsbc.wpb.ef.ports.RequestContext;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -13217,7 +13471,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-public class ReferenceDataController implements RegionsApi, CountriesApi, RegionsCountriesApi, BusinessUnitsApi, MarketsApi, RegionsMarketsApi {
+public class ReferenceDataController implements RegionsApi, CountriesApi, RegionsCountriesApi, BusinessUnitsApi, MarketsApi, RegionsMarketsApi, RoleLayoutTemplatesApi {
 
     private final ReferenceDataFacade referenceDataFacade;
 
@@ -13273,6 +13527,23 @@ public class ReferenceDataController implements RegionsApi, CountriesApi, Region
         List<MarketResponse> markets = referenceDataFacade.getMarketsByRegion(regionCode);
         return ResponseEntity.ok(new GetMarketsByRegion200Response()
             .data(new GetMarketsByRegion200ResponseData().markets(markets)));
+    }
+
+    @Override
+    public ResponseEntity<GetAllRoleLayoutTemplates200Response> getAllRoleLayoutTemplates(
+            RequestContext<Void> requestContext) throws Exception {
+        List<RoleLayoutTemplateSummaryResponse> templates = referenceDataFacade.getAllRoleLayoutTemplates();
+        return ResponseEntity.ok(new GetAllRoleLayoutTemplates200Response()
+            .data(new GetAllRoleLayoutTemplates200ResponseData().roleLayoutTemplates(templates)));
+    }
+
+    @Override
+    public ResponseEntity<GetRoleLayoutTemplateByName200Response> getRoleLayoutTemplateByName(
+            RequestContext<Void> requestContext) throws Exception {
+        String roleNameCode = requestContext.getPathVariable("roleNameCode").orElseThrow();
+        RoleLayoutTemplateResponse template = referenceDataFacade.getRoleLayoutTemplateByName(roleNameCode)
+            .orElseThrow(() -> new SourceNotFoundException("Role layout template not found: " + roleNameCode));
+        return ResponseEntity.ok(new GetRoleLayoutTemplateByName200Response().data(template));
     }
 }
 ===ENDFILE
