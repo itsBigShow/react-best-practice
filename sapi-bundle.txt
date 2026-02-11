@@ -1,5 +1,5 @@
 # CCaaS Entitlement SAPI - Source Bundle
-# Generated: 2026-02-11 07:48:37
+# Generated: 2026-02-11 09:36:53
 # Total files: 359
 # Categories: 1 pom.xml, 2 CLAUDE.md, 2 docs, 2 resources, 129 YAML specs, 142 main Java, 68 test Java, 13 other
 # Note: target/generated-sources NOT included - run 'mvn generate-sources' after extraction
@@ -18534,6 +18534,13 @@ public class ConfigApplyService {
     /**
      * Apply simple string metadata fields from proposed state to the AD group.
      * Only fields present in the proposed state are updated (partial update semantics).
+     *
+     * Handles two naming conventions for business info fields:
+     *   - Entity/short names: "market", "region", "businessUnit", "country" (from frontend)
+     *   - DTO/API names: "marketCode", "regionCode", "businessUnitName", "countryCode" (from OpenAPI schema)
+     * The OpenAPI-generated BusinessInfoChanges DTO uses the DTO names, so when the frontend sends
+     * short names they get dropped by the typed DTO (additionalProperties: false) and only the DTO
+     * names survive. This alias map ensures both conventions are handled correctly.
      */
     @SuppressWarnings("unchecked")
     private void applyMetadataFields(AdGroupLayoutAssignment adGroup, Map<String, Object> proposedState) {
@@ -18545,6 +18552,16 @@ public class ConfigApplyService {
             "businessUnit", AdGroupLayoutAssignment::setBusinessUnit,
             "country", AdGroupLayoutAssignment::setCountry,
             "channel", AdGroupLayoutAssignment::setChannel
+        );
+
+        // DTO-to-entity alias map: OpenAPI schema uses "regionCode" etc., entity uses "region" etc.
+        // This ensures businessInfoChanges fields are found regardless of naming convention.
+        Map<String, String> dtoAliases = Map.of(
+            "marketCode", "market",
+            "regionCode", "region",
+            "businessUnitName", "businessUnit",
+            "countryCode", "country",
+            "channelCode", "channel"
         );
 
         // Track which fields were set from top-level keys
@@ -18565,11 +18582,26 @@ public class ConfigApplyService {
         Object businessInfoRaw = proposedState.get("businessInfoChanges");
         if (businessInfoRaw instanceof Map<?, ?> rawMap) {
             Map<String, Object> businessInfoMap = (Map<String, Object>) rawMap;
+
+            // Try entity names first (e.g., "market", "region", "businessUnit", "country")
             metadataSetters.forEach((key, setter) -> {
                 if (!appliedKeys.contains(key) && businessInfoMap.containsKey(key)) {
                     Object value = businessInfoMap.get(key);
                     if (value instanceof String strValue && !strValue.isEmpty()) {
                         setter.accept(adGroup, strValue);
+                        appliedKeys.add(key);
+                    }
+                }
+            });
+
+            // Then try DTO aliases (e.g., "marketCode" -> "market", "regionCode" -> "region")
+            dtoAliases.forEach((dtoKey, entityKey) -> {
+                if (!appliedKeys.contains(entityKey) && businessInfoMap.containsKey(dtoKey)) {
+                    Object value = businessInfoMap.get(dtoKey);
+                    BiConsumer<AdGroupLayoutAssignment, String> setter = metadataSetters.get(entityKey);
+                    if (setter != null && value instanceof String strValue && !strValue.isEmpty()) {
+                        setter.accept(adGroup, strValue);
+                        appliedKeys.add(entityKey);
                     }
                 }
             });
@@ -33607,6 +33639,124 @@ class ConfigApplyServiceTest {
             service.applyChange(pc, "CHK001");
 
             verifyNoInteractions(jdbcTemplate);
+        }
+
+        // ====================================================================
+        // BUG-9: businessInfoChanges DTO alias mapping
+        // ====================================================================
+
+        @Test
+        @DisplayName("BUG-9: should apply metadata from businessInfoChanges with entity names (region, market, etc.)")
+        void shouldApplyBusinessInfoChangesWithEntityNames() {
+            Map<String, Object> businessInfo = new HashMap<>();
+            businessInfo.put("logicalName", "Updated Group");
+            businessInfo.put("roleName", "supervisor");
+            businessInfo.put("region", "APAC");
+            businessInfo.put("market", "HK_MKT");
+            businessInfo.put("country", "HKG");
+            businessInfo.put("businessUnit", "WPB");
+
+            Map<String, Object> proposedState = new HashMap<>();
+            proposedState.put("businessInfoChanges", businessInfo);
+
+            PendingChange pc = buildApprovedChange(PendingChange.ChangeType.CONFIG_UPDATE, proposedState);
+            AdGroupLayoutAssignment adGroup = buildAdGroup();
+
+            when(adGroupRepository.findByGroupIdentifier("CN=Voice_Agent,DC=hsbc"))
+                    .thenReturn(Optional.of(adGroup));
+            when(adGroupRepository.save(any(AdGroupLayoutAssignment.class)))
+                    .thenAnswer(inv -> inv.getArgument(0));
+
+            service.applyChange(pc, "CHK001");
+
+            assertEquals("Updated Group", adGroup.getLogicalName());
+            assertEquals("supervisor", adGroup.getRoleName());
+            assertEquals("APAC", adGroup.getRegion());
+            assertEquals("HK_MKT", adGroup.getMarket());
+            assertEquals("HKG", adGroup.getCountry());
+            assertEquals("WPB", adGroup.getBusinessUnit());
+            verify(adGroupRepository).save(adGroup);
+        }
+
+        @Test
+        @DisplayName("BUG-9: should apply metadata from businessInfoChanges with DTO names (regionCode, marketCode, etc.)")
+        void shouldApplyBusinessInfoChangesWithDtoNames() {
+            Map<String, Object> businessInfo = new HashMap<>();
+            businessInfo.put("logicalName", "Updated Group DTO");
+            businessInfo.put("roleName", "chat_agent");
+            businessInfo.put("regionCode", "AMER");
+            businessInfo.put("marketCode", "US_MKT");
+            businessInfo.put("countryCode", "USA");
+            businessInfo.put("businessUnitName", "CMB");
+
+            Map<String, Object> proposedState = new HashMap<>();
+            proposedState.put("businessInfoChanges", businessInfo);
+
+            PendingChange pc = buildApprovedChange(PendingChange.ChangeType.CONFIG_UPDATE, proposedState);
+            AdGroupLayoutAssignment adGroup = buildAdGroup();
+
+            when(adGroupRepository.findByGroupIdentifier("CN=Voice_Agent,DC=hsbc"))
+                    .thenReturn(Optional.of(adGroup));
+            when(adGroupRepository.save(any(AdGroupLayoutAssignment.class)))
+                    .thenAnswer(inv -> inv.getArgument(0));
+
+            service.applyChange(pc, "CHK001");
+
+            assertEquals("Updated Group DTO", adGroup.getLogicalName());
+            assertEquals("chat_agent", adGroup.getRoleName());
+            assertEquals("AMER", adGroup.getRegion());
+            assertEquals("US_MKT", adGroup.getMarket());
+            assertEquals("USA", adGroup.getCountry());
+            assertEquals("CMB", adGroup.getBusinessUnit());
+            verify(adGroupRepository).save(adGroup);
+        }
+
+        @Test
+        @DisplayName("BUG-9: entity names should take priority over DTO names in businessInfoChanges")
+        void shouldPreferEntityNamesOverDtoNames() {
+            Map<String, Object> businessInfo = new HashMap<>();
+            businessInfo.put("region", "ENTITY_REGION");
+            businessInfo.put("regionCode", "DTO_REGION");
+            businessInfo.put("businessUnit", "ENTITY_BU");
+            businessInfo.put("businessUnitName", "DTO_BU");
+
+            Map<String, Object> proposedState = new HashMap<>();
+            proposedState.put("businessInfoChanges", businessInfo);
+
+            PendingChange pc = buildApprovedChange(PendingChange.ChangeType.CONFIG_UPDATE, proposedState);
+            AdGroupLayoutAssignment adGroup = buildAdGroup();
+
+            when(adGroupRepository.findByGroupIdentifier("CN=Voice_Agent,DC=hsbc"))
+                    .thenReturn(Optional.of(adGroup));
+            when(adGroupRepository.save(any(AdGroupLayoutAssignment.class)))
+                    .thenAnswer(inv -> inv.getArgument(0));
+
+            service.applyChange(pc, "CHK001");
+
+            // Entity names should win over DTO names because they are tried first
+            assertEquals("ENTITY_REGION", adGroup.getRegion());
+            assertEquals("ENTITY_BU", adGroup.getBusinessUnit());
+            verify(adGroupRepository).save(adGroup);
+        }
+
+        @Test
+        @DisplayName("BUG-9: should apply activeIndicator from proposedState")
+        void shouldApplyActiveIndicator() {
+            Map<String, Object> proposedState = new HashMap<>();
+            proposedState.put("activeIndicator", Boolean.FALSE);
+
+            PendingChange pc = buildApprovedChange(PendingChange.ChangeType.CONFIG_UPDATE, proposedState);
+            AdGroupLayoutAssignment adGroup = buildAdGroup();
+
+            when(adGroupRepository.findByGroupIdentifier("CN=Voice_Agent,DC=hsbc"))
+                    .thenReturn(Optional.of(adGroup));
+            when(adGroupRepository.save(any(AdGroupLayoutAssignment.class)))
+                    .thenAnswer(inv -> inv.getArgument(0));
+
+            service.applyChange(pc, "CHK001");
+
+            assertFalse(adGroup.getIsActive());
+            verify(adGroupRepository).save(adGroup);
         }
     }
 
