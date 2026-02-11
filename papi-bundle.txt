@@ -1,5 +1,5 @@
 # CCaaS Entitlement PAPI - Source Bundle
-# Generated: 2026-02-11 17:37:16
+# Generated: 2026-02-11 21:17:25
 # Total files: 287
 # Categories: 1 pom.xml, 2 CLAUDE.md, 3 docs, 1 resources, 131 YAML specs, 87 main Java, 53 test Java, 9 other
 # Note: target/generated-sources NOT included - run 'mvn generate-sources' after extraction
@@ -14459,15 +14459,15 @@ import java.util.List;
 @Configuration
 public class WebConfig implements WebMvcConfigurer {
 
-    private final ObjectMapper objectMapper;
+    private final RequestContextArgumentResolver requestContextArgumentResolver;
 
     public WebConfig(ObjectMapper objectMapper) {
-        this.objectMapper = objectMapper;
+        this.requestContextArgumentResolver = new RequestContextArgumentResolver(objectMapper);
     }
 
     @Override
     public void addArgumentResolvers(List<HandlerMethodArgumentResolver> resolvers) {
-        resolvers.add(new RequestContextArgumentResolver(objectMapper));
+        resolvers.add(requestContextArgumentResolver);
     }
 
     @Override
@@ -14761,6 +14761,7 @@ import com.hsbc.ccaas.papi.util.PaginationHelper;
 import com.hsbc.wpb.ef.ports.RequestContext;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -14813,11 +14814,12 @@ public class AdGroupLayoutAssignmentController implements AdGroupsApi, AdGroupCo
             RequestContext<AdGroupLookupRequestEnvelope> requestContext) throws Exception {
         var envelope = requestContext.getBody().orElseThrow(
             () -> new IllegalArgumentException(CommonConstants.REQUEST_BODY_REQUIRED));
-        if (envelope.getData() == null || envelope.getData().getGroupIdentifier() == null
-                || envelope.getData().getGroupIdentifier().isBlank()) {
+        var lookupData = RequestValidationHelper.requireData(
+            envelope.getData(), "Group identifier is required");
+        if (!StringUtils.hasText(lookupData.getGroupIdentifier())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Group identifier is required");
         }
-        String groupIdentifier = envelope.getData().getGroupIdentifier();
+        String groupIdentifier = lookupData.getGroupIdentifier();
         AdGroupLayoutResponse assignment = adGroupManagementFacade.getAdGroupByIdentifier(groupIdentifier);
         return responseAssembler.buildSingleAdGroupResponse(assignment);
     }
@@ -14829,12 +14831,10 @@ public class AdGroupLayoutAssignmentController implements AdGroupsApi, AdGroupCo
             () -> new IllegalArgumentException(CommonConstants.REQUEST_BODY_REQUIRED));
         var adGroupCopyRequest = RequestValidationHelper.requireData(
             envelope.getData(), CommonConstants.REQUEST_BODY_DATA_REQUIRED);
-        if (adGroupCopyRequest.getSourceGroupIdentifier() == null
-                || adGroupCopyRequest.getSourceGroupIdentifier().isBlank()) {
+        if (!StringUtils.hasText(adGroupCopyRequest.getSourceGroupIdentifier())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Source group identifier is required");
         }
-        if (adGroupCopyRequest.getTargetGroupIdentifier() == null
-                || adGroupCopyRequest.getTargetGroupIdentifier().isBlank()) {
+        if (!StringUtils.hasText(adGroupCopyRequest.getTargetGroupIdentifier())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Target group identifier is required");
         }
         AdGroupCopyResponse response = adGroupManagementFacade.copyAdGroupConfiguration(adGroupCopyRequest);
@@ -14849,6 +14849,7 @@ package com.hsbc.ccaas.papi.controller;
 import com.hsbc.ccaas.papi.constants.CommonConstants;
 import com.hsbc.ccaas.papi.controller.api.NoticesApi;
 import com.hsbc.ccaas.papi.controller.model.*;
+import com.hsbc.ccaas.papi.controller.helper.RequestValidationHelper;
 import com.hsbc.ccaas.papi.application.AdminNoticeFacade;
 import com.hsbc.wpb.ef.ports.RequestContext;
 import java.util.UUID;
@@ -14869,11 +14870,10 @@ public class AdminNoticeController implements NoticesApi {
     @Override
     public ResponseEntity<DataResponseNoticeData> createAdminNotice(
             RequestContext<AdminNoticeRequestEnvelope> requestContext) throws Exception {
-        var envelope = requestContext.getBody().orElse(null);
-        if (envelope == null || envelope.getData() == null) {
-            throw new IllegalArgumentException(CommonConstants.REQUEST_BODY_REQUIRED);
-        }
-        var request = envelope.getData();
+        var envelope = requestContext.getBody().orElseThrow(
+            () -> new IllegalArgumentException(CommonConstants.REQUEST_BODY_REQUIRED));
+        var request = RequestValidationHelper.requireData(
+            envelope.getData(), CommonConstants.REQUEST_BODY_REQUIRED);
         AdminNoticeResponse response = adminNoticeFacade.createNotice(request);
         var dataData = new DataResponseNoticeDataData();
         dataData.setNotice(response);
@@ -14893,11 +14893,10 @@ public class AdminNoticeController implements NoticesApi {
     public ResponseEntity<DataResponseNoticeData> updateAdminNotice(
             RequestContext<AdminNoticeRequestEnvelope> requestContext) throws Exception {
         UUID noticeUuid = UUID.fromString(requestContext.getPathVariable(NOTICE_IDENTIFIER).orElseThrow());
-        var envelope = requestContext.getBody().orElse(null);
-        if (envelope == null || envelope.getData() == null) {
-            throw new IllegalArgumentException(CommonConstants.REQUEST_BODY_REQUIRED);
-        }
-        var request = envelope.getData();
+        var envelope = requestContext.getBody().orElseThrow(
+            () -> new IllegalArgumentException(CommonConstants.REQUEST_BODY_REQUIRED));
+        var request = RequestValidationHelper.requireData(
+            envelope.getData(), CommonConstants.REQUEST_BODY_REQUIRED);
         AdminNoticeResponse response = adminNoticeFacade.updateNotice(noticeUuid, request);
         var dataData = new DataResponseNoticeDataData();
         dataData.setNotice(response);
@@ -14910,10 +14909,11 @@ public class AdminNoticeController implements NoticesApi {
         UUID noticeUuid = UUID.fromString(requestContext.getPathVariable(NOTICE_IDENTIFIER).orElseThrow());
         UpdateStatusRequestEnvelope envelope = requestContext.getBody().orElseThrow(
             () -> new IllegalArgumentException(CommonConstants.REQUEST_BODY_REQUIRED));
-        if (envelope.getData() == null || envelope.getData().getStatusCode() == null) {
-            throw new IllegalArgumentException("Status code is required");
-        }
-        String status = String.valueOf(envelope.getData().getStatusCode().getValue());
+        var statusData = RequestValidationHelper.requireData(
+            envelope.getData(), "Status code is required");
+        var statusCode = RequestValidationHelper.requireData(
+            statusData.getStatusCode(), "Status code is required");
+        String status = String.valueOf(statusCode.getValue());
         AdminNoticeResponse response = adminNoticeFacade.updateStatus(noticeUuid, status);
         var dataData = new DataResponseNoticeDataData();
         dataData.setNotice(response);
@@ -15318,6 +15318,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -15352,7 +15353,7 @@ public class DirectSaveController implements AdGroupConfigsApi {
             envelope.getData(), CommonConstants.REQUEST_BODY_DATA_REQUIRED);
         String groupIdentifier = request.getTargetGroupIdentifier();
         // Validate the target group is specified -- without it SAPI cannot identify which config to save
-        if (groupIdentifier == null || groupIdentifier.isBlank()) {
+        if (!StringUtils.hasText(groupIdentifier)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "targetGroupIdentifier is required");
         }
 
@@ -15403,6 +15404,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -15452,12 +15454,15 @@ public class EmbeddedAppAdminController implements EmbeddedAppsApi, EmbeddedApps
             RequestContext<GetAppAdGroupConfigurationRequest> requestContext) throws Exception {
         authorizationService.requireAdminRole();
         String appKey = requestContext.getPathVariable(APP_KEY).orElseThrow();
-        var body = requestContext.getBody().orElse(null);
-        String groupIdentifier = null;
-        if (body != null && body.getData() != null) {
-            groupIdentifier = body.getData().getGroupIdentifier();
-        }
-        if (groupIdentifier == null || groupIdentifier.isBlank()) {
+        var body = requestContext.getBody().orElseThrow(
+            () -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "Required field 'groupIdentifier' is missing in request body. "
+                + "Provide the AD group distinguished name."));
+        var bodyData = RequestValidationHelper.requireData(body.getData(),
+            "Required field 'groupIdentifier' is missing in request body. "
+            + "Provide the AD group distinguished name.");
+        String groupIdentifier = bodyData.getGroupIdentifier();
+        if (!StringUtils.hasText(groupIdentifier)) {
             LOGGER.warn("Missing required field 'groupIdentifier' in request body for app: {}", appKey);
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                 "Required field 'groupIdentifier' is missing in request body. "
@@ -15507,12 +15512,12 @@ public class EmbeddedAppAdminController implements EmbeddedAppsApi, EmbeddedApps
     public ResponseEntity<DataResponseEmbeddedAppsData> getEmbeddedAppsForAdGroup(
             RequestContext<GetAppsForAdGroupRequestEnvelope> requestContext) throws Exception {
         authorizationService.requireAdminRole();
-        var body = requestContext.getBody().orElse(null);
-        if (body == null || body.getData() == null) {
-            throw new IllegalArgumentException("Request body with data is required");
-        }
-        String adGroupIdentifier = body.getData().getGroupIdentifier();
-        if (adGroupIdentifier == null || adGroupIdentifier.isBlank()) {
+        var body = requestContext.getBody().orElseThrow(
+            () -> new IllegalArgumentException("Request body with data is required"));
+        var bodyData = RequestValidationHelper.requireData(
+            body.getData(), "Request body with data is required");
+        String adGroupIdentifier = bodyData.getGroupIdentifier();
+        if (!StringUtils.hasText(adGroupIdentifier)) {
             throw new IllegalArgumentException("Group identifier cannot be null or blank");
         }
         List<EmbeddedAppResponse> apps = embeddedAppFacade.getAppsForAdGroup(adGroupIdentifier);
@@ -15797,7 +15802,7 @@ public class UserRoleManagementController implements UsersApi {
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Request must contain a data object"));
 
         List<BulkPrimaryAssignmentRequest> requests = bulkData.getAssignmentValues();
-        if (requests == null || requests.isEmpty()) {
+        if (requests.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Request must contain at least one assignment item");
         }
 
@@ -18501,6 +18506,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
@@ -18530,12 +18536,12 @@ public class DefaultAdminNoticeService implements AdminNoticeService {
             throw new IllegalArgumentException(CommonConstants.ValidationMessages.ADMIN_NOTICE_REQUEST_NULL);
         }
 
-        if (request.getTitleText() == null || request.getTitleText().isBlank()) {
+        if (!StringUtils.hasText(request.getTitleText())) {
             LOG.warn("Admin notice title is null or blank");
             throw new IllegalArgumentException("Notice title cannot be null or blank");
         }
 
-        if (request.getMessageText() == null || request.getMessageText().isBlank()) {
+        if (!StringUtils.hasText(request.getMessageText())) {
             LOG.warn("Admin notice message is null or blank");
             throw new IllegalArgumentException("Notice message cannot be null or blank");
         }
@@ -18604,12 +18610,12 @@ public class DefaultAdminNoticeService implements AdminNoticeService {
             throw new IllegalArgumentException(CommonConstants.ValidationMessages.ADMIN_NOTICE_REQUEST_NULL);
         }
 
-        if (request.getTitleText() != null && request.getTitleText().isBlank()) {
+        if (StringUtils.hasLength(request.getTitleText()) && request.getTitleText().isBlank()) {
             LOG.warn("Admin notice title is blank on update");
             throw new IllegalArgumentException("Notice title cannot be null or blank");
         }
 
-        if (request.getTitleText() != null && request.getTitleText().length() > 500) {
+        if (StringUtils.hasLength(request.getTitleText()) && request.getTitleText().length() > 500) {
             LOG.warn("Admin notice title too long: {} characters", request.getTitleText().length());
             throw new IllegalArgumentException(NOTICE_TITLE_EXCEEDS_LIMIT);
         }
@@ -18642,7 +18648,7 @@ public class DefaultAdminNoticeService implements AdminNoticeService {
             throw new IllegalArgumentException(NOTICE_ID_CANNOT_BE_NULL);
         }
 
-        if (status == null || status.isBlank()) {
+        if (!StringUtils.hasText(status)) {
             LOG.warn("Admin notice status is null or blank");
             throw new IllegalArgumentException("Notice status cannot be null");
         }
@@ -18688,12 +18694,14 @@ public class DefaultAdminNoticeService implements AdminNoticeService {
     }
 
     private void enrichCreatedBy(AdminNoticeRequest request) {
-        if (request.getCreatedByText() == null || request.getCreatedByText().isBlank()) {
+        if (!StringUtils.hasText(request.getCreatedByText())) {
             String createdBy = identity.email();
-            if (createdBy == null || createdBy.isBlank()) {
+            if (!StringUtils.hasText(createdBy)) {
                 createdBy = identity.employeeId();
             }
-            request.setCreatedByText(createdBy);
+            if (StringUtils.hasText(createdBy)) {
+                request.setCreatedByText(createdBy);
+            }
         }
     }
 }
@@ -18714,6 +18722,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
@@ -18753,14 +18762,9 @@ public class DefaultSessionLayoutService implements SessionLayoutService {
     public AddEntitlementResponse addEntitlementToRoleTemplates(AddEntitlementRequest request) {
         requireUserId();
 
-        if (request == null) {
-            throw new ResponseStatusException(
-                HttpStatus.BAD_REQUEST,
-                "Add entitlement request cannot be null"
-            );
-        }
+        RequestValidationHelper.requireData(request, "Add entitlement request cannot be null");
 
-        if (request.getKeyCode() == null || request.getKeyCode().isBlank()) {
+        if (!StringUtils.hasText(request.getKeyCode())) {
             throw new ResponseStatusException(
                 HttpStatus.BAD_REQUEST,
                 "Entitlement key cannot be null or blank"
@@ -18804,7 +18808,7 @@ public class DefaultSessionLayoutService implements SessionLayoutService {
 
     private String requireUserId() {
         String userId = identity.employeeId();
-        if (userId == null || userId.isBlank()) {
+        if (!StringUtils.hasText(userId)) {
             throw new ResponseStatusException(
                 HttpStatus.UNAUTHORIZED,
                 CommonConstants.ErrorMessages.UNABLE_TO_RESOLVE_USER_ID
@@ -19753,7 +19757,6 @@ class DefaultSessionLayoutFacadeTest {
 package com.hsbc.ccaas.papi.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.*;
 
 import com.hsbc.ccaas.papi.controller.model.BulkPrimaryAssignmentRequest;
@@ -19892,8 +19895,6 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -23337,7 +23338,6 @@ class OpenApiConfigTest {
 ===FILE: ./src/test/java/com/hsbc/ccaas/papi/config/PlatformPropertiesTest.java
 package com.hsbc.ccaas.papi.config;
 
-import com.hsbc.ccaas.papi.config.PlatformProperties;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -23705,7 +23705,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @DisplayName("Constants Tests")
 class ConstantsTest {
@@ -23772,7 +23771,6 @@ import com.hsbc.ccaas.papi.dto.PaginatedResult;
 import com.hsbc.ccaas.identity.service.helper.IdentityContextAccessor;
 import com.hsbc.wpb.ef.ports.RequestContext;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -24182,7 +24180,6 @@ import com.hsbc.wpb.ef.ports.RequestContext;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -25279,7 +25276,6 @@ import static org.mockito.Mockito.*;
 
 import com.hsbc.ccaas.papi.controller.model.*;
 import com.hsbc.ccaas.papi.client.SapiAuditClient;
-import com.hsbc.ccaas.papi.client.SapiAuditClient.AuditLogQuery;
 import com.hsbc.ccaas.papi.controller.helper.AuditResponseAssembler;
 import com.hsbc.ccaas.papi.dto.sapi.AuditPayloads.ActivityLogData;
 import com.hsbc.ccaas.papi.dto.sapi.AuditPayloads.AuditLogData;
@@ -25421,7 +25417,7 @@ class AuditControllerTest {
         @DisplayName("should forward timeRange query param to SAPI")
         void getMyActivity_withTimeRange_forwardedToSapi() throws Exception {
             when(identity.employeeId()).thenReturn(USER_ID);
-            when(sapiAuditClient.getMyActivity(eq(USER_ID), eq(0), eq(25), eq("WEEK")))
+            when(sapiAuditClient.getMyActivity(USER_ID, 0, 25, "WEEK"))
                     .thenReturn(buildSapiActivityResponse(2));
 
             RequestContext<Void> requestContext = mockRequestContext();
@@ -25431,7 +25427,7 @@ class AuditControllerTest {
                     controller.getMyActivity(requestContext);
 
             assertThat(result.getStatusCode().value()).isEqualTo(200);
-            verify(sapiAuditClient).getMyActivity(eq(USER_ID), eq(0), eq(25), eq("WEEK"));
+            verify(sapiAuditClient).getMyActivity(USER_ID, 0, 25, "WEEK");
         }
 
         @Test
@@ -25585,23 +25581,19 @@ class AuditControllerTest {
 ===FILE: ./src/test/java/com/hsbc/ccaas/papi/controller/DebugControllerTest.java
 package com.hsbc.ccaas.papi.controller;
 
-import com.hsbc.ccaas.papi.constants.SapiApiPaths;
 import com.hsbc.ccaas.papi.dto.DebugResetResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentMatchers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.client.RestClient;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -25973,7 +25965,6 @@ import com.hsbc.ccaas.identity.service.helper.IdentityContextAccessor;
 import com.hsbc.wpb.ef.ports.RequestContext;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -26107,7 +26098,7 @@ class EmbeddedAppAdminControllerTest {
 
     @Test
     @DisplayName("POST /papi/v1/embedded-apps-ad-groups/{appKey} returns 400 when groupIdentifier missing")
-    void getAppAdGroupConfigurationMissingGroupIdentifier() throws Exception {
+    void getAppAdGroupConfigurationMissingGroupIdentifier() {
         var body = new GetAppAdGroupConfigurationRequest();
         body.setData(new GetAppAdGroupConfigurationRequestData());
 
@@ -26125,7 +26116,7 @@ class EmbeddedAppAdminControllerTest {
 
     @Test
     @DisplayName("POST /papi/v1/embedded-apps-ad-groups/{appKey} returns 400 when groupIdentifier is blank")
-    void getAppAdGroupConfigurationBlankGroupIdentifier() throws Exception {
+    void getAppAdGroupConfigurationBlankGroupIdentifier() {
         var body = new GetAppAdGroupConfigurationRequest();
         GetAppAdGroupConfigurationRequestData requestData = new GetAppAdGroupConfigurationRequestData();
         requestData.setGroupIdentifier("   ");
@@ -26185,7 +26176,7 @@ class EmbeddedAppAdminControllerTest {
 
     @Test
     @DisplayName("POST /papi/v1/embedded-apps-ad-groups/{appKey} propagates non-404 SAPI errors")
-    void getAppAdGroupConfigurationSapi503() throws Exception {
+    void getAppAdGroupConfigurationSapi503() {
         when(embeddedAppFacade.getAppAdGroupConfiguration("wealth", "CN=Voice"))
             .thenThrow(new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
                 "Fetch app AD group config - Network error: Connection refused"));
@@ -26207,7 +26198,7 @@ class EmbeddedAppAdminControllerTest {
 
     @Test
     @DisplayName("PUT /papi/v1/embedded-apps-ad-groups/{appKey} returns 400 when envelope has null data")
-    void getAppAdGroupConfigurationValidationFailure() throws Exception {
+    void getAppAdGroupConfigurationValidationFailure() {
         var envelope = new UpdateAdGroupConfigRequestEnvelope();
 
         RequestContext<UpdateAdGroupConfigRequestEnvelope> requestContext = mockRequestContext();
@@ -26274,7 +26265,7 @@ class EmbeddedAppAdminControllerTest {
 
     @Test
     @DisplayName("PUT /papi/v1/embedded-apps-ad-groups/{appKey} returns 400 when envelope has null data")
-    void updateAppAdGroupConfigurationValidationFailure() throws Exception {
+    void updateAppAdGroupConfigurationValidationFailure() {
         var envelope = new UpdateAdGroupConfigRequestEnvelope();
 
         RequestContext<UpdateAdGroupConfigRequestEnvelope> requestContext = mockRequestContext();
@@ -26873,7 +26864,7 @@ class UserRoleManagementControllerTest {
 
     @Test
     @DisplayName("POST /papi/v1/users/{userId}/primaries validates request")
-    void setPrimaryAssignmentValidationFailure() throws Exception {
+    void setPrimaryAssignmentValidationFailure() {
         SetPrimaryAssignmentRequest request = new SetPrimaryAssignmentRequest();
         SetPrimaryAssignmentRequestEnvelope envelope = new SetPrimaryAssignmentRequestEnvelope();
         envelope.setData(request);
@@ -27349,7 +27340,6 @@ class ApprovalResponseMapperTest {
 ===FILE: ./src/test/java/com/hsbc/ccaas/papi/controller/helper/ControllerErrorHandlerTest.java
 package com.hsbc.ccaas.papi.controller.helper;
 
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -27364,8 +27354,6 @@ import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.anyString;
-
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
@@ -27689,7 +27677,6 @@ class ControllerErrorHandlerTest {
 ===FILE: ./src/test/java/com/hsbc/ccaas/papi/controller/helper/RequestValidationHelperTest.java
 package com.hsbc.ccaas.papi.controller.helper;
 
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -28418,7 +28405,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.when;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hsbc.ccaas.papi.client.SapiEmbeddedAppClient;
 import com.hsbc.ccaas.papi.controller.model.AdGroupAccess;
@@ -28496,7 +28482,7 @@ class EmbeddedAppAdminServiceTest {
 
         @Test
         @DisplayName("should fetch all embedded apps successfully")
-        void shouldFetchAllEmbeddedAppsSuccessfully() throws JsonProcessingException {
+        void shouldFetchAllEmbeddedAppsSuccessfully() throws Exception {
             when(identityContextAccessor.adGroups()).thenReturn(List.of("CN=Voice_Agent"));
 
             List<EmbeddedAppResponse> apps = List.of(
@@ -28521,7 +28507,7 @@ class EmbeddedAppAdminServiceTest {
 
         @Test
         @DisplayName("should return empty list when SAPI returns null")
-        void shouldReturnEmptyListWhenSapiReturnsNull() throws JsonProcessingException {
+        void shouldReturnEmptyListWhenSapiReturnsNull() {
             when(identityContextAccessor.adGroups()).thenReturn(List.of());
 
             mockWebServer.enqueue(new MockResponse()
@@ -28535,7 +28521,7 @@ class EmbeddedAppAdminServiceTest {
 
         @Test
         @DisplayName("should return empty list when SAPI returns empty array")
-        void shouldReturnEmptyListWhenSapiReturnsEmptyArray() throws JsonProcessingException {
+        void shouldReturnEmptyListWhenSapiReturnsEmptyArray() throws Exception {
             when(identityContextAccessor.adGroups()).thenReturn(List.of());
 
             mockWebServer.enqueue(new MockResponse()
@@ -28549,7 +28535,7 @@ class EmbeddedAppAdminServiceTest {
 
         @Test
         @DisplayName("should enrich apps with user access information")
-        void shouldEnrichAppsWithUserAccessInformation() throws JsonProcessingException {
+        void shouldEnrichAppsWithUserAccessInformation() throws Exception {
             when(identityContextAccessor.adGroups()).thenReturn(List.of("CN=Voice_Agent"));
 
             EmbeddedAppResponse app = createEmbeddedApp("banking_app", "Banking App");
@@ -28573,7 +28559,7 @@ class EmbeddedAppAdminServiceTest {
 
         @Test
         @DisplayName("should mark apps as no access when user not in AD groups")
-        void shouldMarkAppsAsNoAccessWhenUserNotInAdGroups() throws JsonProcessingException {
+        void shouldMarkAppsAsNoAccessWhenUserNotInAdGroups() throws Exception {
             when(identityContextAccessor.adGroups()).thenReturn(List.of("CN=Other_Group"));
 
             EmbeddedAppResponse app = createEmbeddedApp("banking_app", "Banking App");
@@ -28601,7 +28587,7 @@ class EmbeddedAppAdminServiceTest {
 
         @Test
         @DisplayName("should fetch app by key successfully")
-        void shouldFetchAppByKeySuccessfully() throws JsonProcessingException {
+        void shouldFetchAppByKeySuccessfully() throws Exception {
             when(identityContextAccessor.adGroups()).thenReturn(List.of());
 
             EmbeddedAppResponse app = createEmbeddedApp("banking_app", "Banking App");
@@ -28673,7 +28659,7 @@ class EmbeddedAppAdminServiceTest {
 
         @Test
         @DisplayName("should fetch AD group configuration successfully via POST with data wrapper")
-        void shouldFetchAdGroupConfigurationSuccessfully() throws JsonProcessingException {
+        void shouldFetchAdGroupConfigurationSuccessfully() throws Exception {
             EmbeddedAppResponse app = createEmbeddedApp("banking_app", "Banking App");
             AppAdGroupConfigResponse config = createAdGroupConfig("banking_app", "CN=Voice_Agent");
 
@@ -28706,7 +28692,7 @@ class EmbeddedAppAdminServiceTest {
 
         @Test
         @DisplayName("should return null when config not found")
-        void shouldReturnNullWhenConfigNotFound() throws JsonProcessingException {
+        void shouldReturnNullWhenConfigNotFound() throws Exception {
             EmbeddedAppResponse app = createEmbeddedApp("banking_app", "Banking App");
 
             // First request: app exists
@@ -28762,7 +28748,7 @@ class EmbeddedAppAdminServiceTest {
 
         @Test
         @DisplayName("should update AD group configuration successfully")
-        void shouldUpdateAdGroupConfigurationSuccessfully() throws JsonProcessingException {
+        void shouldUpdateAdGroupConfigurationSuccessfully() throws Exception {
             AppAdGroupConfigResponse sapiResponse = createAdGroupConfig("banking_app", "CN=Voice_Agent");
 
             mockWebServer.enqueue(new MockResponse()
@@ -28782,7 +28768,7 @@ class EmbeddedAppAdminServiceTest {
 
         @Test
         @DisplayName("should handle null functions list")
-        void shouldHandleNullFunctionsList() throws JsonProcessingException {
+        void shouldHandleNullFunctionsList() throws Exception {
             AppAdGroupConfigResponse sapiResponse = createAdGroupConfig("banking_app", "CN=Voice_Agent");
 
             mockWebServer.enqueue(new MockResponse()
@@ -28853,7 +28839,7 @@ class EmbeddedAppAdminServiceTest {
 
         @Test
         @DisplayName("should fetch apps for AD group via POST with groupIdentifier body")
-        void shouldFetchAppsForAdGroupSuccessfully() throws JsonProcessingException {
+        void shouldFetchAppsForAdGroupSuccessfully() throws Exception {
             List<EmbeddedAppResponse> apps = List.of(
                 createEmbeddedApp("banking_app", "Banking App")
             );
@@ -28875,13 +28861,13 @@ class EmbeddedAppAdminServiceTest {
             assertThat(request.getMethod()).isEqualTo("POST");
 
             String body = request.getBody().readUtf8();
-            assertThat(body).contains("groupIdentifier");
-            assertThat(body).contains("CN=Voice_Agent");
+            assertThat(body).contains("groupIdentifier")
+                .contains("CN=Voice_Agent");
         }
 
         @Test
         @DisplayName("should handle apps with adGroupAccess from SAPI")
-        void shouldHandleAppsWithAssignedFunctions() throws JsonProcessingException {
+        void shouldHandleAppsWithAssignedFunctions() throws Exception {
             EmbeddedAppResponse app = createEmbeddedApp("banking_app", "Banking App");
             app.setAppFunctionValues(List.of("function1", "function2"));
             AdGroupAccess access = new AdGroupAccess();
@@ -28927,7 +28913,7 @@ class EmbeddedAppAdminServiceTest {
 
         @Test
         @DisplayName("should return apps accessible to user")
-        void shouldReturnAppsAccessibleToUser() throws JsonProcessingException {
+        void shouldReturnAppsAccessibleToUser() throws Exception {
             when(identityContextAccessor.adGroups()).thenReturn(List.of("CN=Voice_Agent"));
 
             EmbeddedAppResponse accessibleApp = createEmbeddedApp("banking_app", "Banking App");
@@ -28956,7 +28942,7 @@ class EmbeddedAppAdminServiceTest {
 
         @Test
         @DisplayName("should return empty list when user has no accessible apps")
-        void shouldReturnEmptyListWhenUserHasNoAccessibleApps() throws JsonProcessingException {
+        void shouldReturnEmptyListWhenUserHasNoAccessibleApps() throws Exception {
             when(identityContextAccessor.adGroups()).thenReturn(List.of("CN=Unknown_Group"));
 
             EmbeddedAppResponse app = createEmbeddedApp("banking_app", "Banking App");
@@ -28982,7 +28968,7 @@ class EmbeddedAppAdminServiceTest {
 
         @Test
         @DisplayName("should handle null adGroupAccess")
-        void shouldHandleNullAdGroupAccess() throws JsonProcessingException {
+        void shouldHandleNullAdGroupAccess() throws Exception {
             when(identityContextAccessor.adGroups()).thenReturn(List.of("CN=Voice_Agent"));
 
             EmbeddedAppResponse app = createEmbeddedApp("banking_app", "Banking App");
@@ -29002,7 +28988,7 @@ class EmbeddedAppAdminServiceTest {
 
         @Test
         @DisplayName("should merge functions from multiple AD groups")
-        void shouldMergeFunctionsFromMultipleAdGroups() throws JsonProcessingException {
+        void shouldMergeFunctionsFromMultipleAdGroups() throws Exception {
             when(identityContextAccessor.adGroups()).thenReturn(List.of("CN=Voice_Agent", "CN=Chat_Agent"));
 
             EmbeddedAppResponse app = createEmbeddedApp("banking_app", "Banking App");
@@ -29032,7 +29018,7 @@ class EmbeddedAppAdminServiceTest {
 
         @Test
         @DisplayName("should handle null functions in AD group access")
-        void shouldHandleNullFunctionsInAdGroupAccess() throws JsonProcessingException {
+        void shouldHandleNullFunctionsInAdGroupAccess() throws Exception {
             when(identityContextAccessor.adGroups()).thenReturn(List.of("CN=Voice_Agent"));
 
             EmbeddedAppResponse app = createEmbeddedApp("banking_app", "Banking App");
@@ -30811,12 +30797,9 @@ import com.hsbc.ccaas.identity.model.IdentityContext;
 import com.hsbc.ccaas.identity.model.IdentityRequestContext;
 import com.hsbc.ccaas.identity.config.IdentityProperties;
 import com.hsbc.ccaas.papi.service.RoleResolutionService;
-import com.hsbc.ccaas.identity.service.IdentityService;
 import java.io.IOException;
-import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
-import java.util.stream.IntStream;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import okhttp3.mockwebserver.RecordedRequest;
@@ -31366,7 +31349,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
