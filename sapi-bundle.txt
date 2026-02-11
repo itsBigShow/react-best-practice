@@ -1,7 +1,7 @@
 # CCaaS Entitlement SAPI - Source Bundle
-# Generated: 2026-02-11 11:51:29
-# Total files: 359
-# Categories: 1 pom.xml, 2 CLAUDE.md, 2 docs, 2 resources, 129 YAML specs, 142 main Java, 68 test Java, 13 other
+# Generated: 2026-02-11 22:03:05
+# Total files: 361
+# Categories: 1 pom.xml, 2 CLAUDE.md, 2 docs, 2 resources, 129 YAML specs, 143 main Java, 69 test Java, 13 other
 # Note: target/generated-sources NOT included - run 'mvn generate-sources' after extraction
 ===FILE: ./AGENTS.md
 # AGENTS.md - ccaas-entitlement-sapi
@@ -12519,6 +12519,7 @@ import java.util.Optional;
 public class AdminNoticeController implements NoticesApi {
 
     private static final String MSG_BODY_REQUIRED = SapiConstants.MSG_BODY_REQUIRED;
+    private static final String REQUEST_DATA_REQUIRED = "Request data is required";
 
     private final AdminNoticeFacade adminNoticeFacade;
     private final AdminNoticeMapper adminNoticeMapper;
@@ -12554,7 +12555,7 @@ public class AdminNoticeController implements NoticesApi {
             .orElseThrow(() -> new InvalidParameterException(MSG_BODY_REQUIRED));
 
         AdminNoticeRequest innerRequest = Optional.ofNullable(envelope.getData())
-            .orElseThrow(() -> new InvalidParameterException("Request data is required"));
+            .orElseThrow(() -> new InvalidParameterException(REQUEST_DATA_REQUIRED));
         AdminNotice notice = adminNoticeFacade.createNotice(innerRequest);
         AdminNoticeResponse genResponse = adminNoticeMapper.toResponse(notice);
 
@@ -12569,7 +12570,7 @@ public class AdminNoticeController implements NoticesApi {
             .orElseThrow(() -> new InvalidParameterException(MSG_BODY_REQUIRED));
 
         AdminNoticeRequest facadeRequest = Optional.ofNullable(envelope.getData())
-            .orElseThrow(() -> new InvalidParameterException("Request data is required"));
+            .orElseThrow(() -> new InvalidParameterException(REQUEST_DATA_REQUIRED));
 
         java.util.UUID noticeUuid = java.util.UUID.fromString(noticeIdentifier);
         AdminNotice notice = adminNoticeFacade.updateNotice(noticeUuid, facadeRequest);
@@ -12586,7 +12587,7 @@ public class AdminNoticeController implements NoticesApi {
             .orElseThrow(() -> new InvalidParameterException(MSG_BODY_REQUIRED));
 
         AdminNoticeRequest data = Optional.ofNullable(envelope.getData())
-            .orElseThrow(() -> new InvalidParameterException("Request data is required"));
+            .orElseThrow(() -> new InvalidParameterException(REQUEST_DATA_REQUIRED));
         com.hsbc.ccaas.sapi.controller.model.AdminNoticeStatusDto statusCode = data.getStatusCode();
         if (statusCode == null || statusCode.getValue() == null) {
             return ResponseEntity.badRequest().build();
@@ -13088,6 +13089,7 @@ import com.hsbc.wpb.ef.ports.RequestContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
 import java.security.InvalidParameterException;
@@ -13114,7 +13116,7 @@ public class DirectSaveController implements DirectSavesApi {
         DirectSaveRequest data = Optional.ofNullable(envelope.getData())
                 .orElseThrow(() -> new InvalidParameterException("Request data is required"));
         String targetGroupId = data.getTargetGroupIdentifier();
-        if (targetGroupId == null || targetGroupId.isBlank()) {
+        if (!StringUtils.hasText(targetGroupId)) {
             throw new IllegalArgumentException("targetGroupIdentifier is required");
         }
         Map<String, Object> proposedState = Optional.ofNullable(data.getProposedState())
@@ -13170,7 +13172,6 @@ import com.hsbc.ccaas.sapi.controller.model.ResolveUserRole200Response;
 import com.hsbc.ccaas.sapi.controller.model.ResolveUserRole200ResponseData;
 import com.hsbc.ccaas.sapi.application.EmbeddedAppFacade;
 import com.hsbc.ccaas.sapi.controller.model.EmbeddedAppDto;
-import com.hsbc.ccaas.sapi.dto.AppAdGroupConfigDto;
 import com.hsbc.wpb.ef.ports.RequestContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13457,7 +13458,6 @@ import com.hsbc.ccaas.sapi.controller.api.MarketsApi;
 import com.hsbc.ccaas.sapi.controller.api.RegionsApi;
 import com.hsbc.ccaas.sapi.controller.api.RegionsCountriesApi;
 import com.hsbc.ccaas.sapi.controller.api.RegionsMarketsApi;
-import com.hsbc.ccaas.sapi.controller.api.RoleLayoutTemplatesApi;
 import com.hsbc.ccaas.sapi.controller.model.BusinessUnitResponse;
 import com.hsbc.ccaas.sapi.controller.model.CountryResponse;
 import com.hsbc.ccaas.sapi.controller.model.GetAllBusinessUnits200Response;
@@ -13468,19 +13468,14 @@ import com.hsbc.ccaas.sapi.controller.model.GetAllMarkets200Response;
 import com.hsbc.ccaas.sapi.controller.model.GetAllMarkets200ResponseData;
 import com.hsbc.ccaas.sapi.controller.model.GetAllRegions200Response;
 import com.hsbc.ccaas.sapi.controller.model.GetAllRegions200ResponseData;
-import com.hsbc.ccaas.sapi.controller.model.GetAllRoleLayoutTemplates200Response;
-import com.hsbc.ccaas.sapi.controller.model.GetAllRoleLayoutTemplates200ResponseData;
 import com.hsbc.ccaas.sapi.controller.model.GetCountriesByRegion200Response;
 import com.hsbc.ccaas.sapi.controller.model.GetCountriesByRegion200ResponseData;
 import com.hsbc.ccaas.sapi.controller.model.GetMarketsByRegion200Response;
 import com.hsbc.ccaas.sapi.controller.model.GetMarketsByRegion200ResponseData;
-import com.hsbc.ccaas.sapi.controller.model.GetRoleLayoutTemplateByName200Response;
 import com.hsbc.ccaas.sapi.controller.model.MarketResponse;
 import com.hsbc.ccaas.sapi.controller.model.RegionResponse;
-import com.hsbc.ccaas.sapi.controller.model.RoleLayoutTemplateSummaryResponse;
-import com.hsbc.ccaas.sapi.controller.model.RoleLayoutTemplateResponse;
 import com.hsbc.ccaas.sapi.application.ReferenceDataFacade;
-import com.hsbc.ccaas.sapi.exception.SourceNotFoundException;
+
 import com.hsbc.wpb.ef.ports.RequestContext;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -13488,7 +13483,8 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-public class ReferenceDataController implements RegionsApi, CountriesApi, RegionsCountriesApi, BusinessUnitsApi, MarketsApi, RegionsMarketsApi, RoleLayoutTemplatesApi {
+@SuppressWarnings("java:S6539") // Consolidates reference data APIs in one controller by design
+public class ReferenceDataController implements RegionsApi, CountriesApi, RegionsCountriesApi, BusinessUnitsApi, MarketsApi, RegionsMarketsApi {
 
     private final ReferenceDataFacade referenceDataFacade;
 
@@ -13546,12 +13542,47 @@ public class ReferenceDataController implements RegionsApi, CountriesApi, Region
             .data(new GetMarketsByRegion200ResponseData().markets(markets)));
     }
 
+}
+===ENDFILE
+===FILE: ./src/main/java/com/hsbc/ccaas/sapi/controller/RoleLayoutTemplatesController.java
+package com.hsbc.ccaas.sapi.controller;
+
+import com.hsbc.ccaas.sapi.application.ReferenceDataFacade;
+import com.hsbc.ccaas.sapi.controller.api.RoleLayoutTemplatesApi;
+import com.hsbc.ccaas.sapi.controller.model.GetAllRoleLayoutTemplates200Response;
+import com.hsbc.ccaas.sapi.controller.model.GetAllRoleLayoutTemplates200ResponseData;
+import com.hsbc.ccaas.sapi.controller.model.GetRoleLayoutTemplateByName200Response;
+import com.hsbc.ccaas.sapi.controller.model.RoleLayoutTemplateResponse;
+import com.hsbc.ccaas.sapi.controller.model.RoleLayoutTemplateSummaryResponse;
+import com.hsbc.ccaas.sapi.exception.SourceNotFoundException;
+import com.hsbc.wpb.ef.ports.RequestContext;
+import java.util.List;
+import java.util.Objects;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.RestController;
+
+/**
+ * Serves SAPI role layout template endpoints (summaries and full template by name).
+ *
+ * <p>Thin controller that delegates to {@link ReferenceDataFacade} for data retrieval
+ * and wraps responses in the generated OpenAPI envelope types.
+ */
+@RestController
+public class RoleLayoutTemplatesController implements RoleLayoutTemplatesApi {
+
+    private final ReferenceDataFacade referenceDataFacade;
+
+    public RoleLayoutTemplatesController(ReferenceDataFacade referenceDataFacade) {
+        this.referenceDataFacade = Objects.requireNonNull(referenceDataFacade, "ReferenceDataFacade must not be null");
+    }
+
     @Override
     public ResponseEntity<GetAllRoleLayoutTemplates200Response> getAllRoleLayoutTemplates(
             RequestContext<Void> requestContext) throws Exception {
         List<RoleLayoutTemplateSummaryResponse> templates = referenceDataFacade.getAllRoleLayoutTemplates();
-        return ResponseEntity.ok(new GetAllRoleLayoutTemplates200Response()
-            .data(new GetAllRoleLayoutTemplates200ResponseData().roleLayoutTemplates(templates)));
+        GetAllRoleLayoutTemplates200ResponseData data = new GetAllRoleLayoutTemplates200ResponseData()
+            .roleLayoutTemplates(templates);
+        return ResponseEntity.ok(new GetAllRoleLayoutTemplates200Response().data(data));
     }
 
     @Override
@@ -13563,6 +13594,7 @@ public class ReferenceDataController implements RegionsApi, CountriesApi, Region
         return ResponseEntity.ok(new GetRoleLayoutTemplateByName200Response().data(template));
     }
 }
+
 ===ENDFILE
 ===FILE: ./src/main/java/com/hsbc/ccaas/sapi/controller/SessionLayoutController.java
 package com.hsbc.ccaas.sapi.controller;
@@ -16284,9 +16316,7 @@ public class EmbeddedAppRowMapper implements RowMapper<EmbeddedAppDto> {
             }
 
             Map<String, FunctionDefinitionDto> normalized = new LinkedHashMap<>();
-            var fields = root.fields();
-            while (fields.hasNext()) {
-                Entry<String, JsonNode> entry = fields.next();
+            for (Entry<String, JsonNode> entry : root.properties()) {
                 String functionKey = entry.getKey();
                 JsonNode functionNode = entry.getValue();
 
@@ -17301,6 +17331,7 @@ public interface ChangeAuditLogRepository extends JpaRepository<ChangeAuditLog, 
            "(:criticalOnly = false OR c.criticalIndicator = true) AND " +
            "c.createdAt BETWEEN :startDate AND :endDate " +
            "ORDER BY c.createdAt DESC")
+    @SuppressWarnings("java:S107")
     Page<ChangeAuditLog> findWithFilters(
            @Param("action") ChangeAuditLog.Action action,
            @Param("groupId") String groupId,
@@ -18487,13 +18518,7 @@ public class ConfigApplyService {
         AdGroupLayoutAssignment adGroup = adGroupRepository.findByGroupIdentifier(targetGroup)
                 .orElseThrow(() -> new IllegalStateException("AD group not found: " + targetGroup));
 
-        // Optimistic locking: compare the version captured at submission time against the
-        // current DB version. A mismatch means someone else modified the config since this
-        // change was submitted, so we must reject to avoid overwriting their changes.
-        if (pendingChange.getConfigVersion() != null && adGroup.getVersion() != null
-                && !pendingChange.getConfigVersion().equals(adGroup.getVersion())) {
-            throw new ObjectOptimisticLockingFailureException(AdGroupLayoutAssignment.class.getName(), adGroup.getId());
-        }
+        validateOptimisticLock(pendingChange, adGroup);
 
         // Apply simple string metadata fields (logicalName, roleName, market, etc.)
         applyMetadataFields(adGroup, proposedState);
@@ -18508,13 +18533,32 @@ public class ConfigApplyService {
         adGroupRepository.save(adGroup);
 
         // Copy/approval flows may include app updates in the same proposed state payload.
-        if (proposedState.containsKey("applications")
-                || proposedState.containsKey("applicationChanges")
-                || proposedState.containsKey("appFunctionChanges")) {
+        if (hasEmbeddedAppUpdates(proposedState)) {
             applyAppUpdate(targetGroup, proposedState, appliedBy);
         }
 
         log.debug("CONFIG_UPDATE applied to AD group: {}", targetGroup);
+    }
+
+    /**
+     * Optimistic locking: compare the version captured at submission time against the
+     * current DB version. A mismatch means someone else modified the config since this
+     * change was submitted, so we must reject to avoid overwriting their changes.
+     */
+    private void validateOptimisticLock(PendingChange pendingChange, AdGroupLayoutAssignment adGroup) {
+        if (pendingChange.getConfigVersion() != null && adGroup.getVersion() != null
+                && !pendingChange.getConfigVersion().equals(adGroup.getVersion())) {
+            throw new ObjectOptimisticLockingFailureException(AdGroupLayoutAssignment.class.getName(), adGroup.getId());
+        }
+    }
+
+    /**
+     * Determine if the proposed state contains any embedded app-related updates.
+     */
+    private boolean hasEmbeddedAppUpdates(Map<String, Object> proposedState) {
+        return proposedState.containsKey("applications")
+                || proposedState.containsKey("applicationChanges")
+                || proposedState.containsKey("appFunctionChanges");
     }
 
     /**
@@ -18528,7 +18572,6 @@ public class ConfigApplyService {
      * short names they get dropped by the typed DTO (additionalProperties: false) and only the DTO
      * names survive. This alias map ensures both conventions are handled correctly.
      */
-    @SuppressWarnings("unchecked")
     private void applyMetadataFields(AdGroupLayoutAssignment adGroup, Map<String, Object> proposedState) {
         Map<String, BiConsumer<AdGroupLayoutAssignment, String>> metadataSetters = Map.of(
             "logicalName", AdGroupLayoutAssignment::setLogicalName,
@@ -18550,9 +18593,29 @@ public class ConfigApplyService {
             "channelCode", "channel"
         );
 
-        // Track which fields were set from top-level keys
-        Set<String> appliedKeys = new HashSet<>();
+        // Apply top-level metadata fields
+        Set<String> appliedKeys = applyTopLevelMetadata(adGroup, proposedState, metadataSetters);
 
+        // Fallback: unwrap businessInfoChanges wrapper for any fields not found at top level.
+        // The frontend approval workflow wraps changed metadata inside this nested object.
+        applyBusinessInfoMetadata(adGroup, proposedState, metadataSetters, dtoAliases, appliedKeys);
+
+        // Handle Boolean field: activeIndicator -> isActive
+        if (proposedState.containsKey("activeIndicator")) {
+            Object value = proposedState.get("activeIndicator");
+            if (value instanceof Boolean boolValue) {
+                adGroup.setIsActive(boolValue);
+            }
+        }
+    }
+
+    /**
+     * Apply top-level metadata fields from proposed state to the AD group.
+     * Returns the set of entity keys that were successfully applied.
+     */
+    private Set<String> applyTopLevelMetadata(AdGroupLayoutAssignment adGroup, Map<String, Object> proposedState,
+                                               Map<String, BiConsumer<AdGroupLayoutAssignment, String>> metadataSetters) {
+        Set<String> appliedKeys = new HashSet<>();
         metadataSetters.forEach((key, setter) -> {
             if (proposedState.containsKey(key)) {
                 Object value = proposedState.get(key);
@@ -18562,44 +18625,45 @@ public class ConfigApplyService {
                 }
             }
         });
+        return appliedKeys;
+    }
 
-        // Fallback: unwrap businessInfoChanges wrapper for any fields not found at top level.
-        // The frontend approval workflow wraps changed metadata inside this nested object.
+    /**
+     * Apply metadata fields from the businessInfoChanges wrapper.
+     * Tries entity names first, then DTO aliases for any fields not already applied.
+     */
+    @SuppressWarnings("unchecked")
+    private void applyBusinessInfoMetadata(AdGroupLayoutAssignment adGroup, Map<String, Object> proposedState,
+                                            Map<String, BiConsumer<AdGroupLayoutAssignment, String>> metadataSetters,
+                                            Map<String, String> dtoAliases, Set<String> appliedKeys) {
         Object businessInfoRaw = proposedState.get("businessInfoChanges");
-        if (businessInfoRaw instanceof Map<?, ?> rawMap) {
-            Map<String, Object> businessInfoMap = (Map<String, Object>) rawMap;
-
-            // Try entity names first (e.g., "market", "region", "businessUnit", "country")
-            metadataSetters.forEach((key, setter) -> {
-                if (!appliedKeys.contains(key) && businessInfoMap.containsKey(key)) {
-                    Object value = businessInfoMap.get(key);
-                    if (value instanceof String strValue && !strValue.isEmpty()) {
-                        setter.accept(adGroup, strValue);
-                        appliedKeys.add(key);
-                    }
-                }
-            });
-
-            // Then try DTO aliases (e.g., "marketCode" -> "market", "regionCode" -> "region")
-            dtoAliases.forEach((dtoKey, entityKey) -> {
-                if (!appliedKeys.contains(entityKey) && businessInfoMap.containsKey(dtoKey)) {
-                    Object value = businessInfoMap.get(dtoKey);
-                    BiConsumer<AdGroupLayoutAssignment, String> setter = metadataSetters.get(entityKey);
-                    if (setter != null && value instanceof String strValue && !strValue.isEmpty()) {
-                        setter.accept(adGroup, strValue);
-                        appliedKeys.add(entityKey);
-                    }
-                }
-            });
+        if (!(businessInfoRaw instanceof Map<?, ?> rawMap)) {
+            return;
         }
+        Map<String, Object> businessInfoMap = (Map<String, Object>) rawMap;
 
-        // Handle Boolean field: activeIndicator -> isActive
-        if (proposedState.containsKey("activeIndicator")) {
-            Object value = proposedState.get("activeIndicator");
-            if (value instanceof Boolean boolValue) {
-                adGroup.setIsActive(boolValue);
+        // Try entity names first (e.g., "market", "region", "businessUnit", "country")
+        metadataSetters.forEach((key, setter) -> {
+            if (!appliedKeys.contains(key) && businessInfoMap.containsKey(key)) {
+                Object value = businessInfoMap.get(key);
+                if (value instanceof String strValue && !strValue.isEmpty()) {
+                    setter.accept(adGroup, strValue);
+                    appliedKeys.add(key);
+                }
             }
-        }
+        });
+
+        // Then try DTO aliases (e.g., "marketCode" -> "market", "regionCode" -> "region")
+        dtoAliases.forEach((dtoKey, entityKey) -> {
+            if (!appliedKeys.contains(entityKey) && businessInfoMap.containsKey(dtoKey)) {
+                Object value = businessInfoMap.get(dtoKey);
+                BiConsumer<AdGroupLayoutAssignment, String> setter = metadataSetters.get(entityKey);
+                if (setter != null && value instanceof String strValue && !strValue.isEmpty()) {
+                    setter.accept(adGroup, strValue);
+                    appliedKeys.add(entityKey);
+                }
+            }
+        });
     }
 
     /**
@@ -18694,44 +18758,13 @@ public class ConfigApplyService {
      * applicationChanges: [{appCode, proposedStateIndicator, currentStateIndicator}]
      * appFunctionChanges: [{appCode, functionCode, enabledIndicator}]
      */
-    @SuppressWarnings("unchecked")
     private void applyAppUpdateFromChangesFormat(String targetGroup, Object appChangesRaw,
                                                   Object funcChangesRaw, String appliedBy) {
-        // Build map of appCode -> list of enabled function codes from appFunctionChanges
-        Map<String, List<String>> enabledFunctionsByApp = new HashMap<>();
-        if (funcChangesRaw instanceof List<?> funcList) {
-            for (Object item : funcList) {
-                if (item instanceof Map<?, ?> mapItem) {
-                    Map<String, Object> func = (Map<String, Object>) mapItem;
-                    String appCode = func.get("appCode") instanceof String s ? s : null;
-                    String functionCode = func.get("functionCode") instanceof String s ? s : null;
-                    Boolean enabled = func.get("enabledIndicator") instanceof Boolean b ? b : null;
-                    if (appCode != null && functionCode != null && Boolean.TRUE.equals(enabled)) {
-                        enabledFunctionsByApp.computeIfAbsent(appCode, k -> new ArrayList<>()).add(functionCode);
-                    }
-                }
-            }
-        }
+        Map<String, List<String>> enabledFunctionsByApp = buildEnabledFunctionsByApp(funcChangesRaw);
 
-        // Process applicationChanges to determine which apps are assigned/unassigned
-        Set<String> assignedApps = new HashSet<>();
-        Set<String> unassignedApps = new HashSet<>();
-        if (appChangesRaw instanceof List<?> appList) {
-            for (Object item : appList) {
-                if (item instanceof Map<?, ?> mapItem) {
-                    Map<String, Object> app = (Map<String, Object>) mapItem;
-                    String appCode = app.get("appCode") instanceof String s ? s : null;
-                    Boolean proposed = app.get("proposedStateIndicator") instanceof Boolean b ? b : null;
-                    if (appCode != null) {
-                        if (Boolean.TRUE.equals(proposed)) {
-                            assignedApps.add(appCode);
-                        } else if (Boolean.FALSE.equals(proposed)) {
-                            unassignedApps.add(appCode);
-                        }
-                    }
-                }
-            }
-        }
+        AppAssignments assignments = buildAppAssignments(appChangesRaw);
+        Set<String> assignedApps = assignments.assignedApps();
+        Set<String> unassignedApps = assignments.unassignedApps();
 
         // Pre-fetch existing functions for assigned apps
         Map<String, Set<String>> existingByApp = prefetchExistingFunctions(targetGroup, new ArrayList<>(assignedApps));
@@ -18749,6 +18782,61 @@ public class ConfigApplyService {
         }
 
         log.debug("APP_UPDATE (changes format) applied to AD group: {}", targetGroup);
+    }
+
+    private Map<String, List<String>> buildEnabledFunctionsByApp(Object funcChangesRaw) {
+        Map<String, List<String>> result = new HashMap<>();
+        if (!(funcChangesRaw instanceof List<?> funcList)) {
+            return result;
+        }
+        for (Object item : funcList) {
+            if (item instanceof Map<?, ?> mapItem) {
+                addEnabledFunction(mapItem, result);
+            }
+        }
+        return result;
+    }
+
+    @SuppressWarnings("unchecked")
+    private void addEnabledFunction(Map<?, ?> mapItem, Map<String, List<String>> result) {
+        Map<String, Object> func = (Map<String, Object>) mapItem;
+        String appCode = func.get("appCode") instanceof String s ? s : null;
+        String functionCode = func.get("functionCode") instanceof String s ? s : null;
+        Boolean enabled = func.get("enabledIndicator") instanceof Boolean b ? b : null;
+        if (appCode != null && functionCode != null && Boolean.TRUE.equals(enabled)) {
+            result.computeIfAbsent(appCode, k -> new ArrayList<>()).add(functionCode);
+        }
+    }
+
+    private record AppAssignments(Set<String> assignedApps, Set<String> unassignedApps) {}
+
+    private AppAssignments buildAppAssignments(Object appChangesRaw) {
+        Set<String> assignedApps = new HashSet<>();
+        Set<String> unassignedApps = new HashSet<>();
+        if (!(appChangesRaw instanceof List<?> appList)) {
+            return new AppAssignments(assignedApps, unassignedApps);
+        }
+        for (Object item : appList) {
+            if (item instanceof Map<?, ?> mapItem) {
+                classifyAppChange(mapItem, assignedApps, unassignedApps);
+            }
+        }
+        return new AppAssignments(assignedApps, unassignedApps);
+    }
+
+    @SuppressWarnings("unchecked")
+    private void classifyAppChange(Map<?, ?> mapItem, Set<String> assignedApps, Set<String> unassignedApps) {
+        Map<String, Object> app = (Map<String, Object>) mapItem;
+        String appCode = app.get("appCode") instanceof String s ? s : null;
+        Boolean proposed = app.get("proposedStateIndicator") instanceof Boolean b ? b : null;
+        if (appCode == null) {
+            return;
+        }
+        if (Boolean.TRUE.equals(proposed)) {
+            assignedApps.add(appCode);
+        } else if (Boolean.FALSE.equals(proposed)) {
+            unassignedApps.add(appCode);
+        }
     }
 
     // Pre-fetch all existing functions for assigned apps in one query (avoids N+1)
@@ -21888,8 +21976,11 @@ public class DefaultDebugService implements DebugService {
     @Override
     @Transactional
     public ResetResult resetPrimaryAndLayout(String userId, String roleName) {
-        logger.info("[DEBUG] Resetting primary and layout for user: {}, role: {}",
-                userId.replaceAll("[\\r\\n\\t]", "_"), roleName.replaceAll("[\\r\\n\\t]", "_"));
+        if (logger.isInfoEnabled()) {
+            String safeUserId = userId.replaceAll("[\\r\\n\\t]", "_");
+            String safeRoleName = roleName.replaceAll("[\\r\\n\\t]", "_");
+            logger.info("[DEBUG] Resetting primary and layout for user: {}, role: {}", safeUserId, safeRoleName);
+        }
 
         List<UserRoleAssignment> assignments = userRoleAssignmentRepository
                 .findByUserIdAndRoleNameOrderByAssignmentPriorityAsc(userId, roleName);
@@ -24382,7 +24473,6 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.hsbc.ccaas.sapi.controller.model.BusinessUnitResponse;
-import com.hsbc.ccaas.sapi.controller.model.CountryResponse;
 import com.hsbc.ccaas.sapi.controller.model.MarketResponse;
 import com.hsbc.ccaas.sapi.controller.model.RegionResponse;
 import com.hsbc.ccaas.sapi.service.ReferenceDataService;
@@ -25198,8 +25288,6 @@ import com.hsbc.ccaas.sapi.controller.model.AdGroupWithAccessDto;
 import com.hsbc.ccaas.sapi.controller.model.PaginationLinks;
 import com.hsbc.ccaas.sapi.mapper.AdGroupAssignmentMapper;
 import com.hsbc.wpb.ef.ports.RequestContext;
-import com.hsbc.ccaas.sapi.dto.AdGroupSearchCriteria;
-import com.hsbc.ccaas.sapi.dto.AdGroupPage;
 import com.hsbc.ccaas.sapi.entity.AdGroupLayoutAssignment;
 import java.util.List;
 import java.util.Optional;
@@ -25710,7 +25798,7 @@ class ApprovalWorkflowE2ETest {
 
     @Test
     @DisplayName("Self-approval violation should propagate from service")
-    void selfApprovalShouldPropagate() throws Exception {
+    void selfApprovalShouldPropagate() {
         UUID changeId = UUID.randomUUID();
 
         when(pendingChangeService.approve(eq(changeId), eq("MAKER001"), isNull(), eq("self"), any()))
@@ -26198,7 +26286,7 @@ class ChangeApprovalsControllerTest {
 
         @Test
         @DisplayName("should propagate L1 failure from service")
-        void approveL1PropagatesServiceFailure() throws Exception {
+        void approveL1PropagatesServiceFailure() {
             UUID changeId = UUID.randomUUID();
             Map<String, Object> innerData = Map.of(
                 "changeIdentifier", changeId.toString(),
@@ -26300,7 +26388,7 @@ class ChangeApprovalsControllerTest {
 
         @Test
         @DisplayName("should propagate L2 failure from service")
-        void approveL2PropagatesServiceFailure() throws Exception {
+        void approveL2PropagatesServiceFailure() {
             UUID changeId = UUID.randomUUID();
             Map<String, Object> innerData = Map.of(
                 "changeIdentifier", changeId.toString(),
@@ -26348,7 +26436,7 @@ class ChangeApprovalsControllerTest {
 
         @Test
         @DisplayName("should throw when change is not in pending state")
-        void approveAlreadyApprovedChange() throws Exception {
+        void approveAlreadyApprovedChange() {
             UUID changeId = UUID.randomUUID();
             Map<String, Object> innerData = Map.of(
                 "changeIdentifier", changeId.toString(),
@@ -26368,7 +26456,7 @@ class ChangeApprovalsControllerTest {
 
         @Test
         @DisplayName("should throw when change is rejected")
-        void approveRejectedChange() throws Exception {
+        void approveRejectedChange() {
             UUID changeId = UUID.randomUUID();
             Map<String, Object> innerData = Map.of(
                 "changeIdentifier", changeId.toString(),
@@ -26388,7 +26476,7 @@ class ChangeApprovalsControllerTest {
 
         @Test
         @DisplayName("should throw when approver AD groups do not contain target checker_ad_group")
-        void approveWithWrongAdGroupsThrowsUnauthorized() throws Exception {
+        void approveWithWrongAdGroupsThrowsUnauthorized() {
             UUID changeId = UUID.randomUUID();
             List<String> wrongAdGroups = List.of("CN=Admin_Checker_APAC,OU=Groups,DC=hsbc,DC=com");
             Map<String, Object> innerData = Map.of(
@@ -26409,7 +26497,7 @@ class ChangeApprovalsControllerTest {
 
         @Test
         @DisplayName("should throw when change is cancelled")
-        void approveCancelledChange() throws Exception {
+        void approveCancelledChange() {
             UUID changeId = UUID.randomUUID();
             Map<String, Object> innerData = Map.of(
                 "changeIdentifier", changeId.toString(),
@@ -26569,7 +26657,7 @@ class ChangeRejectionsControllerTest {
 
         @Test
         @DisplayName("should throw when reason is null")
-        void rejectPendingChangeWithNullReason() throws Exception {
+        void rejectPendingChangeWithNullReason() {
             UUID changeId = UUID.randomUUID();
             Map<String, Object> innerData = Map.of(
                 "changeIdentifier", changeId.toString(),
@@ -26588,7 +26676,7 @@ class ChangeRejectionsControllerTest {
 
         @Test
         @DisplayName("should throw when reason is blank")
-        void rejectPendingChangeWithBlankReason() throws Exception {
+        void rejectPendingChangeWithBlankReason() {
             UUID changeId = UUID.randomUUID();
             Map<String, Object> innerData = Map.of(
                 "changeIdentifier", changeId.toString(),
@@ -26608,7 +26696,7 @@ class ChangeRejectionsControllerTest {
 
         @Test
         @DisplayName("should throw when reason is empty string")
-        void rejectPendingChangeWithEmptyReason() throws Exception {
+        void rejectPendingChangeWithEmptyReason() {
             UUID changeId = UUID.randomUUID();
 
             java.util.HashMap<String, Object> innerData = new java.util.HashMap<>();
@@ -26628,7 +26716,7 @@ class ChangeRejectionsControllerTest {
 
         @Test
         @DisplayName("should throw when rejecter AD groups do not contain target group")
-        void rejectWithWrongAdGroupsThrowsUnauthorized() throws Exception {
+        void rejectWithWrongAdGroupsThrowsUnauthorized() {
             UUID changeId = UUID.randomUUID();
             List<String> wrongAdGroups = List.of("CN=Admin_Checker_APAC,OU=Groups,DC=hsbc,DC=com");
             Map<String, Object> innerData = Map.of(
@@ -26782,7 +26870,7 @@ class CopyConfigurationControllerTest {
 
         @Test
         @DisplayName("should throw when source and target are the same")
-        void copyConfigurationSameSourceTargetThrows() throws Exception {
+        void copyConfigurationSameSourceTargetThrows() {
             Map<String, Object> innerData = Map.of(
                 "sourceGroupIdentifier", "AD_GROUP_001",
                 "targetGroupIdentifier", "AD_GROUP_001"
@@ -26851,6 +26939,7 @@ class CopyConfigurationControllerTest {
 
         @Test
         @DisplayName("should handle null initiator")
+        @SuppressWarnings("java:S4144") // Tests different scenario (null initiator) than copyConfigurationWithNullOptions (null options)
         void copyConfigurationWithNullInitiator() throws Exception {
             Map<String, Object> innerData = Map.of(
                 "sourceGroupIdentifier", "AD_GROUP_SOURCE",
@@ -26872,7 +26961,7 @@ class CopyConfigurationControllerTest {
 
         @Test
         @DisplayName("should throw SourceNotFoundException when source not found")
-        void copyConfigurationSourceNotFound() throws Exception {
+        void copyConfigurationSourceNotFound() {
             Map<String, Object> innerData = Map.of(
                 "sourceGroupIdentifier", "AD_GROUP_INVALID",
                 "targetGroupIdentifier", "AD_GROUP_TARGET"
@@ -26890,7 +26979,7 @@ class CopyConfigurationControllerTest {
 
         @Test
         @DisplayName("should throw SourceNotFoundException when target not found")
-        void copyConfigurationTargetNotFound() throws Exception {
+        void copyConfigurationTargetNotFound() {
             Map<String, Object> innerData = Map.of(
                 "sourceGroupIdentifier", "AD_GROUP_SOURCE",
                 "targetGroupIdentifier", "AD_GROUP_INVALID"
@@ -26908,7 +26997,7 @@ class CopyConfigurationControllerTest {
 
         @Test
         @DisplayName("should throw TargetAlreadyConfiguredException when target already configured")
-        void copyConfigurationTargetAlreadyConfigured() throws Exception {
+        void copyConfigurationTargetAlreadyConfigured() {
             Map<String, Object> innerData = Map.of(
                 "sourceGroupIdentifier", "AD_GROUP_SOURCE",
                 "targetGroupIdentifier", "AD_GROUP_TARGET"
@@ -26926,7 +27015,7 @@ class CopyConfigurationControllerTest {
 
         @Test
         @DisplayName("should throw IllegalArgumentException for unknown error")
-        void copyConfigurationUnknownError() throws Exception {
+        void copyConfigurationUnknownError() {
             Map<String, Object> innerData = Map.of(
                 "sourceGroupIdentifier", "AD_GROUP_SOURCE",
                 "targetGroupIdentifier", "AD_GROUP_TARGET"
@@ -26972,7 +27061,6 @@ class CopyConfigurationControllerTest {
 ===FILE: ./src/test/java/com/hsbc/ccaas/sapi/controller/DebugControllerTest.java
 package com.hsbc.ccaas.sapi.controller;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hsbc.ccaas.sapi.entity.UserRoleAssignment;
 import com.hsbc.ccaas.sapi.repository.UserLayoutConfigurationRepository;
 import com.hsbc.ccaas.sapi.repository.UserRoleAssignmentRepository;
@@ -26988,7 +27076,6 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -27181,7 +27268,7 @@ class DirectSaveControllerTest {
 
         @Test
         @DisplayName("should propagate optimistic locking exception from service")
-        void directSaveOptimisticLockingConflict() throws Exception {
+        void directSaveOptimisticLockingConflict() {
             Map<String, Object> innerData = Map.of(
                     "targetGroupIdentifier", "CN=Voice_Agent_UK,OU=Groups,DC=hsbc,DC=com",
                     "proposedState", Map.of("roleName", "voice_agent"),
@@ -27206,7 +27293,7 @@ class DirectSaveControllerTest {
 
         @Test
         @DisplayName("should throw when super admin AD groups do not contain target super_admin_ad_group")
-        void directSaveWithWrongAdGroupsThrowsUnauthorized() throws Exception {
+        void directSaveWithWrongAdGroupsThrowsUnauthorized() {
             List<String> wrongAdGroups = List.of("CN=Super_Admin_APAC,OU=Groups,DC=hsbc,DC=com");
             Map<String, Object> innerData = Map.of(
                     "targetGroupIdentifier", "CN=Voice_Agent_UK,OU=Groups,DC=hsbc,DC=com",
@@ -27978,7 +28065,7 @@ class PendingChangesControllerComprehensiveTest {
 
         @Test
         @DisplayName("should return bad request when request body is completely missing")
-        void createPendingChangeWithMissingBody() throws Exception {
+        void createPendingChangeWithMissingBody() {
             CreatePendingChangeRequestEnvelope body = new CreatePendingChangeRequestEnvelope();
 
             RequestContext<CreatePendingChangeRequestEnvelope> rc = mockRequestContext();
@@ -27990,7 +28077,8 @@ class PendingChangesControllerComprehensiveTest {
 
         @Test
         @DisplayName("should return bad request when data wrapper is null")
-        void createPendingChangeWithNullData() throws Exception {
+        @SuppressWarnings("java:S4144") // Tests distinct scenario (null data wrapper) from createPendingChangeWithMissingBody (missing body)
+        void createPendingChangeWithNullData() {
             CreatePendingChangeRequestEnvelope body = new CreatePendingChangeRequestEnvelope();
 
             RequestContext<CreatePendingChangeRequestEnvelope> rc = mockRequestContext();
@@ -28090,7 +28178,7 @@ class PendingChangesControllerComprehensiveTest {
 
         @Test
         @DisplayName("should handle service exception for duplicate pending change")
-        void createPendingChangeDuplicateThrowsException() throws Exception {
+        void createPendingChangeDuplicateThrowsException() {
             Map<String, Object> innerData = Map.of(
                 "targetGroupIdentifier", TARGET_GROUP_UUID.toString(),
                 "submittedByText", "EMP123",
@@ -28374,7 +28462,7 @@ class PendingChangesControllerComprehensiveTest {
 
         @Test
         @DisplayName("should throw for invalid UUID format")
-        void getPendingChangeInvalidUUID() throws Exception {
+        void getPendingChangeInvalidUUID() {
             RequestContext<Void> rc = mockRequestContext();
             when(rc.getPathVariable("changeIdentifier")).thenReturn(Optional.of("invalid-uuid-format"));
 
@@ -28473,7 +28561,7 @@ class PendingChangesControllerComprehensiveTest {
 
         @Test
         @DisplayName("should throw for invalid UUID format")
-        void cancelPendingChangeInvalidUUID() throws Exception {
+        void cancelPendingChangeInvalidUUID() {
             RequestContext<Void> rc = mockRequestContext();
             when(rc.getPathVariable("changeIdentifier")).thenReturn(Optional.of("invalid-uuid"));
 
@@ -28483,7 +28571,7 @@ class PendingChangesControllerComprehensiveTest {
 
         @Test
         @DisplayName("should throw when service reports unauthorized")
-        void cancelPendingChangeUnauthorized() throws Exception {
+        void cancelPendingChangeUnauthorized() {
             UUID changeId = UUID.randomUUID();
             PendingChange change = createMockPendingChange();
             change.setCreatedBy("EMP123");
@@ -28503,7 +28591,7 @@ class PendingChangesControllerComprehensiveTest {
 
         @Test
         @DisplayName("should throw when service reports invalid state")
-        void cancelPendingChangeInvalidState() throws Exception {
+        void cancelPendingChangeInvalidState() {
             UUID changeId = UUID.randomUUID();
             PendingChange change = createMockPendingChange();
             change.setCreatedBy("EMP123");
@@ -28662,7 +28750,7 @@ class PendingChangesControllerTest {
 
         @Test
         @DisplayName("should return bad request when data is null")
-        void createPendingChangeWithNullDataReturnsBadRequest() throws Exception {
+        void createPendingChangeWithNullDataReturnsBadRequest() {
             CreatePendingChangeRequestEnvelope body = new CreatePendingChangeRequestEnvelope();
 
             RequestContext<CreatePendingChangeRequestEnvelope> rc = mockRequestContext();
@@ -29223,6 +29311,89 @@ class ReferenceDataControllerTest {
     }
 }
 ===ENDFILE
+===FILE: ./src/test/java/com/hsbc/ccaas/sapi/controller/RoleLayoutTemplatesControllerTest.java
+package com.hsbc.ccaas.sapi.controller;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.*;
+
+import com.hsbc.ccaas.sapi.application.ReferenceDataFacade;
+import com.hsbc.ccaas.sapi.controller.model.GetAllRoleLayoutTemplates200Response;
+import com.hsbc.ccaas.sapi.controller.model.GetRoleLayoutTemplateByName200Response;
+import com.hsbc.ccaas.sapi.controller.model.RoleLayoutTemplateResponse;
+import com.hsbc.ccaas.sapi.controller.model.RoleLayoutTemplateSummaryResponse;
+import com.hsbc.wpb.ef.ports.RequestContext;
+import java.util.List;
+import java.util.Optional;
+
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+
+@ExtendWith(MockitoExtension.class)
+class RoleLayoutTemplatesControllerTest {
+
+    @Mock
+    private ReferenceDataFacade referenceDataFacade;
+
+    @InjectMocks
+    private RoleLayoutTemplatesController controller;
+
+    @SuppressWarnings("unchecked")
+    private <T> RequestContext<T> mockRequestContext() {
+        RequestContext<T> rc = (RequestContext<T>) mock(RequestContext.class);
+        lenient().when(rc.getQueryParameter(anyString())).thenReturn(Optional.empty());
+        lenient().when(rc.getPathVariable(anyString())).thenReturn(Optional.empty());
+        return rc;
+    }
+
+    @Test
+    @DisplayName("GET /reference-data/role-layout-templates returns summaries")
+    void getAllRoleLayoutTemplatesReturnsList() throws Exception {
+        RoleLayoutTemplateSummaryResponse summary = new RoleLayoutTemplateSummaryResponse()
+            .roleNameCode("voice_agent")
+            .roleDisplayName("Voice Agent");
+        when(referenceDataFacade.getAllRoleLayoutTemplates()).thenReturn(List.of(summary));
+
+        RequestContext<Void> rc = mockRequestContext();
+        ResponseEntity<GetAllRoleLayoutTemplates200Response> response =
+            controller.getAllRoleLayoutTemplates(rc);
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertEquals(1, response.getBody().getData().getRoleLayoutTemplates().size());
+        assertEquals("voice_agent",
+            response.getBody().getData().getRoleLayoutTemplates().get(0).getRoleNameCode());
+        verify(referenceDataFacade).getAllRoleLayoutTemplates();
+    }
+
+    @Test
+    @DisplayName("GET /reference-data/role-layout-templates/{roleNameCode} returns template")
+    void getRoleLayoutTemplateByNameReturnsTemplate() throws Exception {
+        RoleLayoutTemplateResponse template = new RoleLayoutTemplateResponse()
+            .roleNameCode("chat_agent")
+            .roleDisplayName("Chat Agent");
+        when(referenceDataFacade.getRoleLayoutTemplateByName("chat_agent"))
+            .thenReturn(Optional.of(template));
+
+        RequestContext<Void> rc = mockRequestContext();
+        when(rc.getPathVariable("roleNameCode")).thenReturn(Optional.of("chat_agent"));
+
+        ResponseEntity<GetRoleLayoutTemplateByName200Response> response =
+            controller.getRoleLayoutTemplateByName(rc);
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertEquals("chat_agent", response.getBody().getData().getRoleNameCode());
+        verify(referenceDataFacade).getRoleLayoutTemplateByName("chat_agent");
+    }
+}
+
+===ENDFILE
 ===FILE: ./src/test/java/com/hsbc/ccaas/sapi/controller/SessionLayoutControllerTest.java
 package com.hsbc.ccaas.sapi.controller;
 
@@ -29448,7 +29619,7 @@ class UserRoleAssignmentControllerTest {
 
     @Test
     @DisplayName("POST set-primary throws when adGroupIdentifier missing")
-    void setPrimaryAssignmentMissingAdGroup() throws Exception {
+    void setPrimaryAssignmentMissingAdGroup() {
         SetPrimaryAssignmentRequest request = new SetPrimaryAssignmentRequest()
             .putDataItem("roleName", "voice_agent")
             .putDataItem("updatedBy", "admin");
@@ -29467,7 +29638,7 @@ class UserRoleAssignmentControllerTest {
 
     @Test
     @DisplayName("POST set-primary throws when updatedBy missing")
-    void setPrimaryAssignmentMissingUpdatedBy() throws Exception {
+    void setPrimaryAssignmentMissingUpdatedBy() {
         SetPrimaryAssignmentRequest request = new SetPrimaryAssignmentRequest()
             .putDataItem("roleName", "voice_agent")
             .putDataItem("adGroupIdentifier", "CN=Voice");
@@ -29486,7 +29657,7 @@ class UserRoleAssignmentControllerTest {
 
     @Test
     @DisplayName("POST set-primary throws when service throws IllegalArgumentException")
-    void setPrimaryAssignmentServiceThrows() throws Exception {
+    void setPrimaryAssignmentServiceThrows() {
         doThrow(new IllegalArgumentException("invalid mapping"))
             .when(userRoleAssignmentFacade)
             .setPrimaryAssignment("EMP001", "voice_agent", "CN=Voice", "admin");
@@ -29506,7 +29677,7 @@ class UserRoleAssignmentControllerTest {
 
     @Test
     @DisplayName("POST set-primary throws when empty strings provided")
-    void setPrimaryAssignmentEmptyStrings() throws Exception {
+    void setPrimaryAssignmentEmptyStrings() {
         SetPrimaryAssignmentRequest request = new SetPrimaryAssignmentRequest()
             .putDataItem("roleName", "voice_agent")
             .putDataItem("adGroupIdentifier", "   ")
@@ -29606,8 +29777,8 @@ class AdGroupLookupItemTest {
                 "UK_CI", "EMEA", "GB", "WPB", true
             );
 
-            assertThat(item1).isEqualTo(item2);
-            assertThat(item1.hashCode()).isEqualTo(item2.hashCode());
+            assertThat(item1).isEqualTo(item2)
+                .hasSameHashCodeAs(item2);
         }
 
         @Test
@@ -29637,9 +29808,9 @@ class AdGroupLookupItemTest {
             );
 
             String str = item.toString();
-            assertThat(str).contains("CN=Group,OU=Test");
-            assertThat(str).contains("TEST_GROUP");
-            assertThat(str).contains("AGENT");
+            assertThat(str).contains("CN=Group,OU=Test")
+                .contains("TEST_GROUP")
+                .contains("AGENT");
         }
     }
 
@@ -29807,8 +29978,8 @@ class AppFunctionDtoTest {
             AppFunctionDto dto1 = new AppFunctionDto("KEY", "Name", "Desc", "Cat", true);
             AppFunctionDto dto2 = new AppFunctionDto("KEY", "Name", "Desc", "Cat", true);
 
-            assertThat(dto1).isEqualTo(dto2);
-            assertThat(dto1.hashCode()).isEqualTo(dto2.hashCode());
+            assertThat(dto1).isEqualTo(dto2)
+                .hasSameHashCodeAs(dto2);
         }
 
         @Test
@@ -29872,11 +30043,11 @@ class AppFunctionDtoTest {
 
             String result = dto.toString();
 
-            assertThat(result).contains("TRANSFER");
-            assertThat(result).contains("Fund Transfer");
-            assertThat(result).contains("Transfer funds between accounts");
-            assertThat(result).contains("Banking");
-            assertThat(result).contains("true");
+            assertThat(result).contains("TRANSFER")
+                .contains("Fund Transfer")
+                .contains("Transfer funds between accounts")
+                .contains("Banking")
+                .contains("true");
         }
     }
 }
@@ -29953,8 +30124,8 @@ class MarketDtoTest {
             MarketDto dto1 = new MarketDto("UK_CI", "UK & Channel Islands", "EMEA", 1, true);
             MarketDto dto2 = new MarketDto("UK_CI", "UK & Channel Islands", "EMEA", 1, true);
 
-            assertThat(dto1).isEqualTo(dto2);
-            assertThat(dto1.hashCode()).isEqualTo(dto2.hashCode());
+            assertThat(dto1).isEqualTo(dto2)
+                .hasSameHashCodeAs(dto2);
         }
 
         @Test
@@ -30004,11 +30175,11 @@ class MarketDtoTest {
 
             String result = dto.toString();
 
-            assertThat(result).contains("UK_CI");
-            assertThat(result).contains("UK & Channel Islands");
-            assertThat(result).contains("EMEA");
-            assertThat(result).contains("1");
-            assertThat(result).contains("true");
+            assertThat(result).contains("UK_CI")
+                .contains("UK & Channel Islands")
+                .contains("EMEA")
+                .contains("1")
+                .contains("true");
         }
     }
 }
@@ -30365,6 +30536,7 @@ class AdGroupAssignmentMapperTest {
         @Override
         public void updateFrom(com.hsbc.ccaas.sapi.entity.AdGroupLayoutAssignment source,
                 com.hsbc.ccaas.sapi.entity.AdGroupLayoutAssignment target) {
+            // Not used in this test - method body intentionally left empty
         }
     };
 
@@ -30432,6 +30604,7 @@ class AdminNoticeMapperTest {
 
         @Override
         public void updateEntity(AdminNoticeRequest request, @MappingTarget AdminNotice notice) {
+            // Intentionally empty - abstract mapper method required by MapStruct interface
         }
     };
 
@@ -31356,7 +31529,6 @@ import static org.assertj.core.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hsbc.ccaas.sapi.controller.model.ChangeType;
-import com.hsbc.ccaas.sapi.controller.model.ConfigChanges;
 import com.hsbc.ccaas.sapi.controller.model.PendingChangeStatus;
 import com.hsbc.ccaas.sapi.controller.model.PendingChangeVo;
 import com.hsbc.ccaas.sapi.entity.PendingChange;
@@ -32498,13 +32670,11 @@ import com.hsbc.ccaas.sapi.repository.ChangeAuditLogRepository;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -33769,7 +33939,6 @@ import com.hsbc.ccaas.sapi.entity.AdGroupLayoutAssignment;
 import com.hsbc.ccaas.sapi.mapper.EmbeddedAppMapper;
 import com.hsbc.ccaas.sapi.mapper.EmbeddedAppRowMapper;
 import com.hsbc.ccaas.sapi.repository.AdGroupLayoutAssignmentRepository;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -34086,11 +34255,11 @@ class EmbeddedAppAdminServiceTest {
 
             assertNotNull(result);
             assertEquals("TELLER", result.appKey());
-            verify(jdbcTemplate).update(eq("DELETE FROM embedded_app_ad_group_functions WHERE app_key = ? AND ad_group_identifier = ?"),
-                    eq("TELLER"), eq("GROUP1"));
+            verify(jdbcTemplate).update("DELETE FROM embedded_app_ad_group_functions WHERE app_key = ? AND ad_group_identifier = ?",
+                    "TELLER", "GROUP1");
             verify(jdbcTemplate).batchUpdate(anyString(), any(BatchPreparedStatementSetter.class));
-            verify(jdbcTemplate).update(eq("UPDATE embedded_apps SET updated_at = CURRENT_TIMESTAMP WHERE app_key = ?"),
-                    eq("TELLER"));
+            verify(jdbcTemplate).update("UPDATE embedded_apps SET updated_at = CURRENT_TIMESTAMP WHERE app_key = ?",
+                    "TELLER");
         }
 
         @Test
@@ -34124,8 +34293,8 @@ class EmbeddedAppAdminServiceTest {
                     "TELLER", "CN=Voice_Agent,DC=hsbc", List.of(), "admin");
 
             assertNotNull(result);
-            verify(jdbcTemplate).update(eq("DELETE FROM embedded_app_ad_group_functions WHERE app_key = ? AND ad_group_identifier = ?"),
-                    eq("TELLER"), eq("CN=Voice_Agent,DC=hsbc"));
+            verify(jdbcTemplate).update("DELETE FROM embedded_app_ad_group_functions WHERE app_key = ? AND ad_group_identifier = ?",
+                    "TELLER", "CN=Voice_Agent,DC=hsbc");
             verify(jdbcTemplate, never()).batchUpdate(anyString(), any(BatchPreparedStatementSetter.class));
         }
 
@@ -34360,8 +34529,8 @@ class EmbeddedAppAdminServiceTest {
 
             when(jdbcTemplate.queryForObject(anyString(), eq(rowMapper), eq("TELLER")))
                     .thenReturn(app);
-            when(jdbcTemplate.update(eq("DELETE FROM embedded_app_ad_group_functions WHERE app_key = ? AND ad_group_identifier = ?"),
-                    eq("TELLER"), eq("GROUP1")))
+            when(jdbcTemplate.update("DELETE FROM embedded_app_ad_group_functions WHERE app_key = ? AND ad_group_identifier = ?",
+                    "TELLER", "GROUP1"))
                     .thenThrow(new TestDataAccessException("DB persist error"));
 
             List<String> functions = List.of("TRADEP");
@@ -35822,13 +35991,14 @@ class PendingChangeApprovalServiceTest {
                     .thenReturn(Optional.of(ag));
 
             List<String> wrongGroups = List.of("CN=Other_Group,DC=hsbc");
+            DirectSaveCommand command = new DirectSaveCommand(
+                    TARGET_GROUP,
+                    Map.of(), Map.of("market", "HK"),
+                    PendingChange.ChangeType.CONFIG_UPDATE,
+                    "SA001", "Super Admin", 42L,
+                    wrongGroups);
             assertThrows(PendingChangeUnauthorizedException.class, () ->
-                    service.directSave(new DirectSaveCommand(
-                            TARGET_GROUP,
-                            Map.of(), Map.of("market", "HK"),
-                            PendingChange.ChangeType.CONFIG_UPDATE,
-                            "SA001", "Super Admin", 42L,
-                            wrongGroups)));
+                    service.directSave(command));
         }
 
         @Test
@@ -35906,8 +36076,9 @@ class PendingChangeApprovalServiceTest {
 
             when(pendingChangeRepository.findById(changeId)).thenReturn(Optional.of(pc));
 
+            List<String> emptyGroups = List.of();
             assertThrows(PendingChangeUnauthorizedException.class, () ->
-                    service.approveL1(changeId, "CHK001", "Checker Bob", "ok", List.of()));
+                    service.approveL1(changeId, "CHK001", "Checker Bob", "ok", emptyGroups));
         }
 
         @Test
@@ -35986,9 +36157,10 @@ class PendingChangeApprovalServiceTest {
 
             when(pendingChangeRepository.findById(changeId)).thenReturn(Optional.of(pc));
 
+            List<String> emptyGroups = List.of();
             assertThrows(PendingChangeUnauthorizedException.class, () ->
                     service.reject(changeId, "SA001", "Super Admin",
-                            ChangeAuditLog.PerformerRole.SUPER_ADMIN, "reason", List.of()));
+                            ChangeAuditLog.PerformerRole.SUPER_ADMIN, "reason", emptyGroups));
         }
     }
 }
@@ -36423,7 +36595,7 @@ class PendingChangeQueryServiceTest {
             when(pendingChangeRepository.countPendingL1ForChecker(adGroups, null, null))
                     .thenReturn(0L);
 
-            PendingChangeQueryService.PendingChangePage page = service.findPendingChanges(
+            service.findPendingChanges(
                     null, adGroups, null, "   ", 0, 25);
 
             // blank target group should be normalized to null
@@ -36439,7 +36611,7 @@ class PendingChangeQueryServiceTest {
             when(pendingChangeRepository.countPendingL1ForChecker(adGroups, null, null))
                     .thenReturn(0L);
 
-            PendingChangeQueryService.PendingChangePage page = service.findPendingChanges(
+            service.findPendingChanges(
                     PendingChangeStatus.PENDING_LEVEL_ONE, adGroups, "   ", null, 0, 25);
 
             // blank userId should be normalized to null
@@ -36539,7 +36711,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 
 /**
@@ -36799,6 +36970,7 @@ class PendingChangeServiceAdvancedTest {
 
         @Test
         @DisplayName("Should allow submit after previous change is rejected")
+        @SuppressWarnings("java:S4144")
         void submitChange_shouldAllowAfterRejection() {
             // Given: Previous change was rejected (not pending anymore)
             PendingChange saved = createPendingChange();
@@ -37124,15 +37296,6 @@ class PendingChangeServiceAdvancedTest {
     // ========================================================================
     // Helper Methods
     // ========================================================================
-
-    private Map<String, Object> createMatchedRule(String entityKey, String jiraTicket) {
-        Map<String, Object> rule = new HashMap<>();
-        rule.put("entityType", "FIELD");
-        rule.put("entityKey", entityKey);
-        rule.put("reason", "Test reason");
-        rule.put("jiraTicket", jiraTicket);
-        return rule;
-    }
 
     private ApprovalRule createApprovalRule(String entityType, String entityKey, boolean requiresL2, String jiraTicket) {
         ApprovalRule rule = new ApprovalRule();
@@ -38340,13 +38503,14 @@ class PendingChangeServiceTest {
                     .thenReturn(Optional.of(ag));
 
             List<String> wrongGroups = List.of("CN=Other_Group,DC=hsbc");
+            DirectSaveCommand command = new DirectSaveCommand(
+                    targetGroup,
+                    Map.of(), Map.of("market", "HK"),
+                    PendingChange.ChangeType.CONFIG_UPDATE,
+                    "SA001", "Super Admin", 42L,
+                    wrongGroups);
             assertThrows(PendingChangeUnauthorizedException.class, () ->
-                    service.directSave(new DirectSaveCommand(
-                            targetGroup,
-                            Map.of(), Map.of("market", "HK"),
-                            PendingChange.ChangeType.CONFIG_UPDATE,
-                            "SA001", "Super Admin", 42L,
-                            wrongGroups)));
+                    service.directSave(command));
         }
 
         @Test
@@ -38405,8 +38569,9 @@ class PendingChangeServiceTest {
 
             when(pendingChangeRepository.findById(changeId)).thenReturn(Optional.of(pc));
 
+            List<String> emptyGroups = List.of();
             assertThrows(PendingChangeUnauthorizedException.class, () ->
-                    service.approveL1(changeId, "CHK001", "Checker Bob", "ok", List.of()));
+                    service.approveL1(changeId, "CHK001", "Checker Bob", "ok", emptyGroups));
         }
 
         @Test
@@ -38504,9 +38669,10 @@ class PendingChangeServiceTest {
 
             when(pendingChangeRepository.findById(changeId)).thenReturn(Optional.of(pc));
 
+            List<String> emptyGroups = List.of();
             assertThrows(PendingChangeUnauthorizedException.class, () ->
                     service.reject(changeId, "SA001", "Super Admin",
-                            ChangeAuditLog.PerformerRole.SUPER_ADMIN, "reason", List.of()));
+                            ChangeAuditLog.PerformerRole.SUPER_ADMIN, "reason", emptyGroups));
         }
     }
 
@@ -38835,11 +39001,17 @@ class PendingChangeSubmissionServiceTest {
             when(pendingChangeRepository.findActivePendingChangeForGroup(TARGET_GROUP))
                     .thenReturn(Optional.of(existing));
 
+            Map<String, Object> emptyMap1 = Map.of();
+            Map<String, Object> emptyMap2 = Map.of();
+            Map<String, Object> emptyMap3 = Map.of();
+            List<String> emptyList1 = List.of();
+            List<String> emptyList2 = List.of();
+            List<String> emptyList3 = List.of();
             assertThrows(PendingChangeExistsException.class, () ->
                     service.submitChange(
                             TARGET_GROUP, "Voice Agent Basic",
                             PendingChange.ChangeType.CONFIG_UPDATE,
-                            Map.of(), Map.of(), Map.of(), List.of(), List.of(), List.of(),
+                            emptyMap1, emptyMap2, emptyMap3, emptyList1, emptyList2, emptyList3,
                             "EMP001", "John Doe", null, null, null, null));
 
             verify(pendingChangeRepository, never()).save(any());
@@ -38858,11 +39030,17 @@ class PendingChangeSubmissionServiceTest {
                     .thenReturn(Optional.empty())
                     .thenReturn(Optional.of(existing));
 
+            Map<String, Object> empty1 = Map.of();
+            Map<String, Object> empty2 = Map.of();
+            Map<String, Object> empty3 = Map.of();
+            List<String> emptyL1 = List.of();
+            List<String> emptyL2 = List.of();
+            List<String> emptyL3 = List.of();
             assertThrows(PendingChangeExistsException.class, () ->
                     service.submitChange(
                             TARGET_GROUP, "Voice Agent Basic",
                             PendingChange.ChangeType.CONFIG_UPDATE,
-                            Map.of(), Map.of(), Map.of(), List.of(), List.of(), List.of(),
+                            empty1, empty2, empty3, emptyL1, emptyL2, emptyL3,
                             "EMP001", "John Doe", null, null, null, null));
         }
 
@@ -38875,11 +39053,17 @@ class PendingChangeSubmissionServiceTest {
             mockNonCriticalEvaluation();
             when(pendingChangeRepository.save(any(PendingChange.class))).thenThrow(otherViolation);
 
+            Map<String, Object> empty1 = Map.of();
+            Map<String, Object> empty2 = Map.of();
+            Map<String, Object> empty3 = Map.of();
+            List<String> emptyL1 = List.of();
+            List<String> emptyL2 = List.of();
+            List<String> emptyL3 = List.of();
             assertThrows(DataIntegrityViolationException.class, () ->
                     service.submitChange(
                             TARGET_GROUP, "Voice Agent Basic",
                             PendingChange.ChangeType.CONFIG_UPDATE,
-                            Map.of(), Map.of(), Map.of(), List.of(), List.of(), List.of(),
+                            empty1, empty2, empty3, emptyL1, emptyL2, emptyL3,
                             "EMP001", "John Doe", null, null, null, null));
         }
 
@@ -39939,7 +40123,6 @@ import com.hsbc.ccaas.sapi.mapper.AdGroupAssignmentMapper;
 import com.hsbc.ccaas.sapi.repository.AdGroupLayoutAssignmentRepository;
 import java.util.Collections;
 import java.util.List;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -40528,8 +40711,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoMoreInteractions;
-import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.hsbc.ccaas.sapi.controller.model.AdminNoticeRequest;
@@ -40545,9 +40726,7 @@ import com.hsbc.ccaas.sapi.repository.AdminNoticeRepository;
 import com.hsbc.ccaas.sapi.repository.AdminNoticeUserStateRepository;
 import java.lang.reflect.Field;
 import java.time.Clock;
-import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -40556,7 +40735,6 @@ import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -40964,7 +41142,6 @@ class DefaultAdminNoticeServiceTest {
 package com.hsbc.ccaas.sapi.service.impl;
 
 import static org.assertj.core.api.Assertions.*;
-import static org.mockito.Mockito.*;
 
 import com.hsbc.ccaas.sapi.entity.AdGroupLayoutAssignment;
 import com.hsbc.ccaas.sapi.entity.RoleLayoutTemplate;
@@ -41947,7 +42124,6 @@ class DefaultRoleTemplateEntitlementServiceTest {
 package com.hsbc.ccaas.sapi.service.impl;
 
 import static org.assertj.core.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 import com.hsbc.ccaas.sapi.controller.model.NoticeAcknowledgmentRequest;
@@ -42076,7 +42252,6 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -42335,7 +42510,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.times;
@@ -42600,8 +42774,7 @@ class DefaultUserRoleAssignmentServiceTest {
     void syncUserAdGroups_PrimaryAssignmentRemoved_InvalidatesCache() {
         // Arrange
         String userId = "user-1";
-        List<String> currentAdGroups = Collections.emptyList();
-        
+
         UserRoleAssignment existing = new UserRoleAssignment();
         existing.setUserId(userId);
         existing.setRoleName("voice_agent");
@@ -42797,9 +42970,6 @@ class DefaultUserRoleAssignmentServiceTest {
         service.syncUserAdGroups(userId, currentAdGroups);
 
         // Assert
-        // Should be called twice, with isPrimary=false both times (or at least once depending on logic)
-        // The logic says: boolean primaryAssignment = roleAdGroups.size() == 1;
-        // So for both calls, primaryAssignment should be false.
         verify(userRoleAssignmentMapper, times(2)).createAssignment(
             eq(userId), 
             eq("voice_agent"), 
@@ -42996,7 +43166,6 @@ import static org.mockito.Mockito.when;
 
 import com.hsbc.ccaas.sapi.entity.AdminNotice;
 import com.hsbc.ccaas.sapi.model.AdminNoticeStatus;
-import com.hsbc.ccaas.sapi.model.AdminNoticeUserStateType;
 import com.hsbc.ccaas.sapi.repository.AdminNoticeRepository;
 import com.hsbc.ccaas.sapi.repository.AdminNoticeUserStateRepository;
 import java.lang.reflect.Field;
@@ -43443,7 +43612,6 @@ import static org.mockito.Mockito.*;
 import com.hsbc.ccaas.sapi.constants.SapiConstants;
 import com.hsbc.ccaas.sapi.controller.model.SessionLayoutRequest;
 import com.hsbc.ccaas.sapi.controller.model.SessionLayoutDto;
-import com.hsbc.ccaas.sapi.controller.model.RoleLayoutDto;
 import com.hsbc.ccaas.sapi.entity.AdGroupLayoutAssignment;
 import com.hsbc.ccaas.sapi.entity.RoleLayoutTemplate;
 import com.hsbc.ccaas.sapi.entity.UserRoleAssignment;
@@ -44621,9 +44789,9 @@ class MfeConfigMergerTest {
 
             MfeConfigDto result = MfeConfigMerger.merge(app, "HK", "TRADEP");
 
-            assertThat(result).isNotSameAs(appCfg);
-            assertThat(result).isNotSameAs(mktCfg);
-            assertThat(result).isNotSameAs(funcCfg);
+            assertThat(result).isNotSameAs(appCfg)
+                .isNotSameAs(mktCfg)
+                .isNotSameAs(funcCfg);
 
             // Mutating result should not affect source configs
             result.setLibraryIdentifier("mutated");
