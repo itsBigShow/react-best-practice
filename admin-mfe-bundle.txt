@@ -1,5 +1,5 @@
 # CCaaS Admin MFE - Source Bundle
-# Generated: 2026-02-11 02:46:51
+# Generated: 2026-02-11 07:48:59
 # Total files: 207
 # Categories: 93 TypeScript, 99 React (TSX), 1 CSS, 5 Config, 4 Docs, 5 Other
 # Note: node_modules and dist NOT included - run 'npm install && npm run build' after extraction
@@ -8154,14 +8154,16 @@ export function AdGroupConfigModal({
               canDirectSave ? (
                 <Button
                   onClick={handleDirectSaveClick}
-                  disabled={isLoadingAdGroup || isLoadingRoleTemplate}
+                  disabled={isLoadingAdGroup || isLoadingRoleTemplate || !isBusinessComplete}
+                  title={!isBusinessComplete ? 'Complete all required business info fields before saving' : undefined}
                 >
                   Save Changes
                 </Button>
               ) : (
                 <Button
                   onClick={handleSaveClick}
-                  disabled={isLoadingAdGroup || isLoadingRoleTemplate}
+                  disabled={isLoadingAdGroup || isLoadingRoleTemplate || !isBusinessComplete}
+                  title={!isBusinessComplete ? 'Complete all required business info fields before submitting' : undefined}
                 >
                   Submit for Approval
                 </Button>
@@ -8677,7 +8679,9 @@ describe('isBusinessInfoComplete', () => {
       logicalName: 'Test',
       roleName: 'voice_agent',
       region: 'EMEA',
-      country: 'UK'
+      market: 'UK_RETAIL',
+      country: 'UK',
+      businessUnit: 'WPB'
     } as any)).toBe(true)
   })
 
@@ -8699,6 +8703,32 @@ describe('isBusinessInfoComplete', () => {
       isActive: true,
       logicalName: 'Test',
       roleName: 'voice_agent',
+      country: 'UK'
+    } as any)).toBe(false)
+  })
+
+  it('returns false when market is missing', () => {
+    expect(isBusinessInfoComplete({
+      id: '1',
+      groupIdentifier: 'g1',
+      isActive: true,
+      logicalName: 'Test',
+      roleName: 'voice_agent',
+      region: 'EMEA',
+      country: 'UK',
+      businessUnit: 'WPB'
+    } as any)).toBe(false)
+  })
+
+  it('returns false when businessUnit is missing', () => {
+    expect(isBusinessInfoComplete({
+      id: '1',
+      groupIdentifier: 'g1',
+      isActive: true,
+      logicalName: 'Test',
+      roleName: 'voice_agent',
+      region: 'EMEA',
+      market: 'UK_RETAIL',
       country: 'UK'
     } as any)).toBe(false)
   })
@@ -8886,7 +8916,9 @@ export function isBusinessInfoComplete(formData: AdGroup): boolean {
     formData.logicalName &&
     formData.roleName &&
     formData.region &&
-    formData.country
+    formData.market &&
+    formData.country &&
+    formData.businessUnit
   )
 }
 
@@ -18156,7 +18188,16 @@ export function BusinessInfoTab({
                 id="logicalName"
                 placeholder="e.g., UK Retail Voice Agents"
                 value={formData.logicalName || ''}
-                onChange={(e) => onFormDataChange({ logicalName: e.target.value })}
+                onChange={(e) => {
+                  onFormDataChange({ logicalName: e.target.value })
+                  onPendingChangesUpdate({
+                    ...pendingChanges,
+                    businessInfo: {
+                      ...pendingChanges?.businessInfo,
+                      logicalName: e.target.value
+                    }
+                  })
+                }}
                 disabled={isReadOnly}
               />
             </div>
@@ -18232,7 +18273,16 @@ export function BusinessInfoTab({
               <Label htmlFor="businessUnit">Business Unit *</Label>
               <Select
                 value={formData.businessUnit || ''}
-                onValueChange={(value: string) => onFormDataChange({ businessUnit: value })}
+                onValueChange={(value: string) => {
+                  onFormDataChange({ businessUnit: value })
+                  onPendingChangesUpdate({
+                    ...pendingChanges,
+                    businessInfo: {
+                      ...pendingChanges?.businessInfo,
+                      businessUnit: value
+                    }
+                  })
+                }}
                 disabled={isReadOnly || isLoading}
               >
                 <SelectTrigger>
@@ -18253,7 +18303,16 @@ export function BusinessInfoTab({
               <Label htmlFor="country">Country *</Label>
               <Select
                 value={formData.country || ''}
-                onValueChange={(value: string) => onFormDataChange({ country: value })}
+                onValueChange={(value: string) => {
+                  onFormDataChange({ country: value })
+                  onPendingChangesUpdate({
+                    ...pendingChanges,
+                    businessInfo: {
+                      ...pendingChanges?.businessInfo,
+                      country: value
+                    }
+                  })
+                }}
                 disabled={isReadOnly || !formData.market || loadingCountries}
               >
                 <SelectTrigger>
