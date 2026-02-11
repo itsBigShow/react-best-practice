@@ -1,7 +1,7 @@
 # CCaaS Entitlement PAPI - Source Bundle
-# Generated: 2026-02-11 17:36:00
-# Total files: 285
-# Categories: 1 pom.xml, 2 CLAUDE.md, 3 docs, 1 resources, 131 YAML specs, 86 main Java, 52 test Java, 9 other
+# Generated: 2026-02-11 17:37:16
+# Total files: 287
+# Categories: 1 pom.xml, 2 CLAUDE.md, 3 docs, 1 resources, 131 YAML specs, 87 main Java, 53 test Java, 9 other
 # Note: target/generated-sources NOT included - run 'mvn generate-sources' after extraction
 ===FILE: ./.claude/settings.local.json
 {
@@ -15529,7 +15529,6 @@ import com.hsbc.ccaas.papi.controller.api.CountriesApi;
 import com.hsbc.ccaas.papi.controller.api.MarketsApi;
 import com.hsbc.ccaas.papi.controller.api.RegionsCountriesApi;
 import com.hsbc.ccaas.papi.controller.api.RegionsMarketsApi;
-import com.hsbc.ccaas.papi.controller.api.RoleLayoutTemplatesApi;
 import com.hsbc.ccaas.papi.controller.model.*;
 import com.hsbc.ccaas.papi.controller.helper.ReferenceDataResponseAssembler;
 import com.hsbc.ccaas.papi.application.ReferenceDataFacade;
@@ -15539,23 +15538,20 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Serves all reference data endpoints (regions, business units, countries, markets).
+ * Serves reference data endpoints (regions, business units, countries, markets).
+ * Role layout templates are served by {@link SessionLayoutController}.
  *
  * <p>This controller implements six OpenAPI-generated interfaces, one per resource path.
  * The high interface count is intentional and does not indicate excessive coupling:
  * <ul>
  *   <li>Each interface corresponds to a single OpenAPI path file (Hydrogen convention).</li>
- *   <li>All six share the same delegation pattern: facade call -> response assembly.</li>
+ *   <li>All share the same delegation pattern: facade call -> response assembly.</li>
  *   <li>Only two dependencies are injected: {@link ReferenceDataFacade} (data retrieval,
  *       delegated to SAPI) and {@link ReferenceDataResponseAssembler} (Hydrogen envelope wrapping).</li>
  * </ul>
- *
- * <p>Despite the six interfaces, the actual fan-out (CBO) is low because all methods
- * delegate to only two collaborators. The interfaces are structural (OpenAPI generator
- * produces one per path) rather than representing distinct concerns.
  */
 @RestController
-public class ReferenceDataController implements RegionsApi, BusinessUnitsApi, CountriesApi, RegionsCountriesApi, MarketsApi, RegionsMarketsApi, RoleLayoutTemplatesApi {
+public class ReferenceDataController implements RegionsApi, BusinessUnitsApi, CountriesApi, RegionsCountriesApi, MarketsApi, RegionsMarketsApi {
 
     private final ReferenceDataFacade referenceDataFacade;
     private final ReferenceDataResponseAssembler responseAssembler;
@@ -15606,6 +15602,36 @@ public class ReferenceDataController implements RegionsApi, BusinessUnitsApi, Co
         String regionCode = requestContext.getPathVariable("regionCode").orElseThrow();
         return responseAssembler.buildMarketsResponse(referenceDataFacade.getMarketsByRegion(regionCode));
     }
+}
+===ENDFILE
+===FILE: ./src/main/java/com/hsbc/ccaas/papi/controller/RoleLayoutTemplatesController.java
+package com.hsbc.ccaas.papi.controller;
+
+import com.hsbc.ccaas.papi.controller.api.RoleLayoutTemplatesApi;
+import com.hsbc.ccaas.papi.controller.model.DataResponseRoleLayoutTemplateData;
+import com.hsbc.ccaas.papi.controller.model.DataResponseRoleLayoutTemplatesData;
+import com.hsbc.ccaas.papi.controller.helper.ReferenceDataResponseAssembler;
+import com.hsbc.ccaas.papi.application.ReferenceDataFacade;
+import com.hsbc.wpb.ef.ports.RequestContext;
+import java.util.Objects;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.RestController;
+
+/**
+ * Serves role layout template endpoints (list all templates, get by role name).
+ * Delegates to {@link ReferenceDataFacade} and wraps responses via {@link ReferenceDataResponseAssembler}.
+ */
+@RestController
+public class RoleLayoutTemplatesController implements RoleLayoutTemplatesApi {
+
+    private final ReferenceDataFacade referenceDataFacade;
+    private final ReferenceDataResponseAssembler responseAssembler;
+
+    public RoleLayoutTemplatesController(ReferenceDataFacade referenceDataFacade,
+                                          ReferenceDataResponseAssembler responseAssembler) {
+        this.referenceDataFacade = Objects.requireNonNull(referenceDataFacade, "ReferenceDataFacade must not be null");
+        this.responseAssembler = Objects.requireNonNull(responseAssembler, "ReferenceDataResponseAssembler must not be null");
+    }
 
     @Override
     public ResponseEntity<DataResponseRoleLayoutTemplatesData> getAllRoleLayoutTemplates(
@@ -15618,7 +15644,7 @@ public class ReferenceDataController implements RegionsApi, BusinessUnitsApi, Co
             RequestContext<Void> requestContext) throws Exception {
         String roleNameCode = requestContext.getPathVariable("roleNameCode").orElseThrow();
         return responseAssembler.buildRoleLayoutTemplateResponse(
-            referenceDataFacade.getRoleLayoutTemplateByName(roleNameCode));
+                referenceDataFacade.getRoleLayoutTemplateByName(roleNameCode));
     }
 }
 ===ENDFILE
@@ -26530,22 +26556,68 @@ class ReferenceDataControllerTest {
         assertThat(response.getBody().getData().getMarkets().get(0).getMarketCode()).isEqualTo("HK");
         verify(referenceDataFacade).getMarketsByRegion("APAC");
     }
+}
+===ENDFILE
+===FILE: ./src/test/java/com/hsbc/ccaas/papi/controller/RoleLayoutTemplatesControllerTest.java
+package com.hsbc.ccaas.papi.controller;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.*;
+
+import com.hsbc.ccaas.papi.application.ReferenceDataFacade;
+import com.hsbc.ccaas.papi.controller.helper.ReferenceDataResponseAssembler;
+import com.hsbc.ccaas.papi.controller.model.*;
+import com.hsbc.wpb.ef.ports.RequestContext;
+import java.util.List;
+import java.util.Optional;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+
+@ExtendWith(MockitoExtension.class)
+class RoleLayoutTemplatesControllerTest {
+
+    @Mock
+    private ReferenceDataFacade referenceDataFacade;
+
+    private RoleLayoutTemplatesController controller;
+
+    @BeforeEach
+    void setUp() {
+        controller = new RoleLayoutTemplatesController(referenceDataFacade, new ReferenceDataResponseAssembler());
+    }
+
+    @SuppressWarnings("unchecked")
+    private <T> RequestContext<T> mockRequestContext() {
+        RequestContext<T> rc = (RequestContext<T>) mock(RequestContext.class);
+        lenient().when(rc.getBody()).thenReturn(Optional.empty());
+        lenient().when(rc.getQueryParameter(anyString())).thenReturn(Optional.empty());
+        lenient().when(rc.getPathVariable(anyString())).thenReturn(Optional.empty());
+        return rc;
+    }
 
     @Test
     @DisplayName("GET /papi/v1/role-layout-templates returns summaries")
     void getAllRoleLayoutTemplatesReturnsList() throws Exception {
         RoleLayoutTemplateSummary summary = new RoleLayoutTemplateSummary()
-            .roleNameCode("voice_agent")
-            .roleDisplayName("Voice Agent");
+                .roleNameCode("voice_agent")
+                .roleDisplayName("Voice Agent");
         when(referenceDataFacade.getAllRoleLayoutTemplates()).thenReturn(List.of(summary));
 
         RequestContext<Void> requestContext = mockRequestContext();
-        ResponseEntity<DataResponseRoleLayoutTemplatesData> response = controller.getAllRoleLayoutTemplates(requestContext);
+        ResponseEntity<DataResponseRoleLayoutTemplatesData> response =
+                controller.getAllRoleLayoutTemplates(requestContext);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody().getData().getRoleLayoutTemplates()).hasSize(1);
         assertThat(response.getBody().getData().getRoleLayoutTemplates().get(0).getRoleNameCode())
-            .isEqualTo("voice_agent");
+                .isEqualTo("voice_agent");
         verify(referenceDataFacade).getAllRoleLayoutTemplates();
     }
 
@@ -26553,14 +26625,14 @@ class ReferenceDataControllerTest {
     @DisplayName("GET /papi/v1/role-layout-templates/{roleNameCode} returns template")
     void getRoleLayoutTemplateByNameReturnsTemplate() throws Exception {
         RoleLayoutTemplate template = new RoleLayoutTemplate()
-            .roleNameCode("chat_agent")
-            .roleDisplayName("Chat Agent");
+                .roleNameCode("chat_agent")
+                .roleDisplayName("Chat Agent");
         when(referenceDataFacade.getRoleLayoutTemplateByName("chat_agent")).thenReturn(template);
 
         RequestContext<Void> requestContext = mockRequestContext();
         when(requestContext.getPathVariable("roleNameCode")).thenReturn(Optional.of("chat_agent"));
         ResponseEntity<DataResponseRoleLayoutTemplateData> response =
-            controller.getRoleLayoutTemplateByName(requestContext);
+                controller.getRoleLayoutTemplateByName(requestContext);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody().getData().getRoleNameCode()).isEqualTo("chat_agent");
