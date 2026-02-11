@@ -1,5 +1,5 @@
 # CCaaS Entitlement SAPI - Source Bundle
-# Generated: 2026-02-11 09:36:53
+# Generated: 2026-02-11 11:51:29
 # Total files: 359
 # Categories: 1 pom.xml, 2 CLAUDE.md, 2 docs, 2 resources, 129 YAML specs, 142 main Java, 68 test Java, 13 other
 # Note: target/generated-sources NOT included - run 'mvn generate-sources' after extraction
@@ -12462,10 +12462,8 @@ public class AdGroupLayoutAssignmentController implements AdGroupsApi {
         AdGroupListRequestEnvelope envelope = requestContext.getBody()
             .orElseThrow(() -> new InvalidParameterException(SapiConstants.MSG_BODY_REQUIRED));
 
-        AdGroupListRequest requestData = envelope.getData();
-        if (requestData == null) {
-            throw new InvalidParameterException("Request data should be provided");
-        }
+        AdGroupListRequest requestData = Optional.ofNullable(envelope.getData())
+            .orElseThrow(() -> new InvalidParameterException("Request data should be provided"));
 
         AdGroupListData data = adGroupManagementFacade.listAdGroups(requestData, adGroupsPath);
 
@@ -12555,11 +12553,8 @@ public class AdminNoticeController implements NoticesApi {
         CreateNoticesRequest envelope = requestContext.getBody()
             .orElseThrow(() -> new InvalidParameterException(MSG_BODY_REQUIRED));
 
-        if (envelope.getData() == null) {
-            return ResponseEntity.badRequest().build();
-        }
-
-        AdminNoticeRequest innerRequest = envelope.getData();
+        AdminNoticeRequest innerRequest = Optional.ofNullable(envelope.getData())
+            .orElseThrow(() -> new InvalidParameterException("Request data is required"));
         AdminNotice notice = adminNoticeFacade.createNotice(innerRequest);
         AdminNoticeResponse genResponse = adminNoticeMapper.toResponse(notice);
 
@@ -12573,11 +12568,8 @@ public class AdminNoticeController implements NoticesApi {
         CreateNoticesRequest envelope = requestContext.getBody()
             .orElseThrow(() -> new InvalidParameterException(MSG_BODY_REQUIRED));
 
-        if (envelope.getData() == null) {
-            return ResponseEntity.badRequest().build();
-        }
-
-        AdminNoticeRequest facadeRequest = envelope.getData();
+        AdminNoticeRequest facadeRequest = Optional.ofNullable(envelope.getData())
+            .orElseThrow(() -> new InvalidParameterException("Request data is required"));
 
         java.util.UUID noticeUuid = java.util.UUID.fromString(noticeIdentifier);
         AdminNotice notice = adminNoticeFacade.updateNotice(noticeUuid, facadeRequest);
@@ -12593,10 +12585,8 @@ public class AdminNoticeController implements NoticesApi {
         UpdateStatusRequest envelope = requestContext.getBody()
             .orElseThrow(() -> new InvalidParameterException(MSG_BODY_REQUIRED));
 
-        AdminNoticeRequest data = envelope.getData();
-        if (data == null) {
-            return ResponseEntity.badRequest().build();
-        }
+        AdminNoticeRequest data = Optional.ofNullable(envelope.getData())
+            .orElseThrow(() -> new InvalidParameterException("Request data is required"));
         com.hsbc.ccaas.sapi.controller.model.AdminNoticeStatusDto statusCode = data.getStatusCode();
         if (statusCode == null || statusCode.getValue() == null) {
             return ResponseEntity.badRequest().build();
@@ -13123,9 +13113,10 @@ public class DirectSaveController implements DirectSavesApi {
 
         DirectSaveRequest data = Optional.ofNullable(envelope.getData())
                 .orElseThrow(() -> new InvalidParameterException("Request data is required"));
-        String targetGroupId = Optional.ofNullable(data.getTargetGroupIdentifier())
-                .filter(s -> !s.isBlank())
-                .orElseThrow(() -> new IllegalArgumentException("targetGroupIdentifier is required"));
+        String targetGroupId = data.getTargetGroupIdentifier();
+        if (targetGroupId == null || targetGroupId.isBlank()) {
+            throw new IllegalArgumentException("targetGroupIdentifier is required");
+        }
         Map<String, Object> proposedState = Optional.ofNullable(data.getProposedState())
                 .filter(m -> !m.isEmpty())
                 .orElseThrow(() -> new IllegalArgumentException("proposedState is required"));
@@ -13214,16 +13205,16 @@ public class EmbeddedAppAdminController implements EmbeddedAppsAdGroupsApi, Embe
         String groupIdentifier = envelope.getData().getGroupIdentifier();
         logger.debug("Looking up AD group config for app: {}, group: {}", appKey, groupIdentifier);
 
-        AppAdGroupConfigDto config = embeddedAppFacade.getAppAdGroupConfiguration(appKey, groupIdentifier);
-        if (config == null) {
-            return ResponseEntity.notFound().build();
-        }
-        AppAdGroupConfigResponse data = new AppAdGroupConfigResponse();
-        data.setAppKey(config.appKey());
-        data.setTitleText(config.title());
-        data.setGroupIdentifier(config.groupIdentifier());
-        data.setAssignedFunctionValues(config.assignedFunctions());
-        return ResponseEntity.ok(new UpdateAppAdGroupConfig200Response().data(data));
+        return Optional.ofNullable(embeddedAppFacade.getAppAdGroupConfiguration(appKey, groupIdentifier))
+            .map(config -> {
+                AppAdGroupConfigResponse data = new AppAdGroupConfigResponse();
+                data.setAppKey(config.appKey());
+                data.setTitleText(config.title());
+                data.setGroupIdentifier(config.groupIdentifier());
+                data.setAssignedFunctionValues(config.assignedFunctions());
+                return ResponseEntity.ok(new UpdateAppAdGroupConfig200Response().data(data));
+            })
+            .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
     @Override
@@ -13250,37 +13241,32 @@ public class EmbeddedAppAdminController implements EmbeddedAppsAdGroupsApi, Embe
         String appKey = requestContext.getPathVariable(PATH_APP_KEY).orElseThrow();
         UpdateAppAdGroupConfigRequest envelope = requestContext.getBody()
             .orElseThrow(() -> new InvalidParameterException(BODY_REQUIRED));
-        var reqData = Optional.ofNullable(envelope.getData())
-            .orElseThrow(() -> new InvalidParameterException(BODY_REQUIRED));
+        var reqData = envelope.getData();
         String actor = Optional.ofNullable(reqData.getInitiator())
             .map(i -> i.getEmployeeId())
             .orElse(null);
         logger.debug("Updating AD group config for app: {}, group: {}", appKey, reqData.getGroupIdentifier());
 
-        AppAdGroupConfigDto result = embeddedAppFacade.updateAppAdGroupConfiguration(
-            appKey, reqData.getGroupIdentifier(), reqData.getFunctions(), actor);
-
-        if (result == null) {
-            return ResponseEntity.notFound().build();
-        }
-
-        AppAdGroupConfigResponse data = new AppAdGroupConfigResponse();
-        data.setAppKey(result.appKey());
-        data.setTitleText(result.title());
-        data.setGroupIdentifier(result.groupIdentifier());
-        data.setAssignedFunctionValues(result.assignedFunctions());
-        return ResponseEntity.ok(new UpdateAppAdGroupConfig200Response().data(data));
+        return Optional.ofNullable(embeddedAppFacade.updateAppAdGroupConfiguration(
+                appKey, reqData.getGroupIdentifier(), reqData.getFunctions(), actor))
+            .map(result -> {
+                AppAdGroupConfigResponse data = new AppAdGroupConfigResponse();
+                data.setAppKey(result.appKey());
+                data.setTitleText(result.title());
+                data.setGroupIdentifier(result.groupIdentifier());
+                data.setAssignedFunctionValues(result.assignedFunctions());
+                return ResponseEntity.ok(new UpdateAppAdGroupConfig200Response().data(data));
+            })
+            .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
     @Override
     public ResponseEntity<GetEmbeddedApp200Response> getEmbeddedApp(
             RequestContext<Void> requestContext) throws Exception {
         String appKey = requestContext.getPathVariable(PATH_APP_KEY).orElseThrow();
-        EmbeddedAppDto app = embeddedAppFacade.getEmbeddedAppByKey(appKey);
-        if (app != null) {
-            return ResponseEntity.ok(new GetEmbeddedApp200Response().data(app));
-        }
-        return ResponseEntity.notFound().build();
+        return Optional.ofNullable(embeddedAppFacade.getEmbeddedAppByKey(appKey))
+            .map(app -> ResponseEntity.ok(new GetEmbeddedApp200Response().data(app)))
+            .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
     @Override
@@ -13651,7 +13637,7 @@ public class SessionLayoutController implements NoticeAcknowledgmentsApi, Entitl
 
         String groupIdentifier = Optional.ofNullable(envelope.getData())
             .map(d -> d.getGroupIdentifier())
-            .filter(id -> id != null && !id.isBlank())
+            .filter(id -> !id.isBlank())
             .orElseThrow(() -> new InvalidParameterException("Group identifier is required"));
         sessionLayoutFacade.invalidateCachedLayoutsByAdGroup(groupIdentifier);
         return ResponseEntity.noContent().build();
@@ -21707,6 +21693,7 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 @Service
 public class DefaultAdminNoticeService implements AdminNoticeService {
@@ -21765,8 +21752,9 @@ public class DefaultAdminNoticeService implements AdminNoticeService {
 
     @Override
     public AdminNotice updateNotice(UUID noticeId, AdminNoticeRequest request) {
-        if (request.getTitleText() != null && request.getTitleText().isBlank()) {
-            throw new IllegalArgumentException("Notice title cannot be null or blank");
+        String titleText = request.getTitleText();
+        if (titleText != null && !StringUtils.hasText(titleText)) {
+            throw new IllegalArgumentException("Notice title cannot be blank");
         }
 
         applyInitiatorMetadata(request);
@@ -21780,8 +21768,9 @@ public class DefaultAdminNoticeService implements AdminNoticeService {
 
         adminNoticeMapper.updateEntity(request, notice);
 
-        if (request.getCreatedByText() != null && !request.getCreatedByText().isBlank()) {
-            notice.setUpdatedBy(request.getCreatedByText().trim());
+        String createdByText = request.getCreatedByText();
+        if (StringUtils.hasText(createdByText)) {
+            notice.setUpdatedBy(createdByText.trim());
         }
 
         return adminNoticeRepository.save(notice);
@@ -21792,7 +21781,8 @@ public class DefaultAdminNoticeService implements AdminNoticeService {
         AdminNotice notice = adminNoticeRepository.findById(noticeId)
             .orElseThrow(() -> new NoticeNotFoundException(noticeId));
         notice.setStatus(status);
-        if (notice.getUpdatedBy() == null || notice.getUpdatedBy().isBlank()) {
+        String updatedBy = notice.getUpdatedBy();
+        if (!StringUtils.hasText(updatedBy)) {
             notice.setUpdatedBy(notice.getCreatedBy());
         }
         return adminNoticeRepository.save(notice);
@@ -21807,8 +21797,10 @@ public class DefaultAdminNoticeService implements AdminNoticeService {
     }
 
     private static void validateRequestTargets(AdminNoticeRequest request) {
-        boolean hasRoles = request.getTargetRoleValues() != null && !request.getTargetRoleValues().isEmpty();
-        boolean hasGroups = request.getTargetAdGroupValues() != null && !request.getTargetAdGroupValues().isEmpty();
+        var targetRoles = request.getTargetRoleValues();
+        boolean hasRoles = targetRoles != null && !targetRoles.isEmpty();
+        var targetGroups = request.getTargetAdGroupValues();
+        boolean hasGroups = targetGroups != null && !targetGroups.isEmpty();
 
         if (!Boolean.TRUE.equals(request.getBroadcastToAllFlag()) && !hasRoles && !hasGroups) {
             throw new IllegalArgumentException("Administrative notice must target at least one role, AD group, or broadcast to all");
@@ -21828,23 +21820,19 @@ public class DefaultAdminNoticeService implements AdminNoticeService {
         }
 
         String actor = resolveActor(initiator, request.getCreatedByText());
-        if (actor != null && !actor.isBlank()) {
+        if (StringUtils.hasText(actor)) {
             request.setCreatedByText(actor);
         }
     }
 
     private static String resolveActor(RequestInitiator initiator, String fallback) {
-        if (initiator == null) {
-            return fallback;
-        }
-
         String emailText = initiator.getEmailText();
-        if (emailText != null && !emailText.isBlank()) {
+        if (StringUtils.hasText(emailText)) {
             return emailText;
         }
 
         String userIdentifier = initiator.getUserIdentifier();
-        if (userIdentifier != null && !userIdentifier.isBlank()) {
+        if (StringUtils.hasText(userIdentifier)) {
             return userIdentifier;
         }
 
