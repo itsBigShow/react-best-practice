@@ -1,5 +1,5 @@
 # CCaaS Entitlement PAPI - Source Bundle
-# Generated: 2026-02-11 11:27:48
+# Generated: 2026-02-11 14:21:18
 # Total files: 284
 # Categories: 1 pom.xml, 2 CLAUDE.md, 3 docs, 1 resources, 131 YAML specs, 86 main Java, 52 test Java, 8 other
 # Note: target/generated-sources NOT included - run 'mvn generate-sources' after extraction
@@ -14633,6 +14633,7 @@ import com.hsbc.ccaas.papi.controller.api.AdGroupsApi;
 import com.hsbc.ccaas.papi.controller.api.AdGroupConfigurationCopiesApi;
 import com.hsbc.ccaas.papi.controller.model.*;
 import com.hsbc.ccaas.papi.controller.helper.AdGroupResponseAssembler;
+import com.hsbc.ccaas.papi.controller.helper.RequestValidationHelper;
 import com.hsbc.ccaas.papi.application.AdGroupManagementFacade;
 import com.hsbc.ccaas.papi.dto.AdGroupFilterCriteria;
 import com.hsbc.ccaas.papi.dto.PaginatedResult;
@@ -14707,10 +14708,8 @@ public class AdGroupLayoutAssignmentController implements AdGroupsApi, AdGroupCo
             RequestContext<AdGroupCopyRequestEnvelope> requestContext) throws Exception {
         var envelope = requestContext.getBody().orElseThrow(
             () -> new IllegalArgumentException(CommonConstants.REQUEST_BODY_REQUIRED));
-        if (envelope.getData() == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, CommonConstants.REQUEST_BODY_DATA_REQUIRED);
-        }
-        var adGroupCopyRequest = envelope.getData();
+        var adGroupCopyRequest = RequestValidationHelper.requireData(
+            envelope.getData(), CommonConstants.REQUEST_BODY_DATA_REQUIRED);
         if (adGroupCopyRequest.getSourceGroupIdentifier() == null
                 || adGroupCopyRequest.getSourceGroupIdentifier().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Source group identifier is required");
@@ -14881,10 +14880,8 @@ public class ApprovalWorkflowController implements PendingChangesApi, ChangeAppr
 
         var envelope = requestContext.getBody().orElseThrow(
             () -> new IllegalArgumentException(CommonConstants.REQUEST_BODY_REQUIRED));
-        if (envelope.getData() == null) {
-            throw new IllegalArgumentException(CommonConstants.REQUEST_BODY_DATA_REQUIRED);
-        }
-        var submitChangeRequest = envelope.getData();
+        var submitChangeRequest = RequestValidationHelper.requireData(
+            envelope.getData(), CommonConstants.REQUEST_BODY_DATA_REQUIRED);
         String groupId = submitChangeRequest.getTargetGroupIdentifier();
         log.info("Submit change request: groupId={}", groupId);
 
@@ -14958,10 +14955,8 @@ public class ApprovalWorkflowController implements PendingChangesApi, ChangeAppr
 
         var envelope = requestContext.getBody().orElseThrow(
             () -> new IllegalArgumentException(CommonConstants.REQUEST_BODY_REQUIRED));
-        if (envelope.getData() == null) {
-            throw new IllegalArgumentException(CommonConstants.REQUEST_BODY_DATA_REQUIRED);
-        }
-        var approveChangeRequest = envelope.getData();
+        var approveChangeRequest = RequestValidationHelper.requireData(
+            envelope.getData(), CommonConstants.REQUEST_BODY_DATA_REQUIRED);
         String changeId = approveChangeRequest.getChangeIdentifier();
         log.info("Approve change: id={}", changeId);
 
@@ -14985,10 +14980,8 @@ public class ApprovalWorkflowController implements PendingChangesApi, ChangeAppr
 
         var envelope = requestContext.getBody().orElseThrow(
             () -> new IllegalArgumentException(CommonConstants.REQUEST_BODY_REQUIRED));
-        if (envelope.getData() == null) {
-            throw new IllegalArgumentException(CommonConstants.REQUEST_BODY_DATA_REQUIRED);
-        }
-        var rejectChangeRequest = envelope.getData();
+        var rejectChangeRequest = RequestValidationHelper.requireData(
+            envelope.getData(), CommonConstants.REQUEST_BODY_DATA_REQUIRED);
         String changeId = rejectChangeRequest.getChangeIdentifier();
         log.info("Reject change: id={}, reason={}", changeId, rejectChangeRequest.getReasonText());
 
@@ -15197,6 +15190,7 @@ import com.hsbc.ccaas.papi.constants.CommonConstants;
 import com.hsbc.ccaas.papi.controller.api.AdGroupConfigsApi;
 import com.hsbc.ccaas.papi.controller.helper.RequestValidationHelper;
 import com.hsbc.ccaas.papi.controller.model.*;
+
 import com.hsbc.ccaas.papi.client.SapiApprovalClient;
 import com.hsbc.ccaas.identity.service.helper.IdentityContextAccessor;
 import com.hsbc.wpb.ef.ports.RequestContext;
@@ -15235,11 +15229,8 @@ public class DirectSaveController implements AdGroupConfigsApi {
 
         var envelope = requestContext.getBody().orElseThrow(
             () -> new ResponseStatusException(HttpStatus.BAD_REQUEST, CommonConstants.REQUEST_BODY_REQUIRED));
-        if (envelope.getData() == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, CommonConstants.REQUEST_BODY_DATA_REQUIRED);
-        }
-
-        var request = envelope.getData();
+        var request = RequestValidationHelper.requireData(
+            envelope.getData(), CommonConstants.REQUEST_BODY_DATA_REQUIRED);
         String groupIdentifier = request.getTargetGroupIdentifier();
         // Validate the target group is specified -- without it SAPI cannot identify which config to save
         if (groupIdentifier == null || groupIdentifier.isBlank()) {
@@ -15281,6 +15272,7 @@ import com.hsbc.ccaas.papi.controller.api.EmbeddedAppsApi;
 import com.hsbc.ccaas.papi.controller.api.EmbeddedAppsAdGroupsApi;
 import com.hsbc.ccaas.papi.controller.model.*;
 import com.hsbc.ccaas.papi.controller.helper.EmbeddedAppResponseAssembler;
+import com.hsbc.ccaas.papi.controller.helper.RequestValidationHelper;
 import com.hsbc.ccaas.papi.application.EmbeddedAppFacade;
 import com.hsbc.ccaas.papi.service.AdminAuthorizationService;
 import com.hsbc.ccaas.identity.service.helper.IdentityContextAccessor;
@@ -15371,10 +15363,8 @@ public class EmbeddedAppAdminController implements EmbeddedAppsApi, EmbeddedApps
         String appKey = requestContext.getPathVariable(APP_KEY).orElseThrow();
         var envelope = requestContext.getBody().orElseThrow(
             () -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Request body is required"));
-        if (envelope.getData() == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Request body data is required");
-        }
-        var updateAdGroupConfigRequest = envelope.getData();
+        var updateAdGroupConfigRequest = RequestValidationHelper.requireData(
+            envelope.getData(), "Request body data is required");
         AppAdGroupConfigResponse result = embeddedAppFacade.updateAppAdGroupConfiguration(
             appKey,
             updateAdGroupConfigRequest.getGroupIdentifier(),
@@ -15519,6 +15509,7 @@ package com.hsbc.ccaas.papi.controller;
 import com.hsbc.ccaas.papi.controller.api.EntitlementsApi;
 import com.hsbc.ccaas.papi.controller.api.SessionsApi;
 import com.hsbc.ccaas.papi.controller.model.*;
+import com.hsbc.ccaas.papi.controller.helper.RequestValidationHelper;
 import com.hsbc.ccaas.papi.application.SessionLayoutFacade;
 import com.hsbc.ccaas.papi.constants.CommonConstants;
 import com.hsbc.ccaas.identity.service.helper.IdentityContextAccessor;
@@ -15556,11 +15547,9 @@ public class SessionLayoutController implements SessionsApi, EntitlementsApi {
         var envelope = requestContext.getBody().orElseThrow(
             () -> new org.springframework.web.server.ResponseStatusException(
                 org.springframework.http.HttpStatus.BAD_REQUEST, CommonConstants.REQUEST_BODY_REQUIRED));
-        if (envelope.getData() == null) {
-            throw new org.springframework.web.server.ResponseStatusException(
-                org.springframework.http.HttpStatus.BAD_REQUEST, CommonConstants.REQUEST_BODY_DATA_REQUIRED);
-        }
-        sessionLayoutFacade.updateNoticeState(envelope.getData());
+        var data = RequestValidationHelper.requireData(
+            envelope.getData(), CommonConstants.REQUEST_BODY_DATA_REQUIRED);
+        sessionLayoutFacade.updateNoticeState(data);
         var responseData = new AcknowledgeNotice200ResponseData()
                 .messageText(CommonConstants.SuccessMessages.NOTICE_STATE_UPDATED);
         return ResponseEntity.ok(new AcknowledgeNotice200Response().data(responseData));
@@ -15572,11 +15561,9 @@ public class SessionLayoutController implements SessionsApi, EntitlementsApi {
         var envelope = requestContext.getBody().orElseThrow(
             () -> new org.springframework.web.server.ResponseStatusException(
                 org.springframework.http.HttpStatus.BAD_REQUEST, CommonConstants.REQUEST_BODY_REQUIRED));
-        if (envelope.getData() == null) {
-            throw new org.springframework.web.server.ResponseStatusException(
-                org.springframework.http.HttpStatus.BAD_REQUEST, CommonConstants.REQUEST_BODY_DATA_REQUIRED);
-        }
-        AddEntitlementResponse result = sessionLayoutFacade.addEntitlementToRoleTemplates(envelope.getData());
+        var data = RequestValidationHelper.requireData(
+            envelope.getData(), CommonConstants.REQUEST_BODY_DATA_REQUIRED);
+        AddEntitlementResponse result = sessionLayoutFacade.addEntitlementToRoleTemplates(data);
         return ResponseEntity.ok(GeneratedModelMapper.toEntitlementResultResponse(result));
     }
 }
@@ -16486,6 +16473,35 @@ public final class RequestValidationHelper {
             return employeeId;
         }
         return identity.email();
+    }
+
+    /**
+     * Requires a non-null envelope data field, throwing BAD_REQUEST if null.
+     * Generated models annotate getData() with @NotNull, but the custom
+     * RequestContext framework does not enforce bean validation automatically,
+     * so runtime null values are possible from malformed JSON payloads.
+     *
+     * @param data the envelope data to validate
+     * @param errorMessage the error message if data is null
+     * @param <T> the data type
+     * @return the non-null data
+     * @throws ResponseStatusException with BAD_REQUEST if data is null
+     */
+    public static <T> T requireData(T data, String errorMessage) {
+        if (data == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, errorMessage);
+        }
+        return data;
+    }
+
+    /**
+     * Checks whether the given AD group response has any access control fields populated.
+     *
+     * @param group the AD group layout response to inspect
+     * @return true if at least one access field (maker, checker, super admin) is non-null
+     */
+    public static boolean hasAccessFields(Object makerIdentifier, Object checkerIdentifier, Object superAdminIdentifier) {
+        return makerIdentifier != null || checkerIdentifier != null || superAdminIdentifier != null;
     }
 }
 ===ENDFILE
@@ -18088,6 +18104,7 @@ import com.hsbc.ccaas.papi.dto.AdGroupFilterCriteria;
 import com.hsbc.ccaas.papi.dto.PaginatedResult;
 import com.hsbc.ccaas.papi.dto.sapi.SapiRequestContext;
 import com.hsbc.ccaas.identity.service.helper.IdentityContextAccessor;
+import com.hsbc.ccaas.papi.controller.helper.RequestValidationHelper;
 import com.hsbc.ccaas.papi.service.AdGroupLayoutAssignmentService;
 import com.hsbc.ccaas.papi.service.AdminAuthorizationService;
 import com.hsbc.ccaas.papi.service.helper.SapiExceptionHandler;
@@ -18155,9 +18172,10 @@ public class DefaultAdGroupLayoutAssignmentService implements AdGroupLayoutAssig
             // Prefer the group's own maker/checker/super_admin fields for access level.
             // Only fall back to parent admin group when the item has no access fields.
             AdGroupLayoutResponse accessSource = result;
-            if (result.getMakerAdGroupIdentifier() == null
-                    && result.getCheckerAdGroupIdentifier() == null
-                    && result.getSuperAdminAdGroupIdentifier() == null) {
+            if (!RequestValidationHelper.hasAccessFields(
+                    result.getMakerAdGroupIdentifier(),
+                    result.getCheckerAdGroupIdentifier(),
+                    result.getSuperAdminAdGroupIdentifier())) {
                 String adminId = result.getAdminGroupIdentifier();
                 if (adminId != null && !adminId.isBlank() && !adminId.equals(groupIdentifier)) {
                     AdGroupLayoutResponse adminGroup = SapiExceptionHandler.executeWithNotFoundDefault(
@@ -18263,9 +18281,10 @@ public class DefaultAdGroupLayoutAssignmentService implements AdGroupLayoutAssig
             for (AdGroupLayoutResponse item : response.items()) {
                 AdGroupLayoutResponse accessSource = item;
                 // Fall back to parent admin group only when the item itself has no access fields
-                if (item.getMakerAdGroupIdentifier() == null
-                        && item.getCheckerAdGroupIdentifier() == null
-                        && item.getSuperAdminAdGroupIdentifier() == null) {
+                if (!RequestValidationHelper.hasAccessFields(
+                        item.getMakerAdGroupIdentifier(),
+                        item.getCheckerAdGroupIdentifier(),
+                        item.getSuperAdminAdGroupIdentifier())) {
                     String adminId = item.getAdminGroupIdentifier();
                     AdGroupLayoutResponse adminGroup = adminId != null ? adminGroupMap.get(adminId) : null;
                     if (adminGroup != null) {
@@ -18511,6 +18530,7 @@ import com.hsbc.ccaas.papi.constants.CommonConstants;
 import com.hsbc.ccaas.papi.controller.model.AddEntitlementRequest;
 import com.hsbc.ccaas.papi.controller.model.AddEntitlementResponse;
 import com.hsbc.ccaas.papi.controller.model.NoticeAcknowledgmentRequest;
+import com.hsbc.ccaas.papi.controller.helper.RequestValidationHelper;
 import com.hsbc.ccaas.papi.service.SessionLayoutService;
 import com.hsbc.ccaas.papi.service.helper.SapiExceptionHandler;
 import com.hsbc.ccaas.identity.service.helper.IdentityContextAccessor;
@@ -18541,9 +18561,7 @@ public class DefaultSessionLayoutService implements SessionLayoutService {
     public void updateNoticeState(NoticeAcknowledgmentRequest request) {
         String userId = requireUserId();
 
-        String stateCode = request.getStateCode() != null
-            ? request.getStateCode().getValue()
-            : "ACKNOWLEDGED";
+        String stateCode = request.getStateCode().getValue();
 
         SapiExceptionHandler.executeWithExceptionHandling(
             () -> {
@@ -18573,12 +18591,7 @@ public class DefaultSessionLayoutService implements SessionLayoutService {
             );
         }
 
-        if (request.getStateValue() == null) {
-            throw new ResponseStatusException(
-                HttpStatus.BAD_REQUEST,
-                "Entitlement value cannot be null"
-            );
-        }
+        RequestValidationHelper.requireData(request.getStateValue(), "Entitlement value cannot be null");
 
         return SapiExceptionHandler.executeWithExceptionHandling(
             () -> {
