@@ -1,5 +1,5 @@
 # CCaaS Entitlement PAPI - Source Bundle
-# Generated: 2026-02-11 02:46:48
+# Generated: 2026-02-11 11:27:48
 # Total files: 284
 # Categories: 1 pom.xml, 2 CLAUDE.md, 3 docs, 1 resources, 131 YAML specs, 86 main Java, 52 test Java, 8 other
 # Note: target/generated-sources NOT included - run 'mvn generate-sources' after extraction
@@ -12359,6 +12359,8 @@ import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
+import org.springframework.util.StringUtils;
+
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -12385,7 +12387,7 @@ public class SapiAdminNoticeClient {
             throw new IllegalArgumentException(NOTICE_REQUEST_CANNOT_BE_NULL);
         }
 
-        if (request.getTitleText() == null || request.getTitleText().isBlank()) {
+        if (!StringUtils.hasText(request.getTitleText())) {
             logger.warn("Admin notice title is null or blank");
             throw new IllegalArgumentException("Admin notice title cannot be null or blank");
         }
@@ -12467,7 +12469,7 @@ public class SapiAdminNoticeClient {
             throw new IllegalArgumentException(NOTICE_ID_CANNOT_BE_NULL);
         }
 
-        if (status == null || status.isBlank()) {
+        if (!StringUtils.hasText(status)) {
             logger.warn("Admin notice status is null or blank");
             throw new IllegalArgumentException("Admin notice status cannot be null or blank");
         }
@@ -12600,6 +12602,7 @@ import java.util.Objects;
 public class SapiApprovalClient {
 
     private static final Logger logger = LoggerFactory.getLogger(SapiApprovalClient.class);
+    private static final String PENDING_CHANGE_ID = "Pending change ID";
 
     private final RestClient sapiRestClient;
 
@@ -12686,7 +12689,7 @@ public class SapiApprovalClient {
      * SAPI returns the full pending-change record including proposed config and approval state.
      */
     public SapiPendingChange getPendingChange(String id) {
-        ValidationUtil.requireNotBlank(id, "Pending change ID");
+        ValidationUtil.requireNotBlank(id, PENDING_CHANGE_ID);
 
         logger.debug("Getting pending change: id={}", id);
 
@@ -12711,7 +12714,7 @@ public class SapiApprovalClient {
      * The approverAdGroups are passed so SAPI can verify the approver has the required role.
      */
     public SapiPendingChange approve(String id, String approverId, String approverName, String comment, List<String> approverAdGroups) {
-        ValidationUtil.requireNotBlank(id, "Pending change ID");
+        ValidationUtil.requireNotBlank(id, PENDING_CHANGE_ID);
         ValidationUtil.requireNotBlank(approverId, "Approver ID");
 
         logger.debug("Approve: id={}, approver={}", id, approverId);
@@ -12741,7 +12744,7 @@ public class SapiApprovalClient {
      * must submit a new change request.
      */
     public SapiPendingChange reject(String id, String rejectorId, String rejectorName, String reason, List<String> rejecterAdGroups) {
-        ValidationUtil.requireNotBlank(id, "Pending change ID");
+        ValidationUtil.requireNotBlank(id, PENDING_CHANGE_ID);
         ValidationUtil.requireNotBlank(rejectorId, "Rejector ID");
         ValidationUtil.requireNotBlank(reason, "Rejection reason");
 
@@ -12771,7 +12774,7 @@ public class SapiApprovalClient {
      * already been approved or rejected cannot be cancelled.
      */
     public SapiPendingChange cancel(String id, String userId) {
-        ValidationUtil.requireNotBlank(id, "Pending change ID");
+        ValidationUtil.requireNotBlank(id, PENDING_CHANGE_ID);
         ValidationUtil.requireNotBlank(userId, "User ID");
 
         logger.debug("Cancel: id={}, userId={}", id, userId);
@@ -12881,35 +12884,47 @@ public class SapiAuditClient {
     }
 
     /**
+     * Encapsulates all optional audit log query parameters.
+     */
+    public record AuditLogQuery(
+            int offset, int limit, String action, String targetGroupIdentifier,
+            String performedBy, String marketCode, String regionCode,
+            String changeType, String startDate, String endDate, String criticalOnly) {}
+
+    /**
      * Get audit logs with optional filters.
      */
-    public SapiDataMetaResponse<AuditLogData> getAuditLogs(int offset, int limit, String action,
-            String targetGroupIdentifier, String performedBy, String marketCode,
-            String regionCode, String changeType, String startDate, String endDate,
-            String criticalOnly) {
-        logger.debug("Getting audit logs: action={}, group={}, performedBy={}", action, targetGroupIdentifier, performedBy);
+    public SapiDataMetaResponse<AuditLogData> getAuditLogs(AuditLogQuery query) {
+        logger.debug("Getting audit logs: action={}, group={}, performedBy={}",
+                query.action(), query.targetGroupIdentifier(), query.performedBy());
 
         return SapiExceptionHandler.executeWithExceptionHandling(
             () -> sapiRestClient.get()
                     .uri(uriBuilder -> {
                         uriBuilder.path(SapiApiPaths.AUDIT_LOGS)
-                                .queryParam("offset", offset)
-                                .queryParam("limit", limit);
-                        if (action != null) uriBuilder.queryParam("action", action);
-                        if (targetGroupIdentifier != null) uriBuilder.queryParam("targetGroupIdentifier", targetGroupIdentifier);
-                        if (performedBy != null) uriBuilder.queryParam("performedBy", performedBy);
-                        if (marketCode != null) uriBuilder.queryParam("marketCode", marketCode);
-                        if (regionCode != null) uriBuilder.queryParam("regionCode", regionCode);
-                        if (changeType != null) uriBuilder.queryParam("changeType", changeType);
-                        if (startDate != null) uriBuilder.queryParam("startDate", startDate);
-                        if (endDate != null) uriBuilder.queryParam("endDate", endDate);
-                        if (criticalOnly != null) uriBuilder.queryParam("criticalOnly", criticalOnly);
+                                .queryParam("offset", query.offset())
+                                .queryParam("limit", query.limit());
+                        addOptionalParam(uriBuilder, "action", query.action());
+                        addOptionalParam(uriBuilder, "targetGroupIdentifier", query.targetGroupIdentifier());
+                        addOptionalParam(uriBuilder, "performedBy", query.performedBy());
+                        addOptionalParam(uriBuilder, "marketCode", query.marketCode());
+                        addOptionalParam(uriBuilder, "regionCode", query.regionCode());
+                        addOptionalParam(uriBuilder, "changeType", query.changeType());
+                        addOptionalParam(uriBuilder, "startDate", query.startDate());
+                        addOptionalParam(uriBuilder, "endDate", query.endDate());
+                        addOptionalParam(uriBuilder, "criticalOnly", query.criticalOnly());
                         return uriBuilder.build();
                     })
                     .retrieve()
                     .body(new ParameterizedTypeReference<SapiDataMetaResponse<AuditLogData>>(){}),
             "Get audit logs"
         );
+    }
+
+    private static void addOptionalParam(org.springframework.web.util.UriBuilder builder, String name, String value) {
+        if (value != null) {
+            builder.queryParam(name, value);
+        }
     }
 }
 ===ENDFILE
@@ -14807,6 +14822,7 @@ import com.hsbc.ccaas.papi.service.AdminAuthorizationService;
 import com.hsbc.ccaas.papi.util.PaginationHelper;
 import com.hsbc.wpb.ef.ports.RequestContext;
 import java.util.*;
+import org.springframework.util.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
@@ -14835,6 +14851,7 @@ public class ApprovalWorkflowController implements PendingChangesApi, ChangeAppr
 
     private static final Logger log = LoggerFactory.getLogger(ApprovalWorkflowController.class);
     private static final String CHANGE_IDENTIFIER = "changeIdentifier";
+    private static final String REQUEST_CONTEXT_NOT_NULL = "RequestContext must not be null";
 
     private final IdentityContextAccessor identity;
     private final SapiApprovalClient sapiApprovalClient;
@@ -14859,7 +14876,7 @@ public class ApprovalWorkflowController implements PendingChangesApi, ChangeAppr
     @Override
     public ResponseEntity<DataResponsePendingChangeData> submitChange(
             RequestContext<SubmitChangeRequestEnvelope> requestContext) throws Exception {
-        Objects.requireNonNull(requestContext, "RequestContext must not be null");
+        Objects.requireNonNull(requestContext, REQUEST_CONTEXT_NOT_NULL);
         authorizationService.requireAdminRole();
 
         var envelope = requestContext.getBody().orElseThrow(
@@ -14892,7 +14909,7 @@ public class ApprovalWorkflowController implements PendingChangesApi, ChangeAppr
     @Override
     public ResponseEntity<DataMetaResponsePendingChangesData> listPendingChanges(
             RequestContext<Void> requestContext) throws Exception {
-        Objects.requireNonNull(requestContext, "RequestContext must not be null");
+        Objects.requireNonNull(requestContext, REQUEST_CONTEXT_NOT_NULL);
         authorizationService.requireAdminRole();
 
         String statusCode = requestContext.getQueryParameter("statusCode").orElse(null);
@@ -14919,7 +14936,7 @@ public class ApprovalWorkflowController implements PendingChangesApi, ChangeAppr
     @Override
     public ResponseEntity<DataResponsePendingChangeData> getPendingChange(
             RequestContext<Void> requestContext) throws Exception {
-        Objects.requireNonNull(requestContext, "RequestContext must not be null");
+        Objects.requireNonNull(requestContext, REQUEST_CONTEXT_NOT_NULL);
         authorizationService.requireAdminRole();
 
         String id = requestContext.getPathVariable(CHANGE_IDENTIFIER).orElseThrow();
@@ -14936,7 +14953,7 @@ public class ApprovalWorkflowController implements PendingChangesApi, ChangeAppr
     @Override
     public ResponseEntity<DataResponseApprovalData> approveChange(
             RequestContext<ApproveChangeRequestEnvelope> requestContext) throws Exception {
-        Objects.requireNonNull(requestContext, "RequestContext must not be null");
+        Objects.requireNonNull(requestContext, REQUEST_CONTEXT_NOT_NULL);
         authorizationService.requireAdminRole();
 
         var envelope = requestContext.getBody().orElseThrow(
@@ -14963,7 +14980,7 @@ public class ApprovalWorkflowController implements PendingChangesApi, ChangeAppr
     @Override
     public ResponseEntity<DataResponseRejectionData> rejectChange(
             RequestContext<RejectChangeRequestEnvelope> requestContext) throws Exception {
-        Objects.requireNonNull(requestContext, "RequestContext must not be null");
+        Objects.requireNonNull(requestContext, REQUEST_CONTEXT_NOT_NULL);
         authorizationService.requireAdminRole();
 
         var envelope = requestContext.getBody().orElseThrow(
@@ -14976,7 +14993,8 @@ public class ApprovalWorkflowController implements PendingChangesApi, ChangeAppr
         log.info("Reject change: id={}, reason={}", changeId, rejectChangeRequest.getReasonText());
 
         // Rejection reason is mandatory for audit compliance -- validate before SAPI call
-        if (rejectChangeRequest.getReasonText() == null || rejectChangeRequest.getReasonText().isBlank()) {
+        String reasonText = rejectChangeRequest.getReasonText();
+        if (!StringUtils.hasText(reasonText)) {
             return responseAssembler.buildRejectionValidationError(changeId);
         }
 
@@ -14985,9 +15003,9 @@ public class ApprovalWorkflowController implements PendingChangesApi, ChangeAppr
         String rejectorName = "";
         List<String> adGroups = identity.adGroups();
         SapiPendingChange sapiResult = sapiApprovalClient.reject(
-                changeId, rejectorId, rejectorName, rejectChangeRequest.getReasonText(), adGroups);
+                changeId, rejectorId, rejectorName, reasonText, adGroups);
 
-        return responseAssembler.buildRejectionResponse(changeId, rejectorName, rejectChangeRequest.getReasonText(), sapiResult);
+        return responseAssembler.buildRejectionResponse(changeId, rejectorName, reasonText, sapiResult);
     }
 
     // ========================================================================
@@ -14997,7 +15015,7 @@ public class ApprovalWorkflowController implements PendingChangesApi, ChangeAppr
     @Override
     public ResponseEntity<DataResponseCancellationData> cancelChange(
             RequestContext<Void> requestContext) throws Exception {
-        Objects.requireNonNull(requestContext, "RequestContext must not be null");
+        Objects.requireNonNull(requestContext, REQUEST_CONTEXT_NOT_NULL);
         authorizationService.requireAdminRole();
 
         String id = requestContext.getPathVariable(CHANGE_IDENTIFIER).orElseThrow();
@@ -15098,8 +15116,8 @@ public class AuditController implements MyActivityApi, AuditLogsApi {
         log.info("Get audit logs: action={}, group={}, performedBy={}", action, targetGroupIdentifier, performedBy);
 
         SapiDataMetaResponse<AuditLogData> sapiResponse = sapiAuditClient.getAuditLogs(
-                offset, limit, action, targetGroupIdentifier, performedBy,
-                marketCode, regionCode, changeType, startDate, endDate, criticalOnly);
+                new SapiAuditClient.AuditLogQuery(offset, limit, action, targetGroupIdentifier,
+                        performedBy, marketCode, regionCode, changeType, startDate, endDate, criticalOnly));
 
         return responseAssembler.buildAuditLogResponse(sapiResponse);
     }
@@ -15577,6 +15595,7 @@ import com.hsbc.ccaas.identity.service.helper.IdentityContextAccessor;
 import com.hsbc.ccaas.papi.mapper.GeneratedModelMapper;
 import com.hsbc.wpb.ef.ports.RequestContext;
 import java.util.List;
+import java.util.Optional;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15609,14 +15628,11 @@ public class UserRoleManagementController implements UsersApi {
         String userId = requestContext.getPathVariable("userIdentifier").orElseThrow();
         var envelope = requestContext.getBody().orElseThrow(
             () -> new ResponseStatusException(HttpStatus.BAD_REQUEST, CommonConstants.REQUEST_BODY_REQUIRED));
-        if (envelope.getData() == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, CommonConstants.REQUEST_BODY_DATA_REQUIRED);
-        }
-        var body = envelope.getData();
+        var body = Optional.ofNullable(envelope.getData())
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, CommonConstants.REQUEST_BODY_DATA_REQUIRED));
         String roleName = body.getRoleNameText();
 
         RequestValidationHelper.validateUserId(userId, logger);
-        RequestValidationHelper.validateRequestNotNull(body, logger);
         RequestValidationHelper.validateNotBlank(roleName, "role name", logger);
         RequestValidationHelper.validateNotBlank(body.getAdGroupIdentifier(), "AD group identifier", logger);
 
@@ -15645,11 +15661,10 @@ public class UserRoleManagementController implements UsersApi {
         BulkPrimaryAssignmentRequestEnvelope body = requestContext.getBody().orElseThrow(
             () -> new ResponseStatusException(HttpStatus.BAD_REQUEST, CommonConstants.REQUEST_BODY_REQUIRED));
 
-        if (body.getData() == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Request must contain a data object");
-        }
+        var bulkData = Optional.ofNullable(body.getData())
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Request must contain a data object"));
 
-        List<BulkPrimaryAssignmentRequest> requests = body.getData().getAssignmentValues();
+        List<BulkPrimaryAssignmentRequest> requests = bulkData.getAssignmentValues();
         if (requests == null || requests.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Request must contain at least one assignment item");
         }
@@ -15721,7 +15736,7 @@ public class AdGroupResponseAssembler {
         dataData.setCopyResult(response);
         var body = new DataResponseCopyResultData().data(dataData);
 
-        if (response.getSuccessFlag() != null && !response.getSuccessFlag()) {
+        if (Boolean.FALSE.equals(response.getSuccessFlag())) {
             String error = response.getErrorText();
             if ("SOURCE_NOT_FOUND".equals(error) || "TARGET_NOT_FOUND".equals(error)) {
                 return ResponseEntity.status(404).body(body);
@@ -16869,7 +16884,6 @@ public final class EmbeddedAppPayloads {
 package com.hsbc.ccaas.papi.dto.sapi;
 
 import java.util.List;
-import java.util.Map;
 
 /**
  * Payload records for layout and entitlement SAPI requests.
@@ -17121,7 +17135,7 @@ public class AdminAuthorizationService {
     }
 
     public void requireAdminRole() {
-        roleResolutionService.requireAdmin(identity.token(), identity.adGroups());
+        roleResolutionService.requireAdmin(identity.adGroups());
     }
 
     public void requireSupervisorRole() {
@@ -17378,6 +17392,7 @@ public class RoleResolutionService {
     private final RestClient sapiRestClient;
 
     // High-performance Caffeine cache (keyed by adGroups hash)
+    @SuppressWarnings("java:S3749") // Intentionally local cache, not an injected dependency
     private final Cache<String, String> roleCache = Caffeine.newBuilder()
         .maximumSize(10_000)
         .expireAfterWrite(Duration.ofMinutes(5))
@@ -17427,7 +17442,7 @@ public class RoleResolutionService {
      * Require admin role - throws 403 if not admin.
      * Enterprise pattern: takes token + adGroups from identity context.
      */
-    public void requireAdmin(String token, List<String> adGroups) {
+    public void requireAdmin(List<String> adGroups) {
         List<String> roles = resolveRolesFromAdGroups(adGroups);
         if (!roles.contains(CommonConstants.Roles.ADMIN)) {
             logger.warn("Access denied: user has roles {}, expected 'admin'", roles);
@@ -17763,17 +17778,14 @@ public class SapiExceptionHandler {
         try {
             return operation.get();
         } catch (RestClientResponseException ex) {
-            LOG.error("SAPI error during {}: status={}, body={}", operationDescription, ex.getStatusCode(), ex.getResponseBodyAsString());
             throw new ResponseStatusException(ex.getStatusCode(), operationDescription + " failed", ex);
         } catch (ResourceAccessException ex) {
-            LOG.error("Network error during {}: {}", operationDescription, ex.getMessage());
             throw new ResponseStatusException(
                 HttpStatus.SERVICE_UNAVAILABLE,
                 operationDescription + " failed - service unavailable",
                 ex
             );
         } catch (IllegalArgumentException | IllegalStateException ex) {
-            LOG.error("Validation error during {}: {}", operationDescription, ex.getMessage());
             throw new ResponseStatusException(
                 HttpStatus.BAD_REQUEST,
                 operationDescription + " - validation error",
@@ -17974,11 +17986,11 @@ public class UserAccessEnricher {
 
         // Try the specific market first, then fall back to DEFAULT for global config
         List<String> availableFunctions = extractAvailableFunctions(regionalUrls, market);
-        if (availableFunctions == null) {
+        if (availableFunctions.isEmpty()) {
             availableFunctions = extractAvailableFunctions(regionalUrls, DEFAULT_MARKET);
         }
         // No availability list means unrestricted: pass all functions through
-        if (availableFunctions == null) {
+        if (availableFunctions.isEmpty()) {
             return entitledFunctions;
         }
 
@@ -18007,7 +18019,7 @@ public class UserAccessEnricher {
     private List<String> extractAvailableFunctions(Map<String, Object> regionalUrls, String market) {
         Object config = regionalUrls.get(market);
         if (config == null) {
-            return null;
+            return Collections.emptyList();
         }
 
         // Handle raw Map deserialization (common when SAPI returns generic JSON)
@@ -18026,7 +18038,7 @@ public class UserAccessEnricher {
             }
         }
 
-        return null;
+        return Collections.emptyList();
     }
 
     /**
@@ -18050,16 +18062,13 @@ public class UserAccessEnricher {
         Set<String> userGroupSet = new HashSet<>(userAdGroups);
 
         // Evaluate in descending privilege order: highest matching role wins
-        if (group.getSuperAdminAdGroupIdentifier() != null
-                && userGroupSet.contains(group.getSuperAdminAdGroupIdentifier())) {
+        if (userGroupSet.contains(group.getSuperAdminAdGroupIdentifier())) {
             return AdGroupLayoutResponse.UserAccessCodeEnum.SUPER_ADMIN;
         }
-        if (group.getCheckerAdGroupIdentifier() != null
-                && userGroupSet.contains(group.getCheckerAdGroupIdentifier())) {
+        if (userGroupSet.contains(group.getCheckerAdGroupIdentifier())) {
             return AdGroupLayoutResponse.UserAccessCodeEnum.CHECKER;
         }
-        if (group.getMakerAdGroupIdentifier() != null
-                && userGroupSet.contains(group.getMakerAdGroupIdentifier())) {
+        if (userGroupSet.contains(group.getMakerAdGroupIdentifier())) {
             return AdGroupLayoutResponse.UserAccessCodeEnum.MAKER;
         }
         // Default: no admin AD group matched, grant read-only viewer access
@@ -23488,7 +23497,7 @@ public class TestRoleResolutionConfig {
         RoleResolutionService mockService = Mockito.mock(RoleResolutionService.class);
 
         // Mock requireAdmin to allow all requests (for integration testing)
-        Mockito.doNothing().when(mockService).requireAdmin(Mockito.anyString(), Mockito.anyList());
+        Mockito.doNothing().when(mockService).requireAdmin(Mockito.anyList());
 
         // Mock resolveRolesFromAdGroups to return admin role
         Mockito.when(mockService.resolveRolesFromAdGroups(Mockito.anyList())).thenReturn(List.of("admin"));
@@ -25082,6 +25091,7 @@ import static org.mockito.Mockito.*;
 
 import com.hsbc.ccaas.papi.controller.model.*;
 import com.hsbc.ccaas.papi.client.SapiAuditClient;
+import com.hsbc.ccaas.papi.client.SapiAuditClient.AuditLogQuery;
 import com.hsbc.ccaas.papi.controller.helper.AuditResponseAssembler;
 import com.hsbc.ccaas.papi.dto.sapi.AuditPayloads.ActivityLogData;
 import com.hsbc.ccaas.papi.dto.sapi.AuditPayloads.AuditLogData;
@@ -25299,8 +25309,7 @@ class AuditControllerTest {
         @Test
         @DisplayName("should delegate to SAPI and return 200")
         void getAuditLogs_delegatesToSapi_returns200() throws Exception {
-            when(sapiAuditClient.getAuditLogs(eq(0), eq(25),
-                    isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()))
+            when(sapiAuditClient.getAuditLogs(any(SapiAuditClient.AuditLogQuery.class)))
                     .thenReturn(buildSapiAuditResponse(5));
 
             RequestContext<Void> requestContext = mockRequestContext();
@@ -25320,9 +25329,7 @@ class AuditControllerTest {
         @Test
         @DisplayName("should forward all filter params to SAPI")
         void getAuditLogs_forwardsAllFilters() throws Exception {
-            when(sapiAuditClient.getAuditLogs(eq(10), eq(50),
-                    eq("SUBMIT"), eq(GROUP_ID), eq("600020"), eq("UK"), eq("EMEA"),
-                    eq("CONFIG_UPDATE"), eq("2025-01-01"), eq("2025-01-31"), eq("true")))
+            when(sapiAuditClient.getAuditLogs(any(SapiAuditClient.AuditLogQuery.class)))
                     .thenReturn(buildSapiAuditResponse(1));
 
             RequestContext<Void> requestContext = mockRequestContext();
@@ -25342,17 +25349,20 @@ class AuditControllerTest {
                     controller.getAuditLogs(requestContext);
 
             assertThat(result.getStatusCode().value()).isEqualTo(200);
-            verify(sapiAuditClient).getAuditLogs(
-                    eq(10), eq(50), eq("SUBMIT"), eq(GROUP_ID), eq("600020"),
-                    eq("UK"), eq("EMEA"), eq("CONFIG_UPDATE"),
-                    eq("2025-01-01"), eq("2025-01-31"), eq("true"));
+            var captor = org.mockito.ArgumentCaptor.forClass(SapiAuditClient.AuditLogQuery.class);
+            verify(sapiAuditClient).getAuditLogs(captor.capture());
+            var query = captor.getValue();
+            assertThat(query.offset()).isEqualTo(10);
+            assertThat(query.limit()).isEqualTo(50);
+            assertThat(query.action()).isEqualTo("SUBMIT");
+            assertThat(query.targetGroupIdentifier()).isEqualTo(GROUP_ID);
+            assertThat(query.performedBy()).isEqualTo("600020");
         }
 
         @Test
         @DisplayName("should return 200 with empty list when SAPI returns null")
         void getAuditLogs_emptyResult_returns200() throws Exception {
-            when(sapiAuditClient.getAuditLogs(eq(0), eq(25),
-                    isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()))
+            when(sapiAuditClient.getAuditLogs(any(SapiAuditClient.AuditLogQuery.class)))
                     .thenReturn(null);
 
             RequestContext<Void> requestContext = mockRequestContext();
@@ -25368,8 +25378,7 @@ class AuditControllerTest {
         @Test
         @DisplayName("should propagate SAPI errors on audit logs")
         void getAuditLogs_sapiError_propagatesError() {
-            when(sapiAuditClient.getAuditLogs(anyInt(), anyInt(),
-                    any(), any(), any(), any(), any(), any(), any(), any(), any()))
+            when(sapiAuditClient.getAuditLogs(any(SapiAuditClient.AuditLogQuery.class)))
                     .thenThrow(new ResponseStatusException(HttpStatus.BAD_GATEWAY,
                             "Get audit logs - SAPI error: Service unavailable"));
 
@@ -29014,7 +29023,7 @@ class RoleResolutionServiceTest {
             mockRolesResponse(List.of("voice_agent"));
 
             ResponseStatusException exception = assertThrows(ResponseStatusException.class,
-                () -> roleResolutionService.requireAdmin("userToken", adGroups));
+                () -> roleResolutionService.requireAdmin(adGroups));
 
             assertEquals(HttpStatus.FORBIDDEN, exception.getStatusCode());
             assertTrue(exception.getReason().contains("Admin role required"));
@@ -29026,7 +29035,7 @@ class RoleResolutionServiceTest {
             List<String> adGroups = List.of("CN=Admin_Group,OU=Groups,DC=hsbc,DC=com");
             mockRolesResponse(List.of("admin", "supervisor"));
 
-            assertDoesNotThrow(() -> roleResolutionService.requireAdmin("adminToken", adGroups));
+            assertDoesNotThrow(() -> roleResolutionService.requireAdmin(adGroups));
         }
 
         @Test
@@ -29034,7 +29043,7 @@ class RoleResolutionServiceTest {
         void shouldThrow403WhenAdGroupsEmpty() {
             List<String> emptyAdGroups = Collections.emptyList();
             ResponseStatusException exception = assertThrows(ResponseStatusException.class,
-                () -> roleResolutionService.requireAdmin("token", emptyAdGroups));
+                () -> roleResolutionService.requireAdmin(emptyAdGroups));
 
             assertEquals(HttpStatus.FORBIDDEN, exception.getStatusCode());
         }
