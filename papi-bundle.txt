@@ -1,5 +1,5 @@
 # CCaaS Entitlement PAPI - Source Bundle
-# Generated: 2026-02-13 13:53:19
+# Generated: 2026-02-13 16:31:25
 # Total files: 291
 # Categories: 1 pom.xml, 2 CLAUDE.md, 1 resources, 132 YAML specs, 90 main Java, 58 test Java, 7 other
 # Note: target/generated-sources NOT included - run 'mvn generate-sources' after extraction
@@ -19001,24 +19001,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
-/**
- * Implements the Maker/Checker approval workflow for configuration changes.
- *
- * <p>This controller implements three OpenAPI-generated interfaces to serve the
- * complete approval lifecycle:
- * <ul>
- *   <li>{@link PendingChangesApi} -- submit, list, get, and cancel pending changes (Maker role).</li>
- *   <li>{@link ChangeApprovalsApi} -- approve pending changes (Checker / Super Admin role).</li>
- *   <li>{@link ChangeRejectionsApi} -- reject pending changes with mandatory reason (Checker role).</li>
- * </ul>
- *
- * <p>Delegation pattern: this controller handles request validation, identity extraction,
- * and response assembly. All persistence and business rule evaluation (criticality scoring,
- * approval level determination) is delegated to SAPI via {@link SapiApprovalClient}.
- * The three-interface design follows the OpenAPI spec's resource-per-path convention,
- * but all three are co-located here because they share identity context and the same
- * SAPI client, keeping the approval workflow cohesive.
- */
 @RestController
 public class ApprovalWorkflowController implements PendingChangesApi, ChangeApprovalsApi, ChangeRejectionsApi {
 
@@ -19042,11 +19024,7 @@ public class ApprovalWorkflowController implements PendingChangesApi, ChangeAppr
         this.authorizationService = Objects.requireNonNull(authorizationService, "AdminAuthorizationService must not be null");
     }
 
-    // ========================================================================
-    // SUBMISSION ENDPOINTS (Maker)
-    // ========================================================================
-
-    @Override
+@Override
     public ResponseEntity<DataResponsePendingChangeData> submitChange(
             RequestContext<SubmitChangeRequestEnvelope> requestContext) throws Exception {
         Objects.requireNonNull(requestContext, REQUEST_CONTEXT_NOT_NULL);
@@ -19059,7 +19037,6 @@ public class ApprovalWorkflowController implements PendingChangesApi, ChangeAppr
         String groupId = submitChangeRequest.getTargetGroupIdentifier();
         log.info("Submit change request: groupId={}", groupId);
 
-        // Extract the caller's identity for SAPI's audit trail (who submitted this change)
         String userId = RequestValidationHelper.requireEmployeeId(identity);
 
         SapiPendingChange sapiResponse = sapiApprovalClient.submitChange(
@@ -19073,11 +19050,7 @@ public class ApprovalWorkflowController implements PendingChangesApi, ChangeAppr
         return responseAssembler.buildSubmitResponse(sapiResponse);
     }
 
-    // ========================================================================
-    // QUERY ENDPOINTS
-    // ========================================================================
-
-    @Override
+@Override
     public ResponseEntity<DataMetaResponsePendingChangesData> listPendingChanges(
             RequestContext<Void> requestContext) throws Exception {
         Objects.requireNonNull(requestContext, REQUEST_CONTEXT_NOT_NULL);
@@ -19091,9 +19064,6 @@ public class ApprovalWorkflowController implements PendingChangesApi, ChangeAppr
 
         String userId = RequestValidationHelper.requireEmployeeId(identity);
 
-        // MY_SUBMISSIONS mode: when the frontend wants to show a user's own submissions,
-        // it sends statusCode=MY_SUBMISSIONS. We pass empty AD groups to SAPI so it
-        // scopes by createdBy (userId) instead of by AD group visibility.
         boolean isMySubmissions = "MY_SUBMISSIONS".equals(statusCode);
         String sapiStatusCode = isMySubmissions ? null : statusCode;
         List<String> userAdGroups = isMySubmissions ? Collections.emptyList() : identity.adGroups();
@@ -19117,11 +19087,7 @@ public class ApprovalWorkflowController implements PendingChangesApi, ChangeAppr
         return responseAssembler.buildGetResponse(sapiResponse);
     }
 
-    // ========================================================================
-    // APPROVAL ENDPOINTS (Checker / Super Admin)
-    // ========================================================================
-
-    @Override
+@Override
     public ResponseEntity<DataResponseApprovalData> approveChange(
             RequestContext<ApproveChangeRequestEnvelope> requestContext) throws Exception {
         Objects.requireNonNull(requestContext, REQUEST_CONTEXT_NOT_NULL);
@@ -19135,10 +19101,8 @@ public class ApprovalWorkflowController implements PendingChangesApi, ChangeAppr
         log.info("Approve change: id={}", changeId);
 
         String approverId = RequestValidationHelper.requireEmployeeId(identity);
-        // displayName() not yet available in enterprise identity mock library
         String approverName = "";
         String comment = approveChangeRequest.getCommentText();
-        // Pass AD groups so SAPI can verify the approver has checker/super-admin role
         List<String> adGroups = identity.adGroups();
 
         SapiPendingChange result = sapiApprovalClient.approve(changeId, approverId, approverName, comment, adGroups);
@@ -19159,14 +19123,12 @@ public class ApprovalWorkflowController implements PendingChangesApi, ChangeAppr
         String changeId = rejectChangeRequest.getChangeIdentifier();
         log.info("Reject change: id={}, reason={}", changeId, rejectChangeRequest.getReasonText());
 
-        // Rejection reason is mandatory for audit compliance -- validate before SAPI call
         String reasonText = rejectChangeRequest.getReasonText();
         if (!StringUtils.hasText(reasonText)) {
             return responseAssembler.buildRejectionValidationError(changeId);
         }
 
         String rejectorId = RequestValidationHelper.requireEmployeeId(identity);
-        // displayName() not yet available in enterprise identity mock library
         String rejectorName = "";
         List<String> adGroups = identity.adGroups();
         SapiPendingChange sapiResult = sapiApprovalClient.reject(
@@ -19175,11 +19137,7 @@ public class ApprovalWorkflowController implements PendingChangesApi, ChangeAppr
         return responseAssembler.buildRejectionResponse(changeId, rejectorName, reasonText, sapiResult);
     }
 
-    // ========================================================================
-    // CANCELLATION ENDPOINT (Maker)
-    // ========================================================================
-
-    @Override
+@Override
     public ResponseEntity<DataResponseCancellationData> cancelChange(
             RequestContext<Void> requestContext) throws Exception {
         Objects.requireNonNull(requestContext, REQUEST_CONTEXT_NOT_NULL);
@@ -19188,7 +19146,6 @@ public class ApprovalWorkflowController implements PendingChangesApi, ChangeAppr
         String id = requestContext.getPathVariable(CHANGE_IDENTIFIER).orElseThrow();
         log.info("Cancel change: id={}", id);
 
-        // SAPI verifies that userId matches the original submitter before allowing cancellation
         String userId = RequestValidationHelper.requireEmployeeId(identity);
 
         sapiApprovalClient.cancel(id, userId);
@@ -19222,11 +19179,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Objects;
 
-/**
- * PAPI controller for audit log endpoints.
- * Delegates to SAPI via SapiAuditClient.
- * Extracts userId from identity context for my-activity.
- */
 @RestController
 public class AuditController implements MyActivityApi, AuditLogsApi {
 
@@ -19376,13 +19328,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
-/**
- * Handles the Super Admin direct-save bypass of the Maker/Checker workflow.
- *
- * <p>Super Admins can save configuration changes immediately without going through
- * the approval process. This controller validates the request, extracts identity
- * context, and delegates to {@link SapiApprovalClient#directSave} for persistence.
- */
 @RestController
 public class DirectSaveController implements AdGroupConfigsApi {
 
@@ -19406,18 +19351,14 @@ public class DirectSaveController implements AdGroupConfigsApi {
         var request = RequestValidationHelper.requireData(
             envelope.getData(), CommonConstants.REQUEST_BODY_DATA_REQUIRED);
         String groupIdentifier = Objects.toString(request.getTargetGroupIdentifier(), "");
-        // Validate the target group is specified -- without it SAPI cannot identify which config to save
         if (groupIdentifier.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "targetGroupIdentifier is required");
         }
 
         log.info("Direct save: groupIdentifier={}", groupIdentifier);
 
-        // Extract Super Admin identity for SAPI audit trail
         String superAdminId = RequestValidationHelper.requireEmployeeId(identity);
-        // displayName() not yet available in enterprise identity mock library
         String superAdminName = "";
-        // Pass AD groups so SAPI can verify the caller has super-admin privileges
         java.util.List<String> adGroups = identity.adGroups();
 
         sapiApprovalClient.directSave(
@@ -19454,8 +19395,6 @@ import com.hsbc.ccaas.papi.util.PaginationHelper;
 import com.hsbc.wpb.ef.ports.RequestContext;
 import java.util.List;
 import java.util.Objects;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
@@ -19464,7 +19403,6 @@ import org.springframework.web.server.ResponseStatusException;
 @RestController
 public class EmbeddedAppAdminController implements EmbeddedAppsApi, EmbeddedAppsAdGroupsApi {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(EmbeddedAppAdminController.class);
     private static final String APP_KEY = "appKey";
     private final EmbeddedAppFacade embeddedAppFacade;
     private final IdentityContextAccessor identity;
@@ -19510,17 +19448,14 @@ public class EmbeddedAppAdminController implements EmbeddedAppsApi, EmbeddedApps
         var body = requestContext.getBody().orElseThrow();
         String groupIdentifier = Objects.toString(body.getData().getGroupIdentifier(), "");
         if (groupIdentifier.isBlank()) {
-            LOGGER.warn("Missing required field 'groupIdentifier' in request body for app: {}", appKey);
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                "Required field 'groupIdentifier' is missing in request body. "
-                + "Provide the AD group distinguished name.");
+                "Required field 'groupIdentifier' is missing in request body");
         }
         try {
             AppAdGroupConfigResponse configuration = embeddedAppFacade.getAppAdGroupConfiguration(appKey, groupIdentifier);
             return responseAssembler.buildAppConfigResponse(configuration);
         } catch (ResponseStatusException e) {
             if (e.getStatusCode().equals(HttpStatus.NOT_FOUND)) {
-                LOGGER.debug("App or AD group config not found for {}/{}", appKey, groupIdentifier);
                 return ResponseEntity.notFound().build();
             }
             throw e;
@@ -19587,19 +19522,6 @@ import java.util.Objects;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
-/**
- * Serves reference data endpoints (regions, business units, countries, markets).
- * Role layout templates are served by {@link SessionLayoutController}.
- *
- * <p>This controller implements six OpenAPI-generated interfaces, one per resource path.
- * The high interface count is intentional and does not indicate excessive coupling:
- * <ul>
- *   <li>Each interface corresponds to a single OpenAPI path file (Hydrogen convention).</li>
- *   <li>All share the same delegation pattern: facade call -> response assembly.</li>
- *   <li>Only two dependencies are injected: {@link ReferenceDataFacade} (data retrieval,
- *       delegated to SAPI) and {@link ReferenceDataResponseAssembler} (Hydrogen envelope wrapping).</li>
- * </ul>
- */
 @RestController
 public class ReferenceDataController implements RegionsApi, BusinessUnitsApi, CountriesApi, RegionsCountriesApi, MarketsApi, RegionsMarketsApi {
 
@@ -19611,8 +19533,6 @@ public class ReferenceDataController implements RegionsApi, BusinessUnitsApi, Co
         this.referenceDataFacade = Objects.requireNonNull(referenceDataFacade, "ReferenceDataFacade must not be null");
         this.responseAssembler = Objects.requireNonNull(responseAssembler, "ReferenceDataResponseAssembler must not be null");
     }
-
-    // All methods follow the same thin-controller pattern: delegate to facade, wrap in Hydrogen response
 
     @Override
     public ResponseEntity<DataResponseRegionsData> getAllRegions(
@@ -19635,7 +19555,6 @@ public class ReferenceDataController implements RegionsApi, BusinessUnitsApi, Co
     @Override
     public ResponseEntity<DataResponseCountriesData> getCountriesByRegion(
             RequestContext<Void> requestContext) throws Exception {
-        // Extract path variable; orElseThrow produces 500 if framework routing is misconfigured
         String regionCode = requestContext.getPathVariable("regionCode").orElseThrow();
         return responseAssembler.buildCountriesResponse(referenceDataFacade.getCountriesByRegion(regionCode));
     }
@@ -19667,10 +19586,6 @@ import java.util.Objects;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
-/**
- * Serves role layout template endpoints (list all templates, get by role name).
- * Delegates to {@link ReferenceDataFacade} and wraps responses via {@link ReferenceDataResponseAssembler}.
- */
 @RestController
 public class RoleLayoutTemplatesController implements RoleLayoutTemplatesApi {
 
@@ -19888,10 +19803,6 @@ import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 
-/**
- * Assembles HTTP responses for AD group endpoints.
- * Centralizes generated model construction to reduce controller coupling.
- */
 @Component
 public class AdGroupResponseAssembler {
 
@@ -19955,10 +19866,6 @@ import java.util.List;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 
-/**
- * Assembles HTTP responses for approval workflow endpoints.
- * Centralizes generated model construction to reduce controller coupling.
- */
 @Component
 public class ApprovalResponseAssembler {
 
@@ -20135,10 +20042,6 @@ import org.springframework.stereotype.Component;
 import java.util.Collections;
 import java.util.List;
 
-/**
- * Assembles HTTP responses for audit endpoints.
- * Maps typed SAPI response records to generated PAPI DTOs.
- */
 @Component
 public class AuditResponseAssembler {
 
@@ -20205,7 +20108,7 @@ public class AuditResponseAssembler {
             try {
                 item.setChangeType(ActivityLogItem.ChangeTypeEnum.fromValue(raw.changeType()));
             } catch (IllegalArgumentException ignored) {
-                // Skip unknown change types
+                // unknown change types are skipped
             }
         }
         item.setTargetGroupIdentifier(raw.targetGroupIdentifier());
@@ -20437,10 +20340,6 @@ import java.util.List;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 
-/**
- * Assembles HTTP responses for embedded app endpoints.
- * Centralizes generated model construction to reduce controller coupling.
- */
 @Component
 public class EmbeddedAppResponseAssembler {
 
@@ -20477,10 +20376,6 @@ import java.util.List;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 
-/**
- * Assembles HTTP responses for reference data endpoints.
- * Centralizes generated model construction to reduce controller coupling.
- */
 @Component
 public class ReferenceDataResponseAssembler {
 
@@ -20532,10 +20427,6 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
-/**
- * Helper class for common request validation logic across controllers.
- * Centralizes validation patterns to reduce controller code duplication.
- */
 public final class RequestValidationHelper {
 
     private RequestValidationHelper() {
@@ -20607,18 +20498,6 @@ public final class RequestValidationHelper {
         }
     }
 
-    /**
-     * Requires a non-null envelope data field, throwing BAD_REQUEST if null.
-     * Generated models annotate getData() with @NotNull, but the custom
-     * RequestContext framework does not enforce bean validation automatically,
-     * so runtime null values are possible from malformed JSON payloads.
-     *
-     * @param data the envelope data to validate
-     * @param errorMessage the error message if data is null
-     * @param <T> the data type
-     * @return the non-null data
-     * @throws ResponseStatusException with BAD_REQUEST if data is null
-     */
     public static <T> T requireData(T data, String errorMessage) {
         if (data == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, errorMessage);
@@ -20626,12 +20505,6 @@ public final class RequestValidationHelper {
         return data;
     }
 
-    /**
-     * Checks whether the given AD group response has any access control fields populated.
-     *
-     * @param group the AD group layout response to inspect
-     * @return true if at least one access field (maker, checker, super admin) is non-null
-     */
     public static boolean hasAccessFields(Object makerIdentifier, Object checkerIdentifier, Object superAdminIdentifier) {
         return makerIdentifier != null || checkerIdentifier != null || superAdminIdentifier != null;
     }
@@ -21202,10 +21075,6 @@ package com.hsbc.ccaas.papi.mapper;
 
 import com.hsbc.ccaas.papi.controller.model.*;
 
-/**
- * Maps generated OpenAPI models into DataResponse envelopes for controller use.
- * Only methods still called by controllers remain.
- */
 public final class GeneratedModelMapper {
 
     private GeneratedModelMapper() {
@@ -21694,39 +21563,16 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.function.Function;
 
-/**
- * Processes bulk primary-assignment requests using parallel virtual threads.
- *
- * <p>Supervisors may reassign hundreds of agents at once (e.g. team restructure).
- * Sequential SAPI calls would be too slow, so this processor fans out requests
- * across Java 21 virtual threads for concurrent execution while preserving
- * input-order result collection and per-user failure isolation.
- *
- * <p>Design decisions:
- * <ul>
- *   <li>Virtual threads (not platform threads) -- lightweight, no pool sizing needed.</li>
- *   <li>Input-order collection -- results align with the original request list so callers
- *       can correlate successes/failures by index.</li>
- *   <li>Fail-open per user -- one user's SAPI failure does not abort the entire batch;
- *       the failure is recorded and processing continues for remaining users.</li>
- * </ul>
- */
 public class BulkAssignmentProcessor {
 
     private BulkAssignmentProcessor() {
         throw new UnsupportedOperationException("Utility class - do not instantiate");
     }
 
-    /**
-     * Aggregates bulk processing outcomes: successes, failures, and AD groups
-     * whose caches need invalidation after successful updates.
-     */
     public static class ProcessingResult {
         private final List<String> successfulUserIds;
         private final List<String> failedUserIds;
-        // LinkedHashMap preserves insertion order for deterministic failure reporting
         private final Map<String, String> failureReasons;
-        // Track which AD groups had successful updates so their caches can be invalidated
         private final Set<String> adGroupsToInvalidate;
 
         public ProcessingResult() {
@@ -21736,13 +21582,11 @@ public class BulkAssignmentProcessor {
             this.adGroupsToInvalidate = new HashSet<>();
         }
 
-        /** Record a successful assignment and mark the AD group for cache invalidation. */
         public void recordSuccess(String userId, String adGroup) {
             successfulUserIds.add(userId);
             adGroupsToInvalidate.add(adGroup);
         }
 
-        /** Record a failed assignment with its human-readable reason for the response. */
         public void recordFailure(String userId, String reason) {
             failedUserIds.add(userId);
             failureReasons.put(userId, reason);
@@ -21765,10 +21609,6 @@ public class BulkAssignmentProcessor {
         }
     }
 
-    /**
-     * Internal record capturing the outcome of a single SAPI call.
-     * Immutable value type used to pass results from virtual threads back to the collector.
-     */
     private record RequestOutcome(String userId, String adGroup, boolean success, String reason) {
         static RequestOutcome success(String userId, String adGroup) {
             return new RequestOutcome(userId, adGroup, true, null);
@@ -21778,23 +21618,6 @@ public class BulkAssignmentProcessor {
         }
     }
 
-    /**
-     * Process bulk assignment requests concurrently using virtual threads.
-     *
-     * <p>Execution strategy:
-     * <ol>
-     *   <li>Submit all requests to a virtual-thread-per-task executor (fan-out).</li>
-     *   <li>Collect futures in list order to preserve request-response alignment.</li>
-     *   <li>Each virtual thread runs {@link #executeSingle} which isolates SAPI errors
-     *       per user -- a failure for user A does not affect user B.</li>
-     *   <li>InterruptedException causes early termination (e.g. request timeout).</li>
-     * </ol>
-     *
-     * @param requests  the individual assignment requests to process
-     * @param processor function that calls SAPI for a single assignment
-     * @param logger    caller's logger for contextual error reporting
-     * @return aggregated result with successes, failures, and groups to invalidate
-     */
     public static ProcessingResult processRequests(
             List<BulkPrimaryAssignmentRequest> requests,
             Function<BulkPrimaryAssignmentRequest, SetPrimaryAssignmentResponse> processor,
@@ -21806,8 +21629,6 @@ public class BulkAssignmentProcessor {
 
         ProcessingResult result = new ProcessingResult();
 
-        // Fan-out: submit all requests as virtual threads for maximum concurrency.
-        // The try-with-resources block waits for all threads to complete on close().
         List<Future<RequestOutcome>> futures;
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             futures = requests.stream()
@@ -21815,7 +21636,6 @@ public class BulkAssignmentProcessor {
                     .toList();
         }
 
-        // Collect results in input order so callers can correlate by index
         for (int i = 0; i < futures.size(); i++) {
             try {
                 RequestOutcome outcome = futures.get(i).get();
@@ -21825,11 +21645,9 @@ public class BulkAssignmentProcessor {
                     result.recordFailure(outcome.userId(), outcome.reason());
                 }
             } catch (InterruptedException e) {
-                // Restore interrupt flag and stop collecting -- caller's timeout likely fired
                 Thread.currentThread().interrupt();
                 break;
             } catch (ExecutionException e) {
-                // Unexpected exception not caught by executeSingle -- record as internal error
                 String userId = requests.get(i).getUserIdentifier();
                 logger.error("Unexpected error in bulk processing for user {}", userId, e.getCause());
                 result.recordFailure(userId, "Internal error");
@@ -21839,18 +21657,6 @@ public class BulkAssignmentProcessor {
         return result;
     }
 
-    /**
-     * Execute a single SAPI primary-assignment call with comprehensive error isolation.
-     *
-     * <p>Each exception type maps to a different failure reason so the bulk response
-     * gives actionable diagnostics per user:
-     * <ul>
-     *   <li>{@link RestClientResponseException} -- SAPI returned an HTTP error (4xx/5xx).</li>
-     *   <li>{@link ResponseStatusException} -- application-level validation failed.</li>
-     *   <li>{@link ResourceAccessException} -- network/connectivity issue to SAPI.</li>
-     *   <li>{@link IllegalArgumentException}/{@link IllegalStateException} -- input validation.</li>
-     * </ul>
-     */
     private static RequestOutcome executeSingle(
             BulkPrimaryAssignmentRequest request,
             Function<BulkPrimaryAssignmentRequest, SetPrimaryAssignmentResponse> processor,
@@ -21860,7 +21666,6 @@ public class BulkAssignmentProcessor {
         try {
             SetPrimaryAssignmentResponse response = processor.apply(request);
 
-            // SAPI returns success=false for business-rule violations (e.g. role not assignable)
             if (Boolean.TRUE.equals(response.getSuccessIndicator())) {
                 return RequestOutcome.success(userId, request.getAdGroupIdentifier());
             } else {
@@ -21870,26 +21675,22 @@ public class BulkAssignmentProcessor {
                 return RequestOutcome.failure(userId, reason);
             }
         } catch (RestClientResponseException ex) {
-            // Log full details for troubleshooting, but return only the status code to the caller
             logger.error("SAPI error updating primary assignment for user {} (role: {}, adGroup: {}): HTTP {} - {}",
                     userId, request.getRoleNameText(), request.getAdGroupIdentifier(),
                     ex.getStatusCode().value(), ex.getResponseBodyAsString());
             String reason = "Service error (HTTP " + ex.getStatusCode().value() + ")";
             return RequestOutcome.failure(userId, reason);
         } catch (ResponseStatusException ex) {
-            // Application-level error (e.g. authorization check failed)
             String reason = ex.getReason() != null ? ex.getReason() : ex.getMessage();
             logger.error("Application error updating primary assignment for user {} (role: {}, adGroup: {}): {}",
                     userId, request.getRoleNameText(), request.getAdGroupIdentifier(), reason);
             return RequestOutcome.failure(userId, reason);
         } catch (ResourceAccessException ex) {
-            // Network-level failure -- SAPI unreachable or connection timeout
             String reason = "Service temporarily unavailable";
             logger.error("Network error updating primary assignment for user {} (role: {}, adGroup: {}): {}",
                     userId, request.getRoleNameText(), request.getAdGroupIdentifier(), ex.getMessage());
             return RequestOutcome.failure(userId, reason);
         } catch (IllegalArgumentException | IllegalStateException ex) {
-            // Input validation errors from ValidationUtil or precondition checks
             String reason = ex.getClass().getSimpleName() + ": " + ex.getMessage();
             logger.error("Validation error updating primary assignment for user {} (role: {}, adGroup: {}): {}",
                     userId, request.getRoleNameText(), request.getAdGroupIdentifier(), ex.getMessage());
@@ -22151,8 +21952,6 @@ import com.hsbc.ccaas.papi.service.AdGroupLayoutAssignmentService;
 import com.hsbc.ccaas.papi.service.AdminAuthorizationService;
 import com.hsbc.ccaas.papi.service.helper.SapiExceptionHandler;
 import com.hsbc.ccaas.papi.service.helper.UserAccessEnricher;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.ResourceAccessException;
@@ -22163,8 +21962,6 @@ import java.util.*;
 
 @Service
 public class DefaultAdGroupLayoutAssignmentService implements AdGroupLayoutAssignmentService {
-
-    private static final Logger LOG = LoggerFactory.getLogger(DefaultAdGroupLayoutAssignmentService.class);
 
     private final SapiAdGroupClient sapiAdGroupClient;
     private final SapiAdGroupCopyClient sapiAdGroupCopyClient;
@@ -22203,7 +22000,6 @@ public class DefaultAdGroupLayoutAssignmentService implements AdGroupLayoutAssig
         authorizationService.requireAdminRole();
 
         if (groupIdentifier == null || groupIdentifier.isBlank()) {
-            LOG.warn("Group identifier is null or blank, returning null");
             return null;
         }
 
@@ -22233,8 +22029,6 @@ public class DefaultAdGroupLayoutAssignmentService implements AdGroupLayoutAssig
                 request.getCopyOptions(),
                 context);
 
-            LOG.debug("SAPI copy response payload: {}", response);
-
             if (response == null) {
                 throw new ResponseStatusException(
                     HttpStatus.INTERNAL_SERVER_ERROR,
@@ -22245,8 +22039,6 @@ public class DefaultAdGroupLayoutAssignmentService implements AdGroupLayoutAssig
             return response;
 
         } catch (RestClientResponseException | ResourceAccessException | IllegalArgumentException | IllegalStateException e) {
-            LOG.error("Error copying AD group configuration from {} to {}: {}",
-                request.getSourceGroupIdentifier(), request.getTargetGroupIdentifier(), e.getMessage());
             return buildErrorCopyResponse(e.getMessage());
         }
     }
@@ -22255,7 +22047,6 @@ public class DefaultAdGroupLayoutAssignmentService implements AdGroupLayoutAssig
             AdGroupFilterCriteria criteria, List<String> adminAdGroups) {
 
         if (adminAdGroups == null || adminAdGroups.isEmpty()) {
-            LOG.warn("Admin AD groups list is null or empty, returning empty response");
             return PaginatedResult.empty(criteria.getOffset(), criteria.getLimit());
         }
 
@@ -22272,14 +22063,9 @@ public class DefaultAdGroupLayoutAssignmentService implements AdGroupLayoutAssig
 
     private PaginatedResult<AdGroupLayoutResponse> fetchAdGroupsFromSapi(
             List<String> adminAdGroups, AdGroupFilterCriteria criteria) {
-
         return SapiExceptionHandler.executeWithNotFoundDefault(
             () -> sapiAdGroupClient.getAllAdGroups(adminAdGroups, criteria),
-            () -> {
-                LOG.warn("Empty response from SAPI for admin AD groups search (offset={}, limit={}, search={})",
-                    criteria.getOffset(), criteria.getLimit(), criteria.getSearch());
-                return null;
-            }
+            () -> null
         );
     }
 
@@ -22670,22 +22456,6 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.util.*;
 
-/**
- * Manages user-to-role primary assignments via SAPI delegation.
- *
- * <p>Primary assignments determine which role template is applied to a user's session layout.
- * Supervisors use these endpoints to reassign agents to different roles (e.g. moving an agent
- * from VOICE_AGENT to CHAT_AGENT), which changes what widgets and capabilities appear in their UI.
- *
- * <p>Key design patterns:
- * <ul>
- *   <li><b>Authorization-first</b> -- supervisor role is verified before any SAPI call.</li>
- *   <li><b>Cache invalidation</b> -- after any successful role change, the affected AD group's
- *       layout cache is invalidated so the next session request computes a fresh layout.</li>
- *   <li><b>Bulk processing</b> -- bulk requests are delegated to {@link BulkAssignmentProcessor}
- *       which uses virtual threads for concurrent SAPI calls with per-user failure isolation.</li>
- * </ul>
- */
 @Service
 public class DefaultUserRoleManagementService implements UserRoleManagementService {
 
@@ -22708,80 +22478,39 @@ public class DefaultUserRoleManagementService implements UserRoleManagementServi
         LOG.info("DefaultUserRoleManagementService initialized with RestClient for SAPI");
     }
 
-    /**
-     * Set a single user's primary role assignment.
-     *
-     * <p>Flow: validate inputs -> authorize caller -> call SAPI -> invalidate cache.
-     * The authorization check verifies the caller has supervisor privileges over the
-     * target user before allowing the role change.
-     */
     @Override
     public SetPrimaryAssignmentResponse setPrimaryAssignment(String userId, String roleName, String adGroupIdentifier) {
-        // Validate all inputs at the service boundary before any authorization or SAPI calls
         ValidationUtil.requireNotBlank(userId, "User ID", SecurityConstants.MAX_USER_ID_LENGTH);
         ValidationUtil.requireNotBlank(roleName, "Role name");
         ValidationUtil.requireNotBlank(adGroupIdentifier, "AD group identifier");
-
-        LOG.debug("Setting primary assignment for user: {}, role: {}, adGroup: {}", userId, roleName, adGroupIdentifier);
-        // Verify caller has supervisor authority over the target user
         authorizationService.requireSupervisorRole(userId);
 
-        return SapiExceptionHandler.executeWithExceptionHandling(
-            () -> {
-                // Resolve the identity of the person making the change for audit trail
-                String updatedBy = RequestValidationHelper.resolveUpdatedBy(identity);
-                SetPrimaryAssignmentResponse response = callSetPrimaryAssignment(userId, roleName, adGroupIdentifier, updatedBy);
-                // Invalidate cached layout so the user gets their new role on next session request
-                invalidateCache(adGroupIdentifier);
-                LOG.info("Successfully set primary assignment for user: {}, role: {}, AD group: {}, updated by: {}",
-                    userId, roleName, adGroupIdentifier, updatedBy);
-                return response;
-            },
-            "Set primary assignment for user: " + userId
-        );
-    }
-
-    /**
-     * Set primary role assignments for multiple users in one operation.
-     *
-     * <p>Delegates to {@link BulkAssignmentProcessor} which fans out SAPI calls across
-     * virtual threads. After all requests complete, caches for all affected AD groups
-     * are invalidated in a single pass to avoid redundant invalidation.
-     */
-    @Override
-    public BulkPrimaryAssignmentResponse setBulkPrimaryAssignments(List<BulkPrimaryAssignmentRequest> requests) {
-        // Validate the entire request list before processing any individual items
-        ValidationUtil.requireNoNulls(requests, "Bulk requests", SecurityConstants.MAX_BULK_REQUESTS_SIZE);
-
-        // Bulk authorization check: caller must be a supervisor (not checked per-user for performance)
-        authorizationService.requireSupervisorRole();
-
-        // Resolve updatedBy once and share across all virtual threads for consistent audit trail
         String updatedBy = RequestValidationHelper.resolveUpdatedBy(identity);
 
-        // Process all requests concurrently via virtual threads with per-user failure isolation
-        BulkAssignmentProcessor.ProcessingResult result = BulkAssignmentProcessor.processRequests(
-            requests,
-            request -> callSetPrimaryAssignment(request.getUserIdentifier(), request.getRoleNameText(), request.getAdGroupIdentifier(), updatedBy),
-            LOG
-        );
+        SetPrimaryAssignmentResponse response = SapiExceptionHandler.executeWithExceptionHandling(
+            () -> callSetPrimaryAssignment(userId, roleName, adGroupIdentifier, updatedBy),
+            "Set primary assignment for user: " + userId);
 
-        // Invalidate caches for all AD groups that had successful updates
-        result.getAdGroupsToInvalidate().forEach(this::invalidateCache);
-
-        BulkPrimaryAssignmentResponse response = buildBulkResponse(result, requests.size());
-
-        LOG.info("Bulk primary assignments completed: {} successful, {} failed (failure details: {})",
-            result.getSuccessfulUserIds().size(), result.getFailedUserIds().size(), result.getFailureReasons());
-
+        invalidateCache(adGroupIdentifier);
         return response;
     }
 
-    /**
-     * Execute the SAPI call to set a user's primary role assignment.
-     * Wraps the SAPI response in a PAPI response model, failing with 502
-     * if SAPI returns a null response (indicating a communication issue).
-     */
+    @Override
+    public BulkPrimaryAssignmentResponse setBulkPrimaryAssignments(List<BulkPrimaryAssignmentRequest> requests) {
+        ValidationUtil.requireNoNulls(requests, "Bulk requests", SecurityConstants.MAX_BULK_REQUESTS_SIZE);
+        authorizationService.requireSupervisorRole();
+
+        String updatedBy = RequestValidationHelper.resolveUpdatedBy(identity);
+
+        BulkAssignmentProcessor.ProcessingResult result = BulkAssignmentProcessor.processRequests(
+            requests,
+            request -> callSetPrimaryAssignment(request.getUserIdentifier(), request.getRoleNameText(), request.getAdGroupIdentifier(), updatedBy),
+            LOG);
+
+        result.getAdGroupsToInvalidate().forEach(this::invalidateCache);
+        return buildBulkResponse(result, requests.size());
+    }
+
     private SetPrimaryAssignmentResponse callSetPrimaryAssignment(
             String userId, String roleName, String adGroupIdentifier, String updatedBy) {
 
@@ -22793,13 +22522,9 @@ public class DefaultUserRoleManagementService implements UserRoleManagementServi
             .retrieve()
             .body(UserRolePayloads.SapiPrimaryAssignment.class);
 
-        // Null response from SAPI indicates a communication/deserialization issue
         if (sapiResponse == null) {
-            LOG.error("Received null response from SAPI when setting primary assignment for user: {}", userId);
-            throw new ResponseStatusException(
-                HttpStatus.BAD_GATEWAY,
-                CommonConstants.ErrorMessages.EMPTY_RESPONSE_FROM_SAPI
-            );
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                CommonConstants.ErrorMessages.EMPTY_RESPONSE_FROM_SAPI);
         }
 
         return createSetPrimaryAssignmentResponse(sapiResponse, userId, roleName, adGroupIdentifier);
@@ -22825,7 +22550,6 @@ public class DefaultUserRoleManagementService implements UserRoleManagementServi
         }
     }
 
-    /** Map SAPI primary-assignment response to the PAPI response model. */
     private SetPrimaryAssignmentResponse createSetPrimaryAssignmentResponse(
             UserRolePayloads.SapiPrimaryAssignment sapiResponse, String userId, String roleName, String adGroupIdentifier) {
         return new SetPrimaryAssignmentResponse()
@@ -22838,7 +22562,6 @@ public class DefaultUserRoleManagementService implements UserRoleManagementServi
             .adGroupIdentifier(adGroupIdentifier);
     }
 
-    /** Build the aggregate bulk response from the processor's per-user outcomes. */
     private BulkPrimaryAssignmentResponse buildBulkResponse(BulkAssignmentProcessor.ProcessingResult result, int totalRequests) {
         return new BulkPrimaryAssignmentResponse()
             .successCountNumber(result.getSuccessfulUserIds().size())
