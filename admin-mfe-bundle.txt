@@ -1,5 +1,5 @@
 # CCaaS Admin MFE - Source Bundle
-# Generated: 2026-02-13 22:53:42
+# Generated: 2026-02-13 22:55:45
 # Total files: 395
 # Categories: 228 TypeScript, 158 React (TSX), 1 CSS, 7 Config, 1 Docs
 # Note: node_modules and dist NOT included - run 'npm install && npm run build' after extraction
@@ -16473,7 +16473,7 @@ function AdGroupsTableComponent({
 
   return (
     <TooltipProvider delayDuration={150}>
-      <div ref={tableContainerRef} className="h-[calc(100dvh-22rem)] min-h-[18rem] overflow-hidden rounded-md border shadow-sm sm:min-h-[20rem]">
+      <div ref={tableContainerRef} className="h-[calc(100dvh-22rem)] min-h-[18rem] overflow-hidden rounded-md border shadow-sm sm:min-h-[20rem]" data-testid="ad-groups-table">
         <Table className="w-full min-w-[1080px] table-auto xl:table-fixed">
         <TableHeader>
           <TableRow>
@@ -28824,9 +28824,34 @@ const TEXT_SIZE_CLASSMAP: Record<LoaderSize, string> = {
 }
 
 /**
- * HSBC branded loader used across all surfaces to maintain consistent experience.
+ * HSBC branded loader component used across all surfaces to maintain consistent experience.
  * Uses Loader2 icon from lucide-react as the standard HSBC spinner.
- * Always displays a message for better user feedback.
+ * Always displays a message for better user feedback and accessibility.
+ * 
+ * @component
+ * @description
+ * A reusable loading indicator with HSBC brand styling. Supports multiple sizes
+ * and can be displayed inline or as a block element.
+ * 
+ * @param {BrandLoaderProps} props - Component props
+ * @param {string} [props.message] - Loading message to display. Defaults to "Loading your HSBC workspace..."
+ * @param {LoaderSize} [props.size='md'] - Size variant: 'sm', 'md', or 'lg'
+ * @param {string} [props.className] - Additional CSS classes to apply
+ * @param {boolean} [props.inline=false] - Whether to display inline (flex-row) or block (flex-col)
+ * 
+ * @returns {JSX.Element} The rendered loader component
+ * 
+ * @example
+ * ```tsx
+ * // Default usage
+ * <BrandLoader message="Loading data..." />
+ * 
+ * // Small inline loader
+ * <BrandLoader size="sm" inline message="Saving..." />
+ * 
+ * // Large loader
+ * <BrandLoader size="lg" message="Processing request..." />
+ * ```
  */
 export function BrandLoader({
   message,
@@ -28849,7 +28874,7 @@ export function BrandLoader({
   const displayMessage = message || 'Loading your HSBC workspace\u2026'
 
   return (
-    <output className={containerClasses} aria-live="polite">
+    <output className={containerClasses} aria-live="polite" data-testid="loading-spinner">
       <Loader2
         className={cn(
           'animate-spin text-[#DB0011]',
