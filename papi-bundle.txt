@@ -1,7 +1,7 @@
 # CCaaS Entitlement PAPI - Source Bundle
-# Generated: 2026-02-15 14:53:25
-# Total files: 291
-# Categories: 1 pom.xml, 2 CLAUDE.md, 1 resources, 132 YAML specs, 90 main Java, 58 test Java, 7 other
+# Generated: 2026-02-15 22:40:29
+# Total files: 292
+# Categories: 1 pom.xml, 2 CLAUDE.md, 1 resources, 132 YAML specs, 91 main Java, 58 test Java, 7 other
 # Note: target/generated-sources NOT included - run 'mvn generate-sources' after extraction
 ===FILE: ./.gitignore
 # Compiled class files
@@ -8383,7 +8383,7 @@ components:
                   - Request data validation error
     EntitlementStateValue:
       title: EntitlementStateValue
-      description: Tri-state entitlement value with optional reason and metadata for Admin MFE.
+      description: Tri-state entitlement value with optional reason text.
       type: object
       additionalProperties: true
       properties:
@@ -8403,29 +8403,6 @@ components:
           minLength: 0
           maxLength: 1000
           example: New feature rollout
-        businessName:
-          type: string
-          description: Human-readable name for Admin MFE display
-          minLength: 0
-          maxLength: 150
-          example: Knowledge Base
-        description:
-          type: string
-          description: What the permission controls
-          minLength: 0
-          maxLength: 500
-          example: Access to knowledge base features
-        visible:
-          type: boolean
-          description: Whether to show in Admin MFE permissions tab
-          example: true
-        linkedKeys:
-          type: array
-          description: Keys that auto-sync with this toggle
-          items:
-            type: string
-          example:
-            - features.search.knowledgeBase
     UUIDPattern:
       type: string
       description: UUID v4 string identifier
@@ -9033,8 +9010,23 @@ components:
       title: AdGroupCopyResponse
       description: Result of an AD group configuration copy operation.
       type: object
-      additionalProperties: false
+      additionalProperties: true
       properties:
+        sourceGroupIdentifier:
+          type: string
+          description: Source AD group identifier
+          minLength: 0
+          maxLength: 500
+        targetGroupIdentifier:
+          type: string
+          description: Target AD group identifier
+          minLength: 0
+          maxLength: 500
+        copiedSectionValues:
+          type: array
+          description: List of configuration sections that were copied
+          items:
+            type: string
         successFlag:
           type: boolean
           description: Whether the copy operation completed successfully
@@ -13039,7 +13031,7 @@ properties:
 ===ENDFILE
 ===FILE: ./src/main/api/components/schemas/common/EntitlementStateValue.yaml
 title: EntitlementStateValue
-description: Tri-state entitlement value with optional reason and metadata for Admin MFE.
+description: Tri-state entitlement value with optional reason text.
 type: object
 additionalProperties: true
 properties:
@@ -13059,28 +13051,6 @@ properties:
     minLength: 0
     maxLength: 1000
     example: New feature rollout
-  businessName:
-    type: string
-    description: Human-readable name for Admin MFE display
-    minLength: 0
-    maxLength: 150
-    example: Knowledge Base
-  description:
-    type: string
-    description: What the permission controls
-    minLength: 0
-    maxLength: 500
-    example: Access to knowledge base features
-  visible:
-    type: boolean
-    description: Whether to show in Admin MFE permissions tab
-    example: true
-  linkedKeys:
-    type: array
-    description: Keys that auto-sync with this toggle
-    items:
-      type: string
-    example: ["features.search.knowledgeBase"]
 ===ENDFILE
 ===FILE: ./src/main/api/components/schemas/common/UUIDPattern.yaml
 type: string
@@ -13539,8 +13509,23 @@ properties:
 title: AdGroupCopyResponse
 description: Result of an AD group configuration copy operation.
 type: object
-additionalProperties: false
+additionalProperties: true
 properties:
+  sourceGroupIdentifier:
+    type: string
+    description: Source AD group identifier
+    minLength: 0
+    maxLength: 500
+  targetGroupIdentifier:
+    type: string
+    description: Target AD group identifier
+    minLength: 0
+    maxLength: 500
+  copiedSectionValues:
+    type: array
+    description: List of configuration sections that were copied
+    items:
+      type: string
   successFlag:
     type: boolean
     description: Whether the copy operation completed successfully
@@ -16584,7 +16569,11 @@ public class SapiAdGroupClient {
                 adminAdGroups, criteria.getOffset(), criteria.getLimit(),
                 blankToNull(criteria.getSearch()),
                 blankToNull(criteria.getRole()),
-                blankToNull(criteria.getStatus()));
+                blankToNull(criteria.getStatus()),
+                blankToNull(criteria.getMarket()),
+                blankToNull(criteria.getRegion()),
+                blankToNull(criteria.getCountry()),
+                blankToNull(criteria.getBusinessUnit()));
     }
 
     private static String blankToNull(String value) {
@@ -16670,14 +16659,17 @@ public class SapiAdGroupCopyClient {
 
     private AdGroupCopyResponse executeCopyRequest(AdGroupPayloads.SapiCopyRequest request) {
         try {
-            SapiDataResponse<AdGroupPayloads.CopyResultPayload> response = sapiRestClient.post()
+            // Wrap request in data envelope as SAPI expects {"data": {...}}
+            var envelope = new SapiDataRequest<>(request);
+
+            SapiDataResponse<AdGroupCopyResponse> response = sapiRestClient.post()
                 .uri(SapiApiPaths.AD_GROUPS_COPY)
-                .body(request)
+                .body(envelope)
                 .retrieve()
-                .body(new ParameterizedTypeReference<SapiDataResponse<AdGroupPayloads.CopyResultPayload>>(){});
+                .body(new ParameterizedTypeReference<SapiDataResponse<AdGroupCopyResponse>>(){});
 
             AdGroupCopyResponse result = response != null && response.getData() != null
-                ? response.getData().copyResult() : null;
+                ? response.getData() : null;
 
             if (result != null) {
                 logger.debug("Successfully copied AD group config");
@@ -18221,7 +18213,7 @@ public class OpenApiConfig {
                 "/papi/v1/embedded-apps-ad-groups", "/papi/v1/embedded-apps-ad-groups/**",
                 "/papi/v1/pending-changes", "/papi/v1/pending-changes/**",
                 "/papi/v1/change-approvals", "/papi/v1/change-rejections",
-                "/papi/v1/users/*/primaries/**", "/papi/v1/users/primary-assignments"
+                "/papi/v1/users/*/primaries", "/papi/v1/users/primary-assignments"
             )
             .addOpenApiCustomizer(openApi -> openApi.addTagsItem(new Tag()
                 .name("Admin Operations")
@@ -18497,23 +18489,23 @@ public class SecurityConfig {
     }
 
     @Bean
-@Order(1)
-public SecurityFilterChain securityFilterChain(
-        HttpSecurity http,
-        IdentityContextFilter papiIdentityContextFilter
-) throws Exception {
+    @Order(1)
+    public SecurityFilterChain securityFilterChain(
+            HttpSecurity http,
+            IdentityContextFilter papiIdentityContextFilter
+    ) throws Exception {
 
-    http
-        // Only secure the PAPI surface; the platform security auto-config provides the global chain.
-        .securityMatcher("/**")
-        .csrf(AbstractHttpConfigurer::disable)
-        .sessionManagement(session ->
+        http
+            // Only secure the PAPI surface; the platform security auto-config provides the global chain.
+            .securityMatcher("/**")
+            .csrf(AbstractHttpConfigurer::disable)
+            .sessionManagement(session ->
                 session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
-        )
-        .authorizeHttpRequests(auth -> auth
+            )
+            .authorizeHttpRequests(auth -> auth
 
-            // Public endpoints
-            .requestMatchers(
+                // Public endpoints
+                .requestMatchers(
                     "/",
                     "/index.html",
                     "/api-docs.html",
@@ -18525,43 +18517,43 @@ public SecurityFilterChain securityFilterChain(
                     "/actuator/info",
                     "/health",
                     "/static/**"
-            ).permitAll()
+                ).permitAll()
 
-            // User-facing endpoints
-            .requestMatchers("/embedded-apps/user-apps").authenticated()
+                // User-facing endpoints
+                .requestMatchers("/embedded-apps/user-apps").authenticated()
 
-            // Admin endpoints
-            .requestMatchers("/ad-groups", "/ad-groups/**").hasRole(ROLE_ADMIN)
-            .requestMatchers("/ad-group-configuration-copies").hasRole(ROLE_ADMIN)
-            .requestMatchers("/ad-group-configs/**").hasRole(ROLE_ADMIN)
-            .requestMatchers("/notices", "/notices/**").hasRole(ROLE_ADMIN)
-            .requestMatchers("/embedded-apps", "/embedded-apps/**").hasRole(ROLE_ADMIN)
-            .requestMatchers("/embedded-apps-ad-groups",
-                             "/embedded-apps-ad-groups/**").hasRole(ROLE_ADMIN)
-            .requestMatchers("/pending-changes",
-                             "/pending-changes/**").hasRole(ROLE_ADMIN)
-            .requestMatchers("/change-approvals",
-                             "/change-rejections").hasRole(ROLE_ADMIN)
+                // Admin endpoints
+                .requestMatchers("/ad-groups", "/ad-groups/**").hasRole(ROLE_ADMIN)
+                .requestMatchers("/ad-group-configuration-copies").hasRole(ROLE_ADMIN)
+                .requestMatchers("/ad-group-configs/**").hasRole(ROLE_ADMIN)
+                .requestMatchers("/notices", "/notices/**").hasRole(ROLE_ADMIN)
+                .requestMatchers("/embedded-apps", "/embedded-apps/**").hasRole(ROLE_ADMIN)
+                .requestMatchers("/embedded-apps-ad-groups",
+                                 "/embedded-apps-ad-groups/**").hasRole(ROLE_ADMIN)
+                .requestMatchers("/pending-changes",
+                                 "/pending-changes/**").hasRole(ROLE_ADMIN)
+                .requestMatchers("/change-approvals",
+                                 "/change-rejections").hasRole(ROLE_ADMIN)
 
-            // Supervisor endpoints
-            .requestMatchers("/users/*/primaries/*").hasRole(ROLE_SUPERVISOR)
-            .requestMatchers("/users/primary-assignments").hasRole(ROLE_SUPERVISOR)
+                // Supervisor endpoints
+                .requestMatchers("/users/*/primaries").hasRole(ROLE_SUPERVISOR)
+                .requestMatchers("/users/primary-assignments").hasRole(ROLE_SUPERVISOR)
 
-            // Authenticated endpoints
-            .requestMatchers("/regions", "/countries").authenticated()
-            .requestMatchers("/business-units", "/regions-countries/**").authenticated()
-            .requestMatchers("/markets", "/regions-markets/**").authenticated()
-            .requestMatchers("/sessions", "/sessions/**", "/entitlements").authenticated()
+                // Authenticated endpoints
+                .requestMatchers("/regions", "/countries").authenticated()
+                .requestMatchers("/business-units", "/regions-countries/**").authenticated()
+                .requestMatchers("/markets", "/regions-markets/**").authenticated()
+                .requestMatchers("/sessions", "/sessions/**", "/entitlements").authenticated()
 
-            .anyRequest().authenticated()
-        )
-        .addFilterBefore(
+                .anyRequest().authenticated()
+            )
+            .addFilterBefore(
                 papiIdentityContextFilter,
                 UsernamePasswordAuthenticationFilter.class
-        );
+            );
 
-    return http.build();
-}
+        return http.build();
+    }
 }
 ===ENDFILE
 ===FILE: ./src/main/java/com/hsbc/ccaas/papi/config/WebConfig.java
@@ -20776,8 +20768,6 @@ public final class AdGroupPayloads {
             Integer offsetNumber,
             Integer limitNumber) {}
 
-    public record CopyResultPayload(com.hsbc.ccaas.papi.controller.model.AdGroupCopyResponse copyResult) {}
-
     public record SapiCopyRequest(
         String sourceGroupIdentifier,
         String targetGroupIdentifier,
@@ -20807,7 +20797,11 @@ public final class AdGroupPayloads {
             int limitNumber,
             String groupIdentifier,
             String roleName,
-            String statusCode) {}
+            String statusCode,
+            String market,
+            String region,
+            String country,
+            String businessUnit) {}
 }
 ===ENDFILE
 ===FILE: ./src/main/java/com/hsbc/ccaas/papi/dto/sapi/ApprovalPayloads.java
@@ -21070,6 +21064,22 @@ public class SapiDataMetaResponse<T> {
 
         private boolean hasMore;
     }
+}
+===ENDFILE
+===FILE: ./src/main/java/com/hsbc/ccaas/papi/dto/sapi/SapiDataRequest.java
+package com.hsbc.ccaas.papi.dto.sapi;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+
+/**
+ * Generic wrapper for serializing requests to SAPI in the expected data envelope format.
+ * SAPI expects: {"data": { ... request payload ... }}
+ */
+@Data
+@AllArgsConstructor
+public class SapiDataRequest<T> {
+    private T data;
 }
 ===ENDFILE
 ===FILE: ./src/main/java/com/hsbc/ccaas/papi/dto/sapi/SapiDataResponse.java
@@ -23492,6 +23502,7 @@ import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.web.client.RestClient;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -23562,6 +23573,10 @@ class SapiAdGroupClientTest {
         AdGroupFilterCriteria criteria = new AdGroupFilterCriteria();
         criteria.setOffset(0);
         criteria.setLimit(10);
+        criteria.setMarket("EMEA");
+        criteria.setRegion("Europe");
+        criteria.setCountry("UK");
+        criteria.setBusinessUnit("Retail");
 
         List<String> adminGroups = List.of("CN=Admin1", "CN=Admin2");
 
@@ -23582,6 +23597,20 @@ class SapiAdGroupClientTest {
         String capturedUri = uriCaptor.getValue();
 
         assertThat(capturedUri).doesNotContain("adGroups").doesNotContain("adminAdGroups");
+
+        org.mockito.ArgumentCaptor<Object> bodyCaptor = org.mockito.ArgumentCaptor.forClass(Object.class);
+        verify(requestBodySpec).body(bodyCaptor.capture());
+        assertThat(bodyCaptor.getValue()).isInstanceOf(Map.class);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> envelope = (Map<String, Object>) bodyCaptor.getValue();
+        assertThat(envelope).containsKey("data");
+        assertThat(envelope.get("data")).isInstanceOf(AdGroupPayloads.AdGroupListData.class);
+
+        AdGroupPayloads.AdGroupListData payload = (AdGroupPayloads.AdGroupListData) envelope.get("data");
+        assertThat(payload.market()).isEqualTo("EMEA");
+        assertThat(payload.region()).isEqualTo("Europe");
+        assertThat(payload.country()).isEqualTo("UK");
+        assertThat(payload.businessUnit()).isEqualTo("Retail");
     }
 
     @Test
@@ -23689,14 +23718,14 @@ class SapiAdGroupCopyClientTest {
         AdGroupCopyResponse expectedResponse = new AdGroupCopyResponse();
         expectedResponse.setSuccessFlag(true);
 
-        SapiDataResponse<AdGroupPayloads.CopyResultPayload> sapiResponse = new SapiDataResponse<>();
-        sapiResponse.setData(new AdGroupPayloads.CopyResultPayload(expectedResponse));
+        SapiDataResponse<AdGroupCopyResponse> sapiResponse = new SapiDataResponse<>();
+        sapiResponse.setData(expectedResponse);
 
         when(sapiRestClient.post()).thenReturn(requestBodyUriSpec);
         when(requestBodyUriSpec.uri(anyString())).thenReturn(requestBodySpec);
         when(requestBodySpec.body((Object) any())).thenReturn(requestBodySpec);
         when(requestBodySpec.retrieve()).thenReturn(responseSpec);
-        when(responseSpec.body(ArgumentMatchers.<ParameterizedTypeReference<SapiDataResponse<AdGroupPayloads.CopyResultPayload>>>any()))
+        when(responseSpec.body(ArgumentMatchers.<ParameterizedTypeReference<SapiDataResponse<AdGroupCopyResponse>>>any()))
             .thenReturn(sapiResponse);
 
         AdGroupCopyResponse result = client.copyAdGroupConfiguration(
@@ -23729,7 +23758,7 @@ class SapiAdGroupCopyClientTest {
         when(requestBodyUriSpec.uri(anyString())).thenReturn(requestBodySpec);
         when(requestBodySpec.body((Object) any())).thenReturn(requestBodySpec);
         when(requestBodySpec.retrieve()).thenReturn(responseSpec);
-        when(responseSpec.body(ArgumentMatchers.<ParameterizedTypeReference<SapiDataResponse<AdGroupPayloads.CopyResultPayload>>>any()))
+        when(responseSpec.body(ArgumentMatchers.<ParameterizedTypeReference<SapiDataResponse<AdGroupCopyResponse>>>any()))
             .thenThrow(exception);
         when(objectMapper.readValue(errorJson, AdGroupCopyResponse.class)).thenReturn(errorResponse);
 
