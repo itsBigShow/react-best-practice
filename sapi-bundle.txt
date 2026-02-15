@@ -1,5 +1,5 @@
 # CCaaS Entitlement SAPI - Source Bundle
-# Generated: 2026-02-15 14:10:38
+# Generated: 2026-02-15 14:53:24
 # Total files: 394
 # Categories: 1 pom.xml, 2 CLAUDE.md, 2 resources, 130 YAML specs, 172 main Java, 80 test Java, 7 other
 # Note: target/generated-sources NOT included - run 'mvn generate-sources' after extraction
@@ -2205,21 +2205,19 @@ class ExampleControllerTest {
 }
 ```
 
-## Key Endpoints (26 operations, all working)
+## Key Endpoints (35 operations, all working)
 ```
-# AD Groups
+# AD Groups (2)
 POST /sapi/v1/ad-groups                                          # List (paginated, filterable)
 POST /sapi/v1/ad-groups/lookup                                   # Look up config by DN (body)
 
-# Session Layouts
-POST /sapi/v1/sessions                                    # Compute layout
-POST /sapi/v1/sessions/invalidate-cache                   # Invalidate cache by group (body)
-
-# Notices & Entitlements
+# Session Layouts (4)
+POST /sapi/v1/sessions                                           # Compute layout
+POST /sapi/v1/sessions/invalidate-cache                          # Invalidate cache by group (body)
 POST /sapi/v1/notice-acknowledgments                             # Acknowledge notice
 POST /sapi/v1/entitlements                                       # Add entitlement to role templates
 
-# Embedded Apps
+# Embedded Apps (6)
 GET  /sapi/v1/embedded-apps                                      # List apps
 GET  /sapi/v1/embedded-apps/{appKey}                             # Get by key
 POST /sapi/v1/embedded-apps-ad-groups/{appKey}                   # Look up app AD group config (body: groupIdentifier)
@@ -2227,45 +2225,45 @@ PUT  /sapi/v1/embedded-apps-ad-groups/{appKey}                   # Update app AD
 POST /sapi/v1/embedded-apps-ad-groups                            # List apps for AD group (body: groupIdentifier)
 POST /sapi/v1/resolve-roles                                      # Resolve role from AD groups (body: adGroupValues)
 
-# Pending Changes (approval workflow)
+# Pending Changes (4)
 POST   /sapi/v1/pending-changes                                  # Submit change
 POST   /sapi/v1/pending-changes/list                             # List (POST with AD group scoping)
 GET    /sapi/v1/pending-changes/{changeIdentifier}               # Get detail
 DELETE /sapi/v1/pending-changes/{changeIdentifier}               # Cancel own submission (returns 200 with body)
 
-# Approvals / Rejections
+# Approvals / Rejections (3)
 POST /sapi/v1/change-approvals                                   # Approve (L1 or L2)
 POST /sapi/v1/change-rejections                                  # Reject
+POST /sapi/v1/direct-saves                                       # Super Admin direct save (bypasses approval)
 
-# Admin Notices
+# Admin Notices (4)
 GET   /sapi/v1/notices                                           # List (?status=ACTIVE|DRAFT|ARCHIVED)
 POST  /sapi/v1/notices                                           # Create
 PUT   /sapi/v1/notices/{noticeIdentifier}                        # Update
 PATCH /sapi/v1/notices/{noticeIdentifier}/status                 # Status change
 
-# Reference Data
+# Reference Data (8)
 GET  /sapi/v1/regions                                            # All regions
 GET  /sapi/v1/countries                                          # All countries
 GET  /sapi/v1/regions-countries/{regionCode}                     # Countries by region
 GET  /sapi/v1/business-units                                     # All business units
 GET  /sapi/v1/markets                                            # All markets
 GET  /sapi/v1/regions-markets/{regionCode}                       # Markets by region
-
-# Role Layout Templates
 GET  /sapi/v1/role-layout-templates                              # All templates (summary)
 GET  /sapi/v1/role-layout-templates/{roleNameCode}               # Full template by name
 
-# User Roles
+# User Roles (1)
 POST /sapi/v1/users/{userIdentifier}/primaries/{roleName}        # Set primary
 
-# Copy Configuration
+# Copy Configuration (1)
 POST /sapi/v1/ad-group-configuration-copies                      # Copy AD group config
 
-# Debug (dev only, requires sapi.debug.enabled=true)
-POST /sapi/v1/debug/users/{userIdentifier}/roles/{roleName}/reset-primary  # Reset primary assignment and clear cached layouts
+# Audit (2)
+GET  /sapi/v1/my-activity                                        # User's own activity log
+GET  /sapi/v1/audit-logs                                         # Admin audit log (compliance)
 ```
 
-**No dead endpoints.** All SAPI paths have working implementations. Dead APIs (GET /sessions returning NOT_IMPLEMENTED, orphaned session-layout-templates, invalidate-by-user, check-requires-primary) were removed in the v1.0 cleanup.
+**No dead endpoints.** All 35 SAPI paths have working implementations.
 
 ## Database
 Direct JPA access to `hsbc_ccaas` PostgreSQL. Key tables: `ad_groups`, `ad_group_layout_assignments`, `ad_group_permissions`, `layouts`, `ref_regions`, `ref_markets`, `ref_countries`, `pending_changes`, `change_audit_log`, `approval_rules`.
