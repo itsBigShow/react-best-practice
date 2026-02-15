@@ -1,5 +1,5 @@
 # CCaaS Entitlement SAPI - Source Bundle
-# Generated: 2026-02-15 14:53:24
+# Generated: 2026-02-16 02:36:12
 # Total files: 394
 # Categories: 1 pom.xml, 2 CLAUDE.md, 2 resources, 130 YAML specs, 172 main Java, 80 test Java, 7 other
 # Note: target/generated-sources NOT included - run 'mvn generate-sources' after extraction
@@ -335,8 +335,8 @@ All field names use HSBC Hydrogen API class-word suffixes:
 - `userIdentifier`, `groupIdentifier`, `layoutIdentifier`, `noticeIdentifier`, `changeIdentifier` (identifiers)
 - `stateCode`, `statusCode`, `noticeCode`, `regionCode`, `countryCode`, `marketCode`, `businessUnitCode` (codes)
 - `stateText`, `reasonText`, `messageText`, `titleText`, `bodyText`, `commentsText` (text)
-- `forceRefreshFlag`, `allowOverwriteFlag`, `includeAuditFlag` (flags)
-- `valueObject`, `changePayloadJson` (structured types)
+- `forceRefreshFlag`, `allowOverwriteIndicator`, `includeAuditFlag` (flags)
+- `stateValue`, `changePayloadJson` (structured types)
 - `adGroupValues`, `targetRoleValues`, `copiedSectionValues` (arrays)
 
 ### Error Responses
@@ -464,7 +464,7 @@ Invalidates cached session layouts when an AD group configuration changes. Calle
 ## Notices
 
 ### Acknowledge Notice
-**POST** `/sapi/v1/notices`
+**POST** `/sapi/v1/notice-acknowledgments`
 
 Records whether a user acknowledged or dismissed a configuration notice displayed in their session.
 
@@ -502,7 +502,7 @@ Records whether a user acknowledged or dismissed a configuration notice displaye
 ## Entitlements
 
 ### Add Entitlement to Role Templates
-**POST** `/sapi/v1/add-entitlements`
+**POST** `/sapi/v1/entitlements`
 
 Dynamically adds a new entitlement (column, widget, feature, setting, or micro-frontend) to one or more role templates. Used for rolling out new features to specific roles.
 
@@ -512,12 +512,12 @@ Dynamically adds a new entitlement (column, widget, feature, setting, or micro-f
   "data": {
     "entitlementTypeCode": "widgets",
     "keyCode": "customer.sentimentAnalysis",
-    "valueObject": {
+    "stateValue": {
       "stateText": "hidden",
       "reasonText": "Beta feature - opt-in only"
     },
     "targetRoleValues": ["voice_agent", "chat_agent"],
-    "allowOverwriteFlag": false
+    "allowOverwriteIndicator": false
   }
 }
 ```
@@ -656,7 +656,7 @@ Retrieves the layout assignment configuration for a specific AD group by its dis
 ## Copy Configuration
 
 ### Copy AD Group Configuration
-**POST** `/sapi/v1/copy-ad-group-configurations`
+**POST** `/sapi/v1/ad-group-configuration-copies`
 
 Copies layout assignment configuration from one AD group to another with granular field selection. Useful for replicating configurations across regions or teams.
 
@@ -666,8 +666,12 @@ Copies layout assignment configuration from one AD group to another with granula
   "data": {
     "sourceGroupIdentifier": "CN=VoiceAgent_AMER,OU=Agents,OU=Groups,DC=hsbc,DC=com",
     "targetGroupIdentifier": "CN=VoiceAgent_EMEA,OU=Agents,OU=Groups,DC=hsbc,DC=com",
-    "copiedSectionValues": ["columns", "widgets", "features", "settings_tabs", "settings_options"],
-    "initiatorIdentifier": "600016"
+    "copyOptions": {
+      "copyRoleAndPermissionsFlag": true,
+      "copyBusinessInfoFlag": true,
+      "copyApplicationsFlag": true,
+      "overwriteExistingFlag": false
+    }
   }
 }
 ```
@@ -705,7 +709,7 @@ Returns a list of all embedded banking applications configured in the system.
   "data": {
     "apps": [
       {
-        "appKey": "customer_360",
+        "appKey": "money-transfer",
         "appName": "Customer 360 View",
         "appUrl": "https://apps.hsbc.com/customer360",
         "statusCode": "ACTIVE"
@@ -729,13 +733,13 @@ Returns a list of all embedded banking applications configured in the system.
 Retrieves details for a specific embedded app.
 
 **Path Parameters:**
-- `appKey` - Application key (e.g., `customer_360`, `loan_origination`)
+- `appKey` - Application key (e.g., `money-transfer`, `loan_origination`)
 
 **Response:** `200 OK`
 ```json
 {
   "data": {
-    "appKey": "customer_360",
+    "appKey": "money-transfer",
     "appName": "Customer 360 View",
     "appUrl": "https://apps.hsbc.com/customer360",
     "statusCode": "ACTIVE",
@@ -771,7 +775,7 @@ Retrieves the AD group configuration for a specific embedded app, including assi
 ```json
 {
   "data": {
-    "appKey": "customer_360",
+    "appKey": "money-transfer",
     "titleText": "Customer 360 View",
     "groupIdentifier": "CN=VoiceAgent_AMER,OU=Agents,OU=Groups,DC=hsbc,DC=com",
     "assignedFunctionValues": ["view_customer", "edit_customer"]
@@ -809,7 +813,7 @@ Updates function assignments for an embedded app and AD group combination.
 ```json
 {
   "data": {
-    "appKey": "customer_360",
+    "appKey": "money-transfer",
     "groupIdentifier": "CN=VoiceAgent_AMER,...",
     "functionValues": ["view_customer", "edit_customer", "delete_customer"],
     "messageText": "Function assignments updated successfully"
@@ -844,7 +848,7 @@ Returns embedded apps configured for a specific AD group.
   "data": {
     "apps": [
       {
-        "appKey": "customer_360",
+        "appKey": "money-transfer",
         "appName": "Customer 360 View",
         "functionValues": ["view_customer", "edit_customer"]
       },
@@ -861,16 +865,20 @@ Returns embedded apps configured for a specific AD group.
 ---
 
 ### Resolve User Role from AD Groups
-**GET** `/sapi/v1/resolve-roles`
+**POST** `/sapi/v1/resolve-roles`
 
 Resolves the canonical user role from a list of AD group memberships. Returns the highest-priority role when a user belongs to multiple groups.
 
-**Query Parameters:**
-- `adGroups` - Comma-separated list of AD group DNs
-
-**Example:**
-```
-GET /sapi/v1/resolve-roles?adGroups=CN=VoiceAgent_AMER,...,CN=Supervisor_AMER,...
+**Request Body:**
+```json
+{
+  "data": {
+    "adGroupValues": [
+      "CN=VoiceAgent_AMER,OU=Agents,OU=Groups,DC=hsbc,DC=com",
+      "CN=Supervisor_AMER,OU=Supervisors,OU=Groups,DC=hsbc,DC=com"
+    ]
+  }
+}
 ```
 
 **Response:** `200 OK`
@@ -923,7 +931,7 @@ Creates a new pending configuration change request that requires approval. Depen
 ```json
 {
   "data": {
-    "changeIdentifier": "CHG-2024-001",
+    "changeIdentifier": "731d23c8-8107-40a3-b899-7066b15ad1bd",
     "statusCode": "PENDING_LEVEL_ONE",
     "submittedTimestamp": "2024-01-15T10:30:00Z",
     "requiresLevelTwo": false
@@ -976,7 +984,7 @@ Returns a paginated list of pending configuration changes scoped by the caller's
   "data": {
     "changes": [
       {
-        "changeIdentifier": "CHG-2024-001",
+        "changeIdentifier": "731d23c8-8107-40a3-b899-7066b15ad1bd",
         "changeTypeCode": "AD_GROUP_UPDATE",
         "statusCode": "PENDING_LEVEL_ONE",
         "submittedByIdentifier": "600016",
@@ -1001,13 +1009,13 @@ Returns a paginated list of pending configuration changes scoped by the caller's
 Retrieves details for a specific pending change, including full payload and audit trail.
 
 **Path Parameters:**
-- `changeIdentifier` - Change identifier (e.g., `CHG-2024-001`)
+- `changeIdentifier` - Change identifier (e.g., `731d23c8-8107-40a3-b899-7066b15ad1bd`)
 
 **Response:** `200 OK`
 ```json
 {
   "data": {
-    "changeIdentifier": "CHG-2024-001",
+    "changeIdentifier": "731d23c8-8107-40a3-b899-7066b15ad1bd",
     "changeTypeCode": "AD_GROUP_UPDATE",
     "statusCode": "PENDING_LEVEL_ONE",
     "targetGroupIdentifier": "CN=VoiceAgent_AMER,...",
@@ -1046,7 +1054,7 @@ Cancels a pending change submitted by the current user. Only allowed before appr
 ```json
 {
   "data": {
-    "changeIdentifier": "CHG-2024-001",
+    "changeIdentifier": "731d23c8-8107-40a3-b899-7066b15ad1bd",
     "statusCode": "CANCELLED",
     "targetGroupIdentifier": "CN=VoiceAgent_AMER,...",
     "cancelledTimestamp": "2024-01-15T11:00:00Z"
@@ -1073,7 +1081,7 @@ Approves a pending change. Depending on approval rules, may apply immediately (L
 ```json
 {
   "data": {
-    "changeIdentifier": "CHG-2024-001",
+    "changeIdentifier": "731d23c8-8107-40a3-b899-7066b15ad1bd",
     "approverIdentifier": "600020",
     "approverDisplayName": "Jane Smith",
     "commentsText": "Approved - business justification valid"
@@ -1085,7 +1093,7 @@ Approves a pending change. Depending on approval rules, may apply immediately (L
 ```json
 {
   "data": {
-    "changeIdentifier": "CHG-2024-001",
+    "changeIdentifier": "731d23c8-8107-40a3-b899-7066b15ad1bd",
     "statusCode": "APPROVED",
     "appliedTimestamp": "2024-01-15T11:00:00Z",
     "approvedByIdentifier": "600020",
@@ -1115,7 +1123,7 @@ Rejects a pending change and records the rejection reason.
 ```json
 {
   "data": {
-    "changeIdentifier": "CHG-2024-001",
+    "changeIdentifier": "731d23c8-8107-40a3-b899-7066b15ad1bd",
     "rejectorIdentifier": "600020",
     "rejectorDisplayName": "Jane Smith",
     "rejectionReasonText": "Insufficient business justification",
@@ -1128,7 +1136,7 @@ Rejects a pending change and records the rejection reason.
 ```json
 {
   "data": {
-    "changeIdentifier": "CHG-2024-001",
+    "changeIdentifier": "731d23c8-8107-40a3-b899-7066b15ad1bd",
     "statusCode": "REJECTED",
     "rejectedTimestamp": "2024-01-15T11:00:00Z",
     "rejectedByIdentifier": "600020",
@@ -1149,12 +1157,12 @@ Rejects a pending change and records the rejection reason.
 ## Admin Notices
 
 ### List Admin Notices
-**GET** `/sapi/v1/list-notices`
+**GET** `/sapi/v1/notices`
 
 Returns a list of administrative notices with optional status filtering.
 
 **Query Parameters:**
-- `statusCode` (optional) - Filter by status (`ACTIVE`, `ARCHIVED`, `DRAFT`)
+- `status` (optional) - Filter by status (`ACTIVE`, `ARCHIVED`, `DRAFT`)
 
 **Response:** `200 OK`
 ```json
@@ -1162,15 +1170,15 @@ Returns a list of administrative notices with optional status filtering.
   "data": {
     "notices": [
       {
-        "noticeIdentifier": "NOTICE-001",
+        "noticeIdentifier": "a0000000-0000-0000-0000-000000000001",
         "noticeCode": "SYSTEM_MAINTENANCE",
         "titleText": "Scheduled Maintenance",
-        "bodyText": "System will be unavailable on Saturday 10-12 PM GMT",
-        "severityCode": "INFO",
+        "messageText": "System will be unavailable on Saturday 10-12 PM GMT",
+        "severityValue": "INFO",
         "statusCode": "ACTIVE",
-        "effectiveFromTimestamp": "2024-01-10T00:00:00Z",
-        "effectiveToTimestamp": "2024-01-20T23:59:59Z",
-        "createdByIdentifier": "600001",
+        "startAtDate": "2024-01-10T00:00:00Z",
+        "endAtDate": "2024-01-20T23:59:59Z",
+        "createdByText": "600001",
         "createdTimestamp": "2024-01-08T09:00:00Z"
       }
     ]
@@ -1186,7 +1194,7 @@ Returns a list of administrative notices with optional status filtering.
 ---
 
 ### Create Admin Notice
-**POST** `/sapi/v1/create-notices`
+**POST** `/sapi/v1/notices`
 
 Creates a new administrative notice.
 
@@ -1196,12 +1204,12 @@ Creates a new administrative notice.
   "data": {
     "noticeCode": "SYSTEM_MAINTENANCE",
     "titleText": "Scheduled Maintenance",
-    "bodyText": "System will be unavailable on Saturday 10-12 PM GMT",
-    "severityCode": "INFO",
+    "messageText": "System will be unavailable on Saturday 10-12 PM GMT",
+    "severityValue": "INFO",
     "statusCode": "ACTIVE",
-    "effectiveFromTimestamp": "2024-01-10T00:00:00Z",
-    "effectiveToTimestamp": "2024-01-20T23:59:59Z",
-    "createdByIdentifier": "600016"
+    "startAtDate": "2024-01-10T00:00:00Z",
+    "endAtDate": "2024-01-20T23:59:59Z",
+    "createdByText": "600016"
   }
 }
 ```
@@ -1210,15 +1218,15 @@ Creates a new administrative notice.
 ```json
 {
   "data": {
-    "noticeIdentifier": "NOTICE-002",
+    "noticeIdentifier": "a0000000-0000-0000-0000-000000000002",
     "noticeCode": "SYSTEM_MAINTENANCE",
     "titleText": "Scheduled Maintenance",
-    "bodyText": "System will be unavailable on Saturday 10-12 PM GMT",
-    "severityCode": "INFO",
+    "messageText": "System will be unavailable on Saturday 10-12 PM GMT",
+    "severityValue": "INFO",
     "statusCode": "ACTIVE",
-    "effectiveFromTimestamp": "2024-01-10T00:00:00Z",
-    "effectiveToTimestamp": "2024-01-20T23:59:59Z",
-    "createdByIdentifier": "600016",
+    "startAtDate": "2024-01-10T00:00:00Z",
+    "endAtDate": "2024-01-20T23:59:59Z",
+    "createdByText": "600016",
     "createdTimestamp": "2024-01-15T10:30:00Z"
   }
 }
@@ -1231,7 +1239,7 @@ Creates a new administrative notice.
 ---
 
 ### Update Admin Notice
-**PUT** `/sapi/v1/update-notices/{noticeIdentifier}`
+**PUT** `/sapi/v1/notices/{noticeIdentifier}`
 
 Updates an existing administrative notice. Replaces all fields.
 
@@ -1244,12 +1252,12 @@ Updates an existing administrative notice. Replaces all fields.
   "data": {
     "noticeCode": "SYSTEM_MAINTENANCE",
     "titleText": "Scheduled Maintenance - Updated",
-    "bodyText": "System will be unavailable on Saturday 10-12 PM GMT. Database migration in progress.",
-    "severityCode": "WARNING",
+    "messageText": "System will be unavailable on Saturday 10-12 PM GMT. Database migration in progress.",
+    "severityValue": "WARNING",
     "statusCode": "ACTIVE",
-    "effectiveFromTimestamp": "2024-01-10T00:00:00Z",
-    "effectiveToTimestamp": "2024-01-20T23:59:59Z",
-    "updatedByIdentifier": "600016"
+    "startAtDate": "2024-01-10T00:00:00Z",
+    "endAtDate": "2024-01-20T23:59:59Z",
+    "createdByText": "600016"
   }
 }
 ```
@@ -1263,7 +1271,7 @@ Updates an existing administrative notice. Replaces all fields.
 ---
 
 ### Update Notice Status
-**PATCH** `/sapi/v1/update-status/{noticeIdentifier}`
+**PATCH** `/sapi/v1/notices/{noticeIdentifier}/status`
 
 Updates only the status of an administrative notice. Use this for archiving or activating notices without modifying content.
 
@@ -1275,7 +1283,7 @@ Updates only the status of an administrative notice. Use this for archiving or a
 {
   "data": {
     "statusCode": "ARCHIVED",
-    "updatedByIdentifier": "600016"
+    "createdByText": "600016"
   }
 }
 ```
@@ -1284,9 +1292,9 @@ Updates only the status of an administrative notice. Use this for archiving or a
 ```json
 {
   "data": {
-    "noticeIdentifier": "NOTICE-001",
+    "noticeIdentifier": "a0000000-0000-0000-0000-000000000001",
     "statusCode": "ARCHIVED",
-    "updatedByIdentifier": "600016",
+    "createdByText": "600016",
     "updatedTimestamp": "2024-01-15T11:00:00Z"
   }
 }
@@ -1516,20 +1524,20 @@ Retrieves markets filtered by a specific region code.
 ## User Role Management
 
 ### Set Primary Assignment
-**POST** `/sapi/v1/users/{userIdentifier}/primaries/{roleName}`
+**POST** `/sapi/v1/users/{userIdentifier}/primaries`
 
 Designates a specific AD group as the primary assignment for a user's role. Required when a user belongs to multiple AD groups for the same role.
 
 **Path Parameters:**
 - `userIdentifier` - User employee ID (e.g., `600016`)
-- `roleName` - Role name (e.g., `voice_agent`, `supervisor`)
 
 **Request Body:**
 ```json
 {
   "data": {
-    "primaryGroupIdentifier": "CN=VoiceAgent_AMER,...",
-    "updatedByIdentifier": "600016"
+    "roleName": "voice_agent",
+    "adGroupIdentifier": "CN=VoiceAgent_AMER,...",
+    "updatedBy": "600016"
   }
 }
 ```
@@ -1538,10 +1546,8 @@ Designates a specific AD group as the primary assignment for a user's role. Requ
 ```json
 {
   "data": {
-    "userIdentifier": "600016",
-    "roleName": "voice_agent",
-    "primaryGroupIdentifier": "CN=VoiceAgent_AMER,...",
-    "updatedTimestamp": "2024-01-15T10:30:00Z"
+    "successFlag": true,
+    "messageText": "Primary assignment updated successfully"
   }
 }
 ```
@@ -1583,7 +1589,7 @@ Resets the primary assignment flag and clears cached layouts for a user/role com
 ## Health
 
 ### Service Health Check
-**GET** `/actuator/health`
+**GET** `/sapi/v1/actuator/health`
 
 Returns the current health status of the service and its dependencies.
 
@@ -1663,7 +1669,7 @@ curl -X POST http://localhost:8093/sapi/v1/sessions/invalidate-cache \
 
 ### Acknowledge Notice
 ```bash
-curl -X POST http://localhost:8093/sapi/v1/notices \
+curl -X POST http://localhost:8093/sapi/v1/notice-acknowledgments \
   -H "Content-Type: application/json" \
   -d '{
     "data": {
@@ -1676,18 +1682,18 @@ curl -X POST http://localhost:8093/sapi/v1/notices \
 
 ### Add Entitlement to Role Templates
 ```bash
-curl -X POST http://localhost:8093/sapi/v1/add-entitlements \
+curl -X POST http://localhost:8093/sapi/v1/entitlements \
   -H "Content-Type: application/json" \
   -d '{
     "data": {
       "entitlementTypeCode": "widgets",
       "keyCode": "customer.newWidget",
-      "valueObject": {
+      "stateValue": {
         "stateText": "visible",
         "reasonText": ""
       },
       "targetRoleValues": ["voice_agent", "chat_agent"],
-      "allowOverwriteFlag": false
+      "allowOverwriteIndicator": false
     }
   }'
 ```
@@ -1731,14 +1737,32 @@ curl -X POST http://localhost:8093/sapi/v1/ad-groups/lookup \
 
 ### Copy AD Group Configuration
 ```bash
-curl -X POST http://localhost:8093/sapi/v1/copy-ad-group-configurations \
+curl -X POST http://localhost:8093/sapi/v1/ad-group-configuration-copies \
   -H "Content-Type: application/json" \
   -d '{
     "data": {
       "sourceGroupIdentifier": "CN=VoiceAgent_AMER,OU=Agents,OU=Groups,DC=hsbc,DC=com",
       "targetGroupIdentifier": "CN=VoiceAgent_EMEA,OU=Agents,OU=Groups,DC=hsbc,DC=com",
-      "copiedSectionValues": ["columns", "widgets", "features"],
-      "initiatorIdentifier": "600016"
+      "copyOptions": {
+        "copyRoleAndPermissionsFlag": true,
+        "copyBusinessInfoFlag": true,
+        "copyApplicationsFlag": true,
+        "overwriteExistingFlag": false
+      }
+    }
+  }'
+```
+
+### Direct Save AD Group Configuration (Super Admin)
+```bash
+curl -X POST http://localhost:8093/sapi/v1/direct-saves \
+  -H "Content-Type: application/json" \
+  -d '{
+    "data": {
+      "targetGroupIdentifier": "CN=VoiceAgent_AMER,OU=Agents,OU=Groups,DC=hsbc,DC=com",
+      "changeType": "CONFIG_UPDATE",
+      "proposedState": {},
+      "superAdminIdText": "600016"
     }
   }'
 ```
@@ -1750,12 +1774,12 @@ curl http://localhost:8093/sapi/v1/embedded-apps
 
 ### Get Embedded App by Key
 ```bash
-curl http://localhost:8093/sapi/v1/embedded-apps/customer_360
+curl http://localhost:8093/sapi/v1/embedded-apps/money-transfer
 ```
 
 ### Look Up App AD Group Configuration
 ```bash
-curl -X POST http://localhost:8093/sapi/v1/embedded-apps-ad-groups/customer_360 \
+curl -X POST http://localhost:8093/sapi/v1/embedded-apps-ad-groups/money-transfer \
   -H "Content-Type: application/json" \
   -d '{
     "data": {
@@ -1766,7 +1790,7 @@ curl -X POST http://localhost:8093/sapi/v1/embedded-apps-ad-groups/customer_360 
 
 ### Update App Function Assignments
 ```bash
-curl -X PUT http://localhost:8093/sapi/v1/embedded-apps-ad-groups/customer_360 \
+curl -X PUT http://localhost:8093/sapi/v1/embedded-apps-ad-groups/money-transfer \
   -H "Content-Type: application/json" \
   -d '{
     "data": {
@@ -1790,7 +1814,16 @@ curl -X POST http://localhost:8093/sapi/v1/embedded-apps-ad-groups \
 
 ### Resolve User Role from AD Groups
 ```bash
-curl "http://localhost:8093/sapi/v1/resolve-roles?adGroups=CN=VoiceAgent_AMER,OU=Agents,OU=Groups,DC=hsbc,DC=com,CN=Supervisor_AMER,OU=Supervisors,OU=Groups,DC=hsbc,DC=com"
+curl -X POST http://localhost:8093/sapi/v1/resolve-roles \
+  -H "Content-Type: application/json" \
+  -d '{
+    "data": {
+      "adGroupValues": [
+        "CN=VoiceAgent_AMER,OU=Agents,OU=Groups,DC=hsbc,DC=com",
+        "CN=Supervisor_AMER,OU=Supervisors,OU=Groups,DC=hsbc,DC=com"
+      ]
+    }
+  }'
 ```
 
 ### Submit Change for Approval
@@ -1829,12 +1862,12 @@ curl -X POST http://localhost:8093/sapi/v1/pending-changes/list \
 
 ### Get Pending Change by ID
 ```bash
-curl http://localhost:8093/sapi/v1/pending-changes/CHG-2024-001
+curl http://localhost:8093/sapi/v1/pending-changes/731d23c8-8107-40a3-b899-7066b15ad1bd
 ```
 
 ### Cancel Pending Change
 ```bash
-curl -X DELETE "http://localhost:8093/sapi/v1/pending-changes/CHG-2024-001?requesterId=600016"
+curl -X DELETE "http://localhost:8093/sapi/v1/pending-changes/731d23c8-8107-40a3-b899-7066b15ad1bd?requesterId=600016"
 ```
 
 ### Approve Pending Change
@@ -1843,7 +1876,7 @@ curl -X POST http://localhost:8093/sapi/v1/change-approvals \
   -H "Content-Type: application/json" \
   -d '{
     "data": {
-      "changeIdentifier": "CHG-2024-001",
+      "changeIdentifier": "731d23c8-8107-40a3-b899-7066b15ad1bd",
       "approverIdentifier": "600020",
       "approverDisplayName": "Jane Smith",
       "commentsText": "Approved - business justification valid"
@@ -1857,7 +1890,7 @@ curl -X POST http://localhost:8093/sapi/v1/change-rejections \
   -H "Content-Type: application/json" \
   -d '{
     "data": {
-      "changeIdentifier": "CHG-2024-001",
+      "changeIdentifier": "731d23c8-8107-40a3-b899-7066b15ad1bd",
       "rejectorIdentifier": "600020",
       "rejectorDisplayName": "Jane Smith",
       "rejectionReasonText": "Insufficient business justification",
@@ -1868,53 +1901,53 @@ curl -X POST http://localhost:8093/sapi/v1/change-rejections \
 
 ### List Admin Notices
 ```bash
-curl "http://localhost:8093/sapi/v1/list-notices?statusCode=ACTIVE"
+curl "http://localhost:8093/sapi/v1/notices?status=ACTIVE"
 ```
 
 ### Create Admin Notice
 ```bash
-curl -X POST http://localhost:8093/sapi/v1/create-notices \
+curl -X POST http://localhost:8093/sapi/v1/notices \
   -H "Content-Type: application/json" \
   -d '{
     "data": {
       "noticeCode": "SYSTEM_MAINTENANCE",
       "titleText": "Scheduled Maintenance",
-      "bodyText": "System will be unavailable on Saturday 10-12 PM GMT",
-      "severityCode": "INFO",
+      "messageText": "System will be unavailable on Saturday 10-12 PM GMT",
+      "severityValue": "INFO",
       "statusCode": "ACTIVE",
-      "effectiveFromTimestamp": "2024-01-10T00:00:00Z",
-      "effectiveToTimestamp": "2024-01-20T23:59:59Z",
-      "createdByIdentifier": "600016"
+      "startAtDate": "2024-01-10T00:00:00Z",
+      "endAtDate": "2024-01-20T23:59:59Z",
+      "createdByText": "600016"
     }
   }'
 ```
 
 ### Update Admin Notice
 ```bash
-curl -X PUT http://localhost:8093/sapi/v1/update-notices/NOTICE-001 \
+curl -X PUT http://localhost:8093/sapi/v1/notices/a0000000-0000-0000-0000-000000000001 \
   -H "Content-Type: application/json" \
   -d '{
     "data": {
       "noticeCode": "SYSTEM_MAINTENANCE",
       "titleText": "Scheduled Maintenance - Updated",
-      "bodyText": "System will be unavailable on Saturday 10-12 PM GMT",
-      "severityCode": "WARNING",
+      "messageText": "System will be unavailable on Saturday 10-12 PM GMT",
+      "severityValue": "WARNING",
       "statusCode": "ACTIVE",
-      "effectiveFromTimestamp": "2024-01-10T00:00:00Z",
-      "effectiveToTimestamp": "2024-01-20T23:59:59Z",
-      "updatedByIdentifier": "600016"
+      "startAtDate": "2024-01-10T00:00:00Z",
+      "endAtDate": "2024-01-20T23:59:59Z",
+      "createdByText": "600016"
     }
   }'
 ```
 
 ### Update Notice Status
 ```bash
-curl -X PATCH http://localhost:8093/sapi/v1/update-status/NOTICE-001 \
+curl -X PATCH http://localhost:8093/sapi/v1/notices/a0000000-0000-0000-0000-000000000001/status \
   -H "Content-Type: application/json" \
   -d '{
     "data": {
       "statusCode": "ARCHIVED",
-      "updatedByIdentifier": "600016"
+      "createdByText": "600016"
     }
   }'
 ```
@@ -1949,14 +1982,35 @@ curl http://localhost:8093/sapi/v1/markets
 curl http://localhost:8093/sapi/v1/regions-markets/APAC
 ```
 
+### Get Role Layout Template Summaries
+```bash
+curl http://localhost:8093/sapi/v1/role-layout-templates
+```
+
+### Get Role Layout Template by Name
+```bash
+curl http://localhost:8093/sapi/v1/role-layout-templates/voice_agent
+```
+
+### Get My Activity
+```bash
+curl "http://localhost:8093/sapi/v1/my-activity?offset=0&limit=20&timeRange=WEEK"
+```
+
+### Query Audit Logs
+```bash
+curl "http://localhost:8093/sapi/v1/audit-logs?offset=0&limit=20&action=SUBMIT&regionCode=AMERICAS"
+```
+
 ### Set Primary Assignment
 ```bash
-curl -X POST http://localhost:8093/sapi/v1/users/600016/primaries/voice_agent \
+curl -X POST http://localhost:8093/sapi/v1/users/600016/primaries \
   -H "Content-Type: application/json" \
   -d '{
     "data": {
-      "primaryGroupIdentifier": "CN=VoiceAgent_AMER,OU=Agents,OU=Groups,DC=hsbc,DC=com",
-      "updatedByIdentifier": "600016"
+      "roleName": "voice_agent",
+      "adGroupIdentifier": "CN=VoiceAgent_AMER,OU=Agents,OU=Groups,DC=hsbc,DC=com",
+      "updatedBy": "600016"
     }
   }'
 ```
@@ -3005,6 +3059,26 @@ paths:
                       description: 'Filter by AD group status (e.g. ENABLED, DISABLED)'
                       minLength: 1
                       maxLength: 50
+                    market:
+                      type: string
+                      description: Filter by market
+                      minLength: 1
+                      maxLength: 100
+                    region:
+                      type: string
+                      description: Filter by region
+                      minLength: 1
+                      maxLength: 100
+                    country:
+                      type: string
+                      description: Filter by country
+                      minLength: 1
+                      maxLength: 100
+                    businessUnit:
+                      type: string
+                      description: Filter by business unit
+                      minLength: 1
+                      maxLength: 100
                     offsetNumber:
                       type: integer
                       format: int32
@@ -3156,7 +3230,7 @@ paths:
                               description: Whether there's a pending change for this group
                             currentConfig:
                               description: Aggregated configuration changes to apply
-                              $ref: '#/paths/~1pending-changes/post/requestBody/content/application~1json/schema/properties/data/properties/proposedConfig'
+                              $ref: '#/paths/~1direct-saves/post/requestBody/content/application~1json/schema/properties/data/properties/currentState'
                             criticalFieldNames:
                               type: array
                               description: Names of fields in this group considered critical for change control
@@ -3469,124 +3543,7 @@ paths:
                       maxLength: 1000
                     proposedConfig:
                       description: Proposed configuration changes.
-                      type: object
-                      properties:
-                        businessInfoChanges:
-                          type: object
-                          description: 'Business info changes (logicalName, roleName, region, etc.)'
-                          properties:
-                            logicalName:
-                              type: string
-                              description: Logical name.
-                              minLength: 1
-                              maxLength: 100
-                              nullable: true
-                            roleName:
-                              type: string
-                              description: Role name.
-                              minLength: 1
-                              maxLength: 100
-                              nullable: true
-                            regionCode:
-                              type: string
-                              description: Region code.
-                              minLength: 1
-                              maxLength: 100
-                              nullable: true
-                            countryCode:
-                              type: string
-                              description: Country code.
-                              minLength: 1
-                              maxLength: 100
-                              nullable: true
-                            businessUnitName:
-                              type: string
-                              description: Business unit name.
-                              minLength: 1
-                              maxLength: 100
-                              nullable: true
-                            marketCode:
-                              type: string
-                              description: Market code.
-                              minLength: 1
-                              maxLength: 100
-                              nullable: true
-                          additionalProperties: false
-                          nullable: true
-                        permissionChanges:
-                          type: object
-                          description: Permission changes for columns and widgets.
-                          properties:
-                            columnPermissions:
-                              type: object
-                              description: Column permission changes keyed by column name.
-                              additionalProperties:
-                                type: object
-                                description: Column permission change.
-                                properties:
-                                  enabledIndicator:
-                                    type: boolean
-                                    description: Whether column is enabled (Indicator suffix).
-                                additionalProperties: false
-                            widgetPermissions:
-                              type: object
-                              description: Widget permission changes keyed by widget name.
-                              additionalProperties:
-                                type: object
-                                description: Widget permission change.
-                                properties:
-                                  enabledIndicator:
-                                    type: boolean
-                                    description: Whether widget is enabled (Indicator suffix).
-                                additionalProperties: false
-                          additionalProperties: false
-                          nullable: true
-                        applicationChanges:
-                          type: array
-                          description: List of application changes.
-                          items:
-                            type: object
-                            description: Represents a change to an application configuration.
-                            properties:
-                              appCode:
-                                type: string
-                                description: Application code.
-                                minLength: 1
-                                maxLength: 100
-                              proposedStateIndicator:
-                                type: boolean
-                                description: Proposed enabled state.
-                              currentStateIndicator:
-                                type: boolean
-                                description: Current enabled state.
-                            additionalProperties: false
-                        appFunctionChanges:
-                          type: array
-                          description: List of app-function changes.
-                          items:
-                            type: object
-                            description: Represents a change to a specific app-function pair.
-                            properties:
-                              appCode:
-                                type: string
-                                description: Application code.
-                                minLength: 1
-                                maxLength: 100
-                              functionCode:
-                                type: string
-                                description: Function code.
-                                minLength: 1
-                                maxLength: 100
-                              enabledIndicator:
-                                type: boolean
-                                description: Whether the function is enabled.
-                            additionalProperties: false
-                        activeIndicator:
-                          type: boolean
-                          description: Whether the AD group configuration is active.
-                          nullable: true
-                      additionalProperties: false
-                      nullable: true
+                      $ref: '#/paths/~1direct-saves/post/requestBody/content/application~1json/schema/properties/data/properties/currentState'
                     submittedByText:
                       type: string
                       description: Employee ID of the submitter for audit trail.
@@ -3681,14 +3638,14 @@ paths:
                             type: array
                             description: Specific app-function pairs impacted by this change
                             items:
-                              $ref: '#/paths/~1pending-changes/post/requestBody/content/application~1json/schema/properties/data/properties/proposedConfig/properties/appFunctionChanges/items'
+                              $ref: '#/paths/~1direct-saves/post/requestBody/content/application~1json/schema/properties/data/properties/currentState/properties/appFunctionChanges/items'
                         nullable: true
                       proposedConfig:
                         description: Proposed configuration changes.
-                        $ref: '#/paths/~1pending-changes/post/requestBody/content/application~1json/schema/properties/data/properties/proposedConfig'
+                        $ref: '#/paths/~1direct-saves/post/requestBody/content/application~1json/schema/properties/data/properties/currentState'
                       currentConfig:
                         description: Current configuration before changes.
-                        $ref: '#/paths/~1pending-changes/post/requestBody/content/application~1json/schema/properties/data/properties/proposedConfig'
+                        $ref: '#/paths/~1direct-saves/post/requestBody/content/application~1json/schema/properties/data/properties/currentState'
                       matchedRules:
                         type: array
                         description: Rules matched during change evaluation.
@@ -4174,13 +4131,128 @@ paths:
                       minLength: 1
                       maxLength: 500
                     currentState:
-                      type: object
                       description: Current configuration state.
-                      additionalProperties: true
-                    proposedState:
                       type: object
+                      properties:
+                        businessInfoChanges:
+                          type: object
+                          description: 'Business info changes (logicalName, roleName, region, etc.)'
+                          properties:
+                            logicalName:
+                              type: string
+                              description: Logical name.
+                              minLength: 1
+                              maxLength: 100
+                              nullable: true
+                            roleName:
+                              type: string
+                              description: Role name.
+                              minLength: 1
+                              maxLength: 100
+                              nullable: true
+                            regionCode:
+                              type: string
+                              description: Region code.
+                              minLength: 1
+                              maxLength: 100
+                              nullable: true
+                            countryCode:
+                              type: string
+                              description: Country code.
+                              minLength: 1
+                              maxLength: 100
+                              nullable: true
+                            businessUnitName:
+                              type: string
+                              description: Business unit name.
+                              minLength: 1
+                              maxLength: 100
+                              nullable: true
+                            marketCode:
+                              type: string
+                              description: Market code.
+                              minLength: 1
+                              maxLength: 100
+                              nullable: true
+                          additionalProperties: false
+                          nullable: true
+                        permissionChanges:
+                          type: object
+                          description: Permission changes for columns and widgets.
+                          properties:
+                            columnPermissions:
+                              type: object
+                              description: Column permission changes keyed by column name.
+                              additionalProperties:
+                                type: object
+                                description: Column permission change.
+                                properties:
+                                  enabledIndicator:
+                                    type: boolean
+                                    description: Whether column is enabled (Indicator suffix).
+                                additionalProperties: false
+                            widgetPermissions:
+                              type: object
+                              description: Widget permission changes keyed by widget name.
+                              additionalProperties:
+                                type: object
+                                description: Widget permission change.
+                                properties:
+                                  enabledIndicator:
+                                    type: boolean
+                                    description: Whether widget is enabled (Indicator suffix).
+                                additionalProperties: false
+                          additionalProperties: false
+                          nullable: true
+                        applicationChanges:
+                          type: array
+                          description: List of application changes.
+                          items:
+                            type: object
+                            description: Represents a change to an application configuration.
+                            properties:
+                              appCode:
+                                type: string
+                                description: Application code.
+                                minLength: 1
+                                maxLength: 100
+                              proposedStateIndicator:
+                                type: boolean
+                                description: Proposed enabled state.
+                              currentStateIndicator:
+                                type: boolean
+                                description: Current enabled state.
+                            additionalProperties: false
+                        appFunctionChanges:
+                          type: array
+                          description: List of app-function changes.
+                          items:
+                            type: object
+                            description: Represents a change to a specific app-function pair.
+                            properties:
+                              appCode:
+                                type: string
+                                description: Application code.
+                                minLength: 1
+                                maxLength: 100
+                              functionCode:
+                                type: string
+                                description: Function code.
+                                minLength: 1
+                                maxLength: 100
+                              enabledIndicator:
+                                type: boolean
+                                description: Whether the function is enabled.
+                            additionalProperties: false
+                        activeIndicator:
+                          type: boolean
+                          description: Whether the AD group configuration is active.
+                          nullable: true
+                      additionalProperties: false
+                      nullable: true
+                    proposedState:
                       description: Proposed configuration state to apply.
-                      additionalProperties: true
+                      $ref: '#/paths/~1direct-saves/post/requestBody/content/application~1json/schema/properties/data/properties/currentState'
                     changeType:
                       type: string
                       description: Type of change.
@@ -5741,7 +5813,7 @@ paths:
                       example: customer.sentimentAnalysis
                     stateValue:
                       title: EntitlementStateValueDto
-                      description: State value describing entitlement state with optional reason and metadata for Admin MFE.
+                      description: State value describing entitlement state with optional reason text.
                       type: object
                       properties:
                         stateText:
@@ -5760,29 +5832,6 @@ paths:
                           maxLength: 500
                           description: Optional reason for the entitlement state.
                           example: Beta feature - opt-in only
-                        businessName:
-                          type: string
-                          minLength: 0
-                          maxLength: 150
-                          description: Human-readable name for Admin MFE display.
-                          example: Knowledge Base
-                        description:
-                          type: string
-                          minLength: 0
-                          maxLength: 500
-                          description: What the permission controls.
-                          example: Access to knowledge base features
-                        visible:
-                          type: boolean
-                          description: Whether to show in Admin MFE permissions tab.
-                          example: true
-                        linkedKeys:
-                          type: array
-                          description: Keys that auto-sync with this toggle.
-                          items:
-                            type: string
-                          example:
-                            - features.search.knowledgeBase
                     targetRoleValues:
                       description: 'List of target roles to apply the entitlement to. If omitted, applies to all roles.'
                       type: array
@@ -6676,7 +6725,7 @@ paths:
                           $ref: '#/paths/~1entitlements/post/requestBody/content/application~1json/schema/properties/data/properties/stateValue'
                       features:
                         type: object
-                        description: Feature toggle entitlements
+                        description: Feature entitlements
                         additionalProperties:
                           $ref: '#/paths/~1entitlements/post/requestBody/content/application~1json/schema/properties/data/properties/stateValue'
                       settingsTabs:
@@ -8309,6 +8358,26 @@ properties:
     description: Filter by AD group status (e.g. ENABLED, DISABLED)
     minLength: 1
     maxLength: 50
+  market:
+    type: string
+    description: Filter by market
+    minLength: 1
+    maxLength: 100
+  region:
+    type: string
+    description: Filter by region
+    minLength: 1
+    maxLength: 100
+  country:
+    type: string
+    description: Filter by country
+    minLength: 1
+    maxLength: 100
+  businessUnit:
+    type: string
+    description: Filter by business unit
+    minLength: 1
+    maxLength: 100
   offsetNumber:
     type: integer
     format: int32
@@ -9113,13 +9182,11 @@ properties:
     minLength: 1
     maxLength: 500
   currentState:
-    type: object
     description: Current configuration state.
-    additionalProperties: true
+    $ref: './ConfigChanges.yaml'
   proposedState:
-    type: object
     description: Proposed configuration state to apply.
-    additionalProperties: true
+    $ref: './ConfigChanges.yaml'
   changeType:
     type: string
     description: Type of change.
@@ -10077,7 +10144,7 @@ properties:
       $ref: "../../common/entitlement-state-value-dto.yaml"
   features:
     type: object
-    description: Feature toggle entitlements
+    description: Feature entitlements
     additionalProperties:
       $ref: "../../common/entitlement-state-value-dto.yaml"
   settingsTabs:
@@ -10611,7 +10678,7 @@ pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]
 ===ENDFILE
 ===FILE: ./src/main/api/components/schemas/common/entitlement-state-value-dto.yaml
 title: EntitlementStateValueDto
-description: State value describing entitlement state with optional reason and metadata for Admin MFE.
+description: State value describing entitlement state with optional reason text.
 type: object
 properties:
   stateText:
@@ -10630,28 +10697,6 @@ properties:
     maxLength: 500
     description: Optional reason for the entitlement state.
     example: "Beta feature - opt-in only"
-  businessName:
-    type: string
-    minLength: 0
-    maxLength: 150
-    description: Human-readable name for Admin MFE display.
-    example: "Knowledge Base"
-  description:
-    type: string
-    minLength: 0
-    maxLength: 500
-    description: What the permission controls.
-    example: "Access to knowledge base features"
-  visible:
-    type: boolean
-    description: Whether to show in Admin MFE permissions tab.
-    example: true
-  linkedKeys:
-    type: array
-    description: Keys that auto-sync with this toggle.
-    items:
-      type: string
-    example: ["features.search.knowledgeBase"]
 ===ENDFILE
 ===FILE: ./src/main/api/components/schemas/common/error-data.yaml
 type: object
@@ -12716,10 +12761,10 @@ public class DefaultAdGroupManagementFacade implements AdGroupManagementFacade {
             resolvedLimit,
             request.getRoleName(),
             statusFilter,
-            null,
-            null,
-            null,
-            null
+            request.getMarket(),
+            request.getRegion(),
+            request.getCountry(),
+            request.getBusinessUnit()
         );
 
         AdGroupPage adGroupPage = adGroupLayoutAssignmentService.getAdGroups(criteria);
@@ -12980,10 +13025,6 @@ public class DefaultReferenceDataFacade implements ReferenceDataFacade {
                 EntitlementStateValueDto.StateTextEnum.fromValue(value.getState().getValue()));
         }
         dto.setReasonText(value.getReason());
-        dto.setBusinessName(value.getBusinessName());
-        dto.setDescription(value.getDescription());
-        dto.setVisible(value.getVisible());
-        dto.setLinkedKeys(value.getLinkedKeys());
         return dto;
     }
 }
@@ -14922,8 +14963,11 @@ public class DebugController {
 ===FILE: ./src/main/java/com/hsbc/ccaas/sapi/controller/DirectSaveController.java
 package com.hsbc.ccaas.sapi.controller;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hsbc.ccaas.sapi.constants.SapiConstants;
 import com.hsbc.ccaas.sapi.controller.api.DirectSavesApi;
+import com.hsbc.ccaas.sapi.controller.model.ConfigChanges;
 import com.hsbc.ccaas.sapi.controller.model.DirectSaveRequest;
 import com.hsbc.ccaas.sapi.controller.model.DirectSaveRequestEnvelope;
 import com.hsbc.ccaas.sapi.controller.model.DirectSaveResponse;
@@ -14948,9 +14992,11 @@ public class DirectSaveController implements DirectSavesApi {
     private static final Logger log = LoggerFactory.getLogger(DirectSaveController.class);
 
     private final DirectSaveService directSaveService;
+    private final ObjectMapper objectMapper;
 
-    public DirectSaveController(DirectSaveService directSaveService) {
+    public DirectSaveController(DirectSaveService directSaveService, ObjectMapper objectMapper) {
         this.directSaveService = directSaveService;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -14965,7 +15011,11 @@ public class DirectSaveController implements DirectSavesApi {
         if (!StringUtils.hasText(targetGroupId)) {
             throw new IllegalArgumentException("targetGroupIdentifier is required");
         }
+        Map<String, Object> currentState = Optional.ofNullable(data.getCurrentState())
+                .map(this::toConfigMap)
+                .orElse(Map.of());
         Map<String, Object> proposedState = Optional.ofNullable(data.getProposedState())
+                .map(this::toConfigMap)
                 .filter(m -> !m.isEmpty())
                 .orElseThrow(() -> new IllegalArgumentException("proposedState is required"));
         String superAdminId = Optional.ofNullable(data.getSuperAdminIdText())
@@ -14982,7 +15032,7 @@ public class DirectSaveController implements DirectSavesApi {
 
         DirectSaveCommand command = new DirectSaveCommand(
                 targetGroupId,
-                data.getCurrentState(),
+                currentState,
                 proposedState,
                 changeType,
                 superAdminId,
@@ -14995,6 +15045,32 @@ public class DirectSaveController implements DirectSavesApi {
                 .successIndicator(true)
                 .messageText("Configuration applied successfully");
         return ResponseEntity.ok(new DirectSaveResponse().data(responseData));
+    }
+
+    private Map<String, Object> toConfigMap(ConfigChanges config) {
+        Map<String, Object> mapped = objectMapper.convertValue(config, new TypeReference<Map<String, Object>>() {});
+        mapped.values().removeIf(this::isSemanticallyEmpty);
+        return mapped;
+    }
+
+    private boolean isSemanticallyEmpty(Object value) {
+        if (value == null) {
+            return true;
+        }
+        if (value instanceof String s) {
+            return s.isBlank();
+        }
+        if (value instanceof Map<?, ?> map) {
+            return map.isEmpty() || map.values().stream().allMatch(this::isSemanticallyEmpty);
+        }
+        if (value instanceof Iterable<?> iterable) {
+            return !iterable.iterator().hasNext() || streamIterable(iterable).allMatch(this::isSemanticallyEmpty);
+        }
+        return false;
+    }
+
+    private java.util.stream.Stream<?> streamIterable(Iterable<?> iterable) {
+        return java.util.stream.StreamSupport.stream(iterable.spliterator(), false);
     }
 }
 ===ENDFILE
@@ -17646,13 +17722,16 @@ public class TargetAlreadyConfiguredException extends RuntimeException {
 ===FILE: ./src/main/java/com/hsbc/ccaas/sapi/mapper/AdGroupAssignmentMapper.java
 package com.hsbc.ccaas.sapi.mapper;
 
-import com.hsbc.ccaas.sapi.controller.model.AdGroupWithAccessDto;
+import com.hsbc.ccaas.sapi.controller.model.*;
 import com.hsbc.ccaas.sapi.entity.AdGroupLayoutAssignment;
+import com.hsbc.ccaas.sapi.model.EntitlementStateValue;
 import org.mapstruct.*;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 
 /**
  * MapStruct mapper for AdGroupLayoutAssignment entity.
@@ -17679,7 +17758,100 @@ public interface AdGroupAssignmentMapper {
     @Mapping(source = "updatedAt", target = "updatedAtDatetime")
     @Mapping(source = "version", target = "versionNumber")
     @Mapping(source = "userCount", target = "userCountNumber")
+    @Mapping(target = "currentConfig", expression = "java(buildCurrentConfig(entity))")
     AdGroupWithAccessDto toResponse(AdGroupLayoutAssignment entity);
+
+    /**
+     * Builds the currentConfig object from entity assignment fields.
+     * Converts columnAssignments, widgetAssignments, featureAssignments into the ConfigChanges structure.
+     */
+    default ConfigChanges buildCurrentConfig(AdGroupLayoutAssignment entity) {
+        if (entity == null) {
+            return null;
+        }
+
+        // Check if there are any assignments
+        boolean hasAssignments = hasAnyAssignments(entity);
+        if (!hasAssignments) {
+            return null;
+        }
+
+        ConfigChanges config = new ConfigChanges();
+        PermissionChanges permChanges = new PermissionChanges();
+
+        // Map column assignments to column permissions
+        if (entity.getColumnAssignments() != null && !entity.getColumnAssignments().isEmpty()) {
+            permChanges.setColumnPermissions(toColumnPermissions(entity.getColumnAssignments()));
+        }
+
+        // Map widget assignments to widget permissions
+        if (entity.getWidgetAssignments() != null && !entity.getWidgetAssignments().isEmpty()) {
+            permChanges.setWidgetPermissions(toWidgetPermissions(entity.getWidgetAssignments()));
+        }
+
+        config.setPermissionChanges(permChanges);
+        return config;
+    }
+
+    /**
+     * Checks if the entity has any permission assignments.
+     */
+    default boolean hasAnyAssignments(AdGroupLayoutAssignment entity) {
+        return (entity.getColumnAssignments() != null && !entity.getColumnAssignments().isEmpty()) ||
+               (entity.getWidgetAssignments() != null && !entity.getWidgetAssignments().isEmpty()) ||
+               (entity.getFeatureAssignments() != null && !entity.getFeatureAssignments().isEmpty()) ||
+               (entity.getSettingsTabAssignments() != null && !entity.getSettingsTabAssignments().isEmpty()) ||
+               (entity.getSettingsOptionAssignments() != null && !entity.getSettingsOptionAssignments().isEmpty()) ||
+               (entity.getMicroFrontendAssignments() != null && !entity.getMicroFrontendAssignments().isEmpty());
+    }
+
+    /**
+     * Converts entity columnAssignments map to ColumnPermission DTOs.
+     */
+    default Map<String, ColumnPermission> toColumnPermissions(Map<String, EntitlementStateValue> assignments) {
+        if (assignments == null || assignments.isEmpty()) {
+            return null;
+        }
+
+        Map<String, ColumnPermission> result = new HashMap<>();
+        for (Map.Entry<String, EntitlementStateValue> entry : assignments.entrySet()) {
+            ColumnPermission perm = new ColumnPermission();
+            EntitlementStateValue stateValue = entry.getValue();
+
+            // Set enabledIndicator based on state enum
+            boolean enabled = stateValue != null &&
+                             stateValue.getState() != null &&
+                             stateValue.getState() != EntitlementStateValue.StateEnum.DISABLED;
+            perm.setEnabledIndicator(enabled);
+
+            result.put(entry.getKey(), perm);
+        }
+        return result;
+    }
+
+    /**
+     * Converts entity widgetAssignments map to WidgetPermission DTOs.
+     */
+    default Map<String, WidgetPermission> toWidgetPermissions(Map<String, EntitlementStateValue> assignments) {
+        if (assignments == null || assignments.isEmpty()) {
+            return null;
+        }
+
+        Map<String, WidgetPermission> result = new HashMap<>();
+        for (Map.Entry<String, EntitlementStateValue> entry : assignments.entrySet()) {
+            WidgetPermission perm = new WidgetPermission();
+            EntitlementStateValue stateValue = entry.getValue();
+
+            // Set enabledIndicator based on state enum
+            boolean enabled = stateValue != null &&
+                             stateValue.getState() != null &&
+                             stateValue.getState() != EntitlementStateValue.StateEnum.DISABLED;
+            perm.setEnabledIndicator(enabled);
+
+            result.put(entry.getKey(), perm);
+        }
+        return result;
+    }
 
     /**
      * Creates a deep copy of an AD group layout assignment.
@@ -18597,22 +18769,15 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonValue;
 
-import java.util.List;
-
 /**
- * State value describing entitlement state with optional reason and metadata.
+ * State value describing entitlement state with optional reason.
  * Used in JPA entities and layout computation for tri-state permission tracking.
- * Can include metadata like businessName, description, visible for Admin MFE.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class EntitlementStateValue {
 
     private StateEnum state;
     private String reason;
-    private String businessName;
-    private String description;
-    private Boolean visible;
-    private List<String> linkedKeys;
 
     public EntitlementStateValue() {
     }
@@ -18648,42 +18813,6 @@ public class EntitlementStateValue {
 
     public void setReason(String reason) {
         this.reason = reason;
-    }
-
-    @JsonProperty("businessName")
-    public String getBusinessName() {
-        return businessName;
-    }
-
-    public void setBusinessName(String businessName) {
-        this.businessName = businessName;
-    }
-
-    @JsonProperty("description")
-    public String getDescription() {
-        return description;
-    }
-
-    public void setDescription(String description) {
-        this.description = description;
-    }
-
-    @JsonProperty("visible")
-    public Boolean getVisible() {
-        return visible;
-    }
-
-    public void setVisible(Boolean visible) {
-        this.visible = visible;
-    }
-
-    @JsonProperty("linkedKeys")
-    public List<String> getLinkedKeys() {
-        return linkedKeys;
-    }
-
-    public void setLinkedKeys(List<String> linkedKeys) {
-        this.linkedKeys = linkedKeys;
     }
 
     public enum StateEnum {
@@ -21518,13 +21647,13 @@ public class EntitlementStateConverter {
                 EntitlementStateValue.StateEnum.fromValue(Boolean.TRUE.equals(boolValue) ? STATE_ENABLED : STATE_DISABLED));
         }
         if (value instanceof String strValue) {
-            return new EntitlementStateValue().state(EntitlementStateValue.StateEnum.fromValue(strValue));
+            return new EntitlementStateValue().state(parseStateSafely(strValue));
         }
         if (value instanceof Map<?, ?> mapValue) {
             return convertMapToEntitlementState((Map<String, Object>) mapValue);
         }
-        // Fallback: unknown types default to enabled
-        return new EntitlementStateValue().state(EntitlementStateValue.StateEnum.fromValue(STATE_ENABLED));
+        // Fail-safe fallback: unknown payload types must not grant access by default.
+        return new EntitlementStateValue().state(EntitlementStateValue.StateEnum.DISABLED);
     }
 
     private EntitlementStateValue convertMapToEntitlementState(Map<String, Object> valueMap) {
@@ -21535,7 +21664,7 @@ public class EntitlementStateConverter {
             Object reasonRaw = valueMap.get("reason");
             String reason = reasonRaw instanceof String s ? s : null;
             return new EntitlementStateValue()
-                .state(EntitlementStateValue.StateEnum.fromValue(state))
+                .state(parseStateSafely(state))
                 .reason(reason);
         }
         // Legacy format uses "enabledIndicator" boolean key
@@ -21544,10 +21673,21 @@ public class EntitlementStateConverter {
             return new EntitlementStateValue().state(
                 EntitlementStateValue.StateEnum.fromValue(Boolean.TRUE.equals(bool) ? STATE_ENABLED : STATE_DISABLED));
         }
-        // Ultimate fallback for unrecognized map structures
-        return new EntitlementStateValue().state(EntitlementStateValue.StateEnum.fromValue(STATE_ENABLED));
+        // Fail-safe fallback for unrecognized map structures
+        return new EntitlementStateValue().state(EntitlementStateValue.StateEnum.DISABLED);
     }
 
+    private EntitlementStateValue.StateEnum parseStateSafely(String rawState) {
+        if (rawState == null) {
+            return EntitlementStateValue.StateEnum.DISABLED;
+        }
+        return switch (rawState.trim().toLowerCase(Locale.ROOT)) {
+            case STATE_ENABLED -> EntitlementStateValue.StateEnum.ENABLED;
+            case STATE_DISABLED -> EntitlementStateValue.StateEnum.DISABLED;
+            case "hidden" -> EntitlementStateValue.StateEnum.HIDDEN;
+            default -> EntitlementStateValue.StateEnum.DISABLED;
+        };
+    }
 }
 ===ENDFILE
 ===FILE: ./src/main/java/com/hsbc/ccaas/sapi/service/LayoutCacheCoordinator.java
@@ -25827,6 +25967,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -25863,20 +26004,30 @@ class TemplateEntitlementProcessor {
 
     EntitlementStateValue convertToLocalStateValue(EntitlementStateValueDto dto) {
         if (dto == null) {
-            return new EntitlementStateValue().state(EntitlementStateValue.StateEnum.ENABLED);
+            return new EntitlementStateValue().state(EntitlementStateValue.StateEnum.DISABLED);
         }
         EntitlementStateValue local = new EntitlementStateValue();
         var stateText = dto.getStateText();
         if (stateText != null) {
             String value = stateText.getValue();
-            local.setState(value != null
-                ? EntitlementStateValue.StateEnum.fromValue(value)
-                : EntitlementStateValue.StateEnum.ENABLED);
+            local.setState(parseStateSafely(value));
         } else {
-            local.setState(EntitlementStateValue.StateEnum.ENABLED);
+            local.setState(EntitlementStateValue.StateEnum.DISABLED);
         }
         local.setReason(dto.getReasonText());
         return local;
+    }
+
+    private EntitlementStateValue.StateEnum parseStateSafely(String rawState) {
+        if (rawState == null) {
+            return EntitlementStateValue.StateEnum.DISABLED;
+        }
+        return switch (rawState.trim().toLowerCase(Locale.ROOT)) {
+            case "enabled" -> EntitlementStateValue.StateEnum.ENABLED;
+            case "hidden" -> EntitlementStateValue.StateEnum.HIDDEN;
+            case "disabled" -> EntitlementStateValue.StateEnum.DISABLED;
+            default -> EntitlementStateValue.StateEnum.DISABLED;
+        };
     }
 
     AddEntitlementDto buildSuccessResponse(List<String> updatedRoles, List<String> skippedRoles) {
@@ -26242,6 +26393,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -26565,6 +26717,33 @@ class DefaultAdGroupManagementFacadeTest {
 
             assertThat(result).isNotNull();
             verify(adGroupLayoutAssignmentService).getAdGroups(any(AdGroupSearchCriteria.class));
+        }
+
+        @Test
+        @DisplayName("should pass market/region/country/businessUnit filters to search criteria")
+        void shouldPassExtendedFiltersToCriteria() {
+            AdGroupListRequest request = new AdGroupListRequest()
+                .adminAdGroupValues(List.of("CN=Admin"))
+                .market("EMEA")
+                .region("Europe")
+                .country("UK")
+                .businessUnit("Retail");
+
+            AdGroupPage page = new AdGroupPage(List.of(), 0);
+            when(adGroupLayoutAssignmentService.getAdGroups(any(AdGroupSearchCriteria.class)))
+                .thenReturn(page);
+
+            facade.listAdGroups(request, "/ad-groups?offsetNumber=");
+
+            ArgumentCaptor<AdGroupSearchCriteria> criteriaCaptor =
+                ArgumentCaptor.forClass(AdGroupSearchCriteria.class);
+            verify(adGroupLayoutAssignmentService).getAdGroups(criteriaCaptor.capture());
+
+            AdGroupSearchCriteria criteria = criteriaCaptor.getValue();
+            assertThat(criteria.market()).isEqualTo("EMEA");
+            assertThat(criteria.region()).isEqualTo("Europe");
+            assertThat(criteria.country()).isEqualTo("UK");
+            assertThat(criteria.businessUnit()).isEqualTo("Retail");
         }
     }
 }
@@ -29544,7 +29723,7 @@ class DirectSaveControllerTest {
         objectMapper.findAndRegisterModules();
         objectMapper.disable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
 
-        controller = new DirectSaveController(directSaveService);
+        controller = new DirectSaveController(directSaveService, objectMapper);
     }
 
     @SuppressWarnings("unchecked")
@@ -29559,6 +29738,23 @@ class DirectSaveControllerTest {
         return objectMapper.convertValue(Map.of("data", innerData), DirectSaveRequestEnvelope.class);
     }
 
+    private Map<String, Object> configWithRole(String roleName) {
+        return Map.of("businessInfoChanges", Map.of("roleName", roleName));
+    }
+
+    private Map<String, Object> appConfigWithCode(String appCode) {
+        return Map.of("applicationChanges", List.of(Map.of("appCode", appCode, "proposedStateIndicator", true)));
+    }
+
+    @SuppressWarnings("unchecked")
+    private boolean proposedStateHasRole(Map<String, Object> proposedState, String roleName) {
+        Object businessInfoRaw = proposedState.get("businessInfoChanges");
+        if (!(businessInfoRaw instanceof Map<?, ?> businessInfo)) {
+            return false;
+        }
+        return roleName.equals(((Map<String, Object>) businessInfo).get("roleName"));
+    }
+
     @Nested
     @DisplayName("createDirectSave")
     class CreateDirectSaveTests {
@@ -29568,7 +29764,7 @@ class DirectSaveControllerTest {
         void directSaveConfigUpdateSuccess() throws Exception {
             Map<String, Object> innerData = Map.of(
                     "targetGroupIdentifier", "CN=Voice_Agent_UK,OU=Groups,DC=hsbc,DC=com",
-                    "proposedState", Map.of("roleName", "voice_agent"),
+                    "proposedState", configWithRole("voice_agent"),
                     "superAdminIdText", "EMP001",
                     "superAdminNameText", "Super Admin User"
             );
@@ -29584,7 +29780,7 @@ class DirectSaveControllerTest {
 
             verify(directSaveService).directSave(argThat((DirectSaveCommand cmd) ->
                     "CN=Voice_Agent_UK,OU=Groups,DC=hsbc,DC=com".equals(cmd.targetGroupId())
-                            && Map.of("roleName", "voice_agent").equals(cmd.proposedState())
+                            && proposedStateHasRole(cmd.proposedState(), "voice_agent")
                             && PendingChange.ChangeType.CONFIG_UPDATE == cmd.changeType()
                             && "EMP001".equals(cmd.superAdminId())
                             && "Super Admin User".equals(cmd.superAdminName())
@@ -29596,7 +29792,7 @@ class DirectSaveControllerTest {
         void directSaveAppUpdateSuccess() throws Exception {
             Map<String, Object> innerData = Map.of(
                     "targetGroupIdentifier", "CN=Voice_Agent_UK,OU=Groups,DC=hsbc,DC=com",
-                    "proposedState", Map.of("appCode", "TRADING"),
+                    "proposedState", appConfigWithCode("TRADING"),
                     "superAdminIdText", "EMP001",
                     "changeType", "APP_UPDATE"
             );
@@ -29616,7 +29812,7 @@ class DirectSaveControllerTest {
         void directSaveWithConfigVersion() throws Exception {
             Map<String, Object> innerData = Map.of(
                     "targetGroupIdentifier", "CN=Voice_Agent_UK,OU=Groups,DC=hsbc,DC=com",
-                    "proposedState", Map.of("roleName", "voice_agent"),
+                    "proposedState", configWithRole("voice_agent"),
                     "superAdminIdText", "EMP001",
                     "configVersionNumber", 5
             );
@@ -29636,7 +29832,7 @@ class DirectSaveControllerTest {
         void directSaveOptimisticLockingConflict() {
             Map<String, Object> innerData = Map.of(
                     "targetGroupIdentifier", "CN=Voice_Agent_UK,OU=Groups,DC=hsbc,DC=com",
-                    "proposedState", Map.of("roleName", "voice_agent"),
+                    "proposedState", configWithRole("voice_agent"),
                     "superAdminIdText", "EMP001"
             );
 
@@ -29662,7 +29858,7 @@ class DirectSaveControllerTest {
             List<String> wrongAdGroups = List.of("CN=Super_Admin_APAC,OU=Groups,DC=hsbc,DC=com");
             Map<String, Object> innerData = Map.of(
                     "targetGroupIdentifier", "CN=Voice_Agent_UK,OU=Groups,DC=hsbc,DC=com",
-                    "proposedState", Map.of("roleName", "voice_agent"),
+                    "proposedState", configWithRole("voice_agent"),
                     "superAdminIdText", "EMP001",
                     "superAdminAdGroupValues", wrongAdGroups
             );
@@ -29686,7 +29882,7 @@ class DirectSaveControllerTest {
         @DisplayName("should throw when targetGroupIdentifier is missing")
         void directSaveMissingTargetGroup() {
             Map<String, Object> innerData = Map.of(
-                    "proposedState", Map.of("roleName", "voice_agent"),
+                    "proposedState", configWithRole("voice_agent"),
                     "superAdminIdText", "EMP001"
             );
 
@@ -29717,7 +29913,7 @@ class DirectSaveControllerTest {
         void directSaveMissingSuperAdminId() {
             Map<String, Object> innerData = Map.of(
                     "targetGroupIdentifier", "CN=Voice_Agent_UK,OU=Groups,DC=hsbc,DC=com",
-                    "proposedState", Map.of("roleName", "voice_agent")
+                    "proposedState", configWithRole("voice_agent")
             );
 
             RequestContext<DirectSaveRequestEnvelope> rc = mockRequestContext();
@@ -31690,6 +31886,7 @@ class ReferenceDataControllerTest {
         assertEquals(1, response.getBody().getData().getMarkets().size());
         verify(referenceDataFacade).getMarketsByRegion("APAC");
     }
+
 }
 ===ENDFILE
 ===FILE: ./src/test/java/com/hsbc/ccaas/sapi/controller/RoleLayoutTemplatesControllerTest.java
@@ -32887,9 +33084,13 @@ package com.hsbc.ccaas.sapi.mapper;
 
 import static org.assertj.core.api.Assertions.*;
 
+import com.hsbc.ccaas.sapi.controller.model.ConfigChanges;
+import com.hsbc.ccaas.sapi.entity.AdGroupLayoutAssignment;
+import com.hsbc.ccaas.sapi.model.EntitlementStateValue;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 
@@ -32942,6 +33143,53 @@ class AdGroupAssignmentMapperTest {
     @Test
     void integerToLong_convertsValue() {
         assertThat(mapper.integerToLong(42)).isEqualTo(42L);
+    }
+
+    @Test
+    void toColumnPermissions_setsEnabledIndicatorFromState() {
+        EntitlementStateValue enabled = new EntitlementStateValue()
+            .state(EntitlementStateValue.StateEnum.ENABLED);
+        EntitlementStateValue hidden = new EntitlementStateValue()
+            .state(EntitlementStateValue.StateEnum.HIDDEN);
+        EntitlementStateValue disabled = new EntitlementStateValue()
+            .state(EntitlementStateValue.StateEnum.DISABLED);
+
+        Map<String, com.hsbc.ccaas.sapi.controller.model.ColumnPermission> result = mapper.toColumnPermissions(
+            Map.of("colEnabled", enabled, "colHidden", hidden, "colDisabled", disabled));
+
+        assertThat(result).containsKeys("colEnabled", "colHidden", "colDisabled");
+        assertThat(result.get("colEnabled").getEnabledIndicator()).isTrue();
+        assertThat(result.get("colHidden").getEnabledIndicator()).isTrue();
+        assertThat(result.get("colDisabled").getEnabledIndicator()).isFalse();
+    }
+
+    @Test
+    void buildCurrentConfig_returnsNullWhenNoAssignments() {
+        AdGroupLayoutAssignment assignment = new AdGroupLayoutAssignment();
+        ConfigChanges result = mapper.buildCurrentConfig(assignment);
+        assertThat(result).isNull();
+    }
+
+    @Test
+    void buildCurrentConfig_mapsColumnAndWidgetAssignments() {
+        AdGroupLayoutAssignment assignment = new AdGroupLayoutAssignment();
+        assignment.setColumnAssignments(Map.of(
+            "col1", new EntitlementStateValue().state(EntitlementStateValue.StateEnum.ENABLED)));
+        assignment.setWidgetAssignments(Map.of(
+            "widget1", new EntitlementStateValue().state(EntitlementStateValue.StateEnum.DISABLED)));
+
+        ConfigChanges result = mapper.buildCurrentConfig(assignment);
+
+        assertThat(result).isNotNull();
+        assertThat(result.getPermissionChanges()).isNotNull();
+        assertThat(result.getPermissionChanges().getColumnPermissions())
+            .containsKey("col1");
+        assertThat(result.getPermissionChanges().getColumnPermissions().get("col1").getEnabledIndicator())
+            .isTrue();
+        assertThat(result.getPermissionChanges().getWidgetPermissions())
+            .containsKey("widget1");
+        assertThat(result.getPermissionChanges().getWidgetPermissions().get("widget1").getEnabledIndicator())
+            .isFalse();
     }
 }
 ===ENDFILE
@@ -36325,8 +36573,8 @@ class ConfigApplyServiceTest {
         }
 
         @Test
-        @DisplayName("should default to ENABLED when map has neither state nor enabledIndicator")
-        void shouldDefaultToEnabledWhenMapHasNoStateOrIndicator() {
+        @DisplayName("should default to DISABLED when map has neither state nor enabledIndicator")
+        void shouldDefaultToDisabledWhenMapHasNoStateOrIndicator() {
             Map<String, Object> emptyMap = new HashMap<>();
             emptyMap.put("someOtherKey", "someValue");
 
@@ -36347,7 +36595,7 @@ class ConfigApplyServiceTest {
             service.applyChange(pc, "CHK001");
 
             assertNotNull(adGroup.getColumnAssignments());
-            assertEquals(EntitlementStateValue.StateEnum.ENABLED,
+            assertEquals(EntitlementStateValue.StateEnum.DISABLED,
                     adGroup.getColumnAssignments().get("col1").getState());
             verify(adGroupRepository).save(adGroup);
         }
@@ -36550,8 +36798,8 @@ class ConfigApplyServiceTest {
         }
 
         @Test
-        @DisplayName("should default to ENABLED for unrecognized value type in assignment")
-        void shouldDefaultToEnabledForUnrecognizedValueType() {
+        @DisplayName("should default to DISABLED for unrecognized value type in assignment")
+        void shouldDefaultToDisabledForUnrecognizedValueType() {
             Map<String, Object> columnMap = new HashMap<>();
             columnMap.put("col1", 42); // Integer - not Boolean, String, or Map
 
@@ -36569,7 +36817,7 @@ class ConfigApplyServiceTest {
             service.applyChange(pc, "CHK001");
 
             assertNotNull(adGroup.getColumnAssignments());
-            assertEquals(EntitlementStateValue.StateEnum.ENABLED,
+            assertEquals(EntitlementStateValue.StateEnum.DISABLED,
                     adGroup.getColumnAssignments().get("col1").getState());
             verify(adGroupRepository).save(adGroup);
         }
@@ -38017,26 +38265,36 @@ class EntitlementStateConverterTest {
         }
 
         @Test
-        @DisplayName("should default to ENABLED for Map with neither state nor enabledIndicator")
-        void shouldDefaultToEnabledForUnrecognizedMap() {
+        @DisplayName("should default to DISABLED for Map with neither state nor enabledIndicator")
+        void shouldDefaultToDisabledForUnrecognizedMap() {
             Map<String, Object> unknownMap = new HashMap<>();
             unknownMap.put("someOtherKey", "someValue");
 
             Map<String, Object> input = Map.of("col1", unknownMap);
             Map<String, EntitlementStateValue> result = converter.convertToEntitlementStateMap(input);
 
-            assertEquals(EntitlementStateValue.StateEnum.ENABLED, result.get("col1").getState());
+            assertEquals(EntitlementStateValue.StateEnum.DISABLED, result.get("col1").getState());
         }
 
         @Test
-        @DisplayName("should default to ENABLED for unrecognized value type (Integer)")
-        void shouldDefaultToEnabledForUnrecognizedType() {
+        @DisplayName("should default to DISABLED for unrecognized value type (Integer)")
+        void shouldDefaultToDisabledForUnrecognizedType() {
             Map<String, Object> input = new HashMap<>();
             input.put("col1", 42);
 
             Map<String, EntitlementStateValue> result = converter.convertToEntitlementStateMap(input);
 
-            assertEquals(EntitlementStateValue.StateEnum.ENABLED, result.get("col1").getState());
+            assertEquals(EntitlementStateValue.StateEnum.DISABLED, result.get("col1").getState());
+        }
+
+        @Test
+        @DisplayName("should default to DISABLED for unrecognized string state")
+        void shouldDefaultToDisabledForUnrecognizedStringState() {
+            Map<String, Object> input = Map.of("col1", "not_a_real_state");
+
+            Map<String, EntitlementStateValue> result = converter.convertToEntitlementStateMap(input);
+
+            assertEquals(EntitlementStateValue.StateEnum.DISABLED, result.get("col1").getState());
         }
 
         @Test
