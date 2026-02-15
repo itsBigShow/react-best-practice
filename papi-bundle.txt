@@ -1,7 +1,7 @@
 # CCaaS Entitlement PAPI - Source Bundle
-# Generated: 2026-02-15 22:40:29
-# Total files: 292
-# Categories: 1 pom.xml, 2 CLAUDE.md, 1 resources, 132 YAML specs, 91 main Java, 58 test Java, 7 other
+# Generated: 2026-02-16 02:36:12
+# Total files: 297
+# Categories: 1 pom.xml, 2 CLAUDE.md, 1 resources, 137 YAML specs, 91 main Java, 58 test Java, 7 other
 # Note: target/generated-sources NOT included - run 'mvn generate-sources' after extraction
 ===FILE: ./.gitignore
 # Compiled class files
@@ -272,7 +272,7 @@ curl -i http://localhost:8094/papi/v1/pending-changes?offset=0&limit=2
 
 ## Authentication
 
-Intended contract: all endpoints (except `/actuator/health`) require the `X-HSBC-E2E-Trust-Token` header.
+Intended contract: all documented endpoints require the `X-HSBC-E2E-Trust-Token` header.
 See the audit snapshot above for current runtime deviations that must be fixed.
 
 ### Header Format
@@ -419,7 +419,7 @@ curl -X GET http://localhost:8094/papi/v1/sessions \
 ```json
 {
   "data": {
-    "userId": "EMP001",
+    "userId": "600016",
     "displayName": "Voice Agent Demo",
     "primaryRole": "voice_agent",
     "roles": {
@@ -439,10 +439,10 @@ curl -X GET http://localhost:8094/papi/v1/sessions \
         },
         "microFrontends": [
           {
-            "key": "embedded_banking",
+            "key": "money-transfer",
             "url": "http://localhost:5175",
-            "functions": ["account_lookup", "balance_inquiry"],
-            "defaultFunction": "account_lookup"
+            "functions": ["quick-transfer", "view-transfers"],
+            "defaultFunction": "quick-transfer"
           }
         ]
       }
@@ -462,30 +462,34 @@ curl -X GET http://localhost:8094/papi/v1/sessions \
 #### Acknowledge Admin Notice
 Records that a user has acknowledged or dismissed an admin notice.
 
-**Endpoint:** `POST /papi/v1/notices`
+**Endpoint:** `POST /papi/v1/sessions/notice-acknowledgments`
 
 **Authentication:** Required (any role)
 
 **Request Body:**
 ```json
 {
-  "noticeCode": "SYSTEM_MAINTENANCE_2024",
-  "state": "ACKNOWLEDGED"
+  "data": {
+    "noticeCode": "SYSTEM_MAINTENANCE_2024",
+    "stateCode": "ACKNOWLEDGED"
+  }
 }
 ```
 
 **Fields:**
 - `noticeCode` (string, required): Unique identifier for the notice
-- `state` (string, required): Either `ACKNOWLEDGED` or `DISMISSED`
+- `stateCode` (string, required): Either `ACKNOWLEDGED` or `DISMISSED`
 
 **Request Example:**
 ```bash
-curl -X POST http://localhost:8094/papi/v1/notices \
+curl -X POST http://localhost:8094/papi/v1/sessions/notice-acknowledgments \
   -H "X-HSBC-E2E-Trust-Token: VOICE_AGENT_DEMO" \
   -H "Content-Type: application/json" \
   -d '{
-    "noticeCode": "SYSTEM_MAINTENANCE_2024",
-    "state": "ACKNOWLEDGED"
+    "data": {
+      "noticeCode": "SYSTEM_MAINTENANCE_2024",
+      "stateCode": "ACKNOWLEDGED"
+    }
   }'
 ```
 
@@ -509,7 +513,7 @@ curl -X POST http://localhost:8094/papi/v1/notices \
 #### Add Entitlements to Role Templates
 Adds or updates entitlements (columns, widgets, features, etc.) to one or more role templates.
 
-**Endpoint:** `POST /papi/v1/add-entitlements`
+**Endpoint:** `POST /papi/v1/entitlements`
 
 **Authentication:** Required (admin)
 
@@ -538,7 +542,7 @@ Adds or updates entitlements (columns, widgets, features, etc.) to one or more r
 
 **Request Example:**
 ```bash
-curl -X POST http://localhost:8094/papi/v1/add-entitlements \
+curl -X POST http://localhost:8094/papi/v1/entitlements \
   -H "X-HSBC-E2E-Trust-Token: ADMIN_GLOBAL_DEMO" \
   -H "Content-Type: application/json" \
   -d '{
@@ -592,7 +596,7 @@ Retrieves a paginated list of AD groups with filtering and search capabilities.
 
 **Request Example:**
 ```bash
-curl -X GET "http://localhost:8094/papi/v1/ad-groups?page=0&size=10&role=voice_agent&region=EMEA" \
+curl -X GET "http://localhost:8094/papi/v1/ad-groups?offset=0&limit=10&role=voice_agent&region=EMEA" \
   -H "X-HSBC-E2E-Trust-Token: ADMIN_GLOBAL_DEMO"
 ```
 
@@ -648,17 +652,29 @@ curl -X GET "http://localhost:8094/papi/v1/ad-groups?page=0&size=10&role=voice_a
 #### Get AD Group Configuration
 Retrieves the detailed configuration for a specific AD group.
 
-**Endpoint:** `GET /papi/v1/ad-groups/{groupIdentifier}`
+**Endpoint:** `POST /papi/v1/ad-groups/lookup`
 
 **Authentication:** Required (admin)
 
-**Path Parameters:**
-- `groupIdentifier` (string, required): DN or unique identifier of the AD group
+**Request Body:**
+```json
+{
+  "data": {
+    "groupIdentifier": "CN=Voice_Agent_EMEA,OU=Groups,DC=hsbc,DC=com"
+  }
+}
+```
 
 **Request Example:**
 ```bash
-curl -X GET "http://localhost:8094/papi/v1/ad-groups/CN=Voice_Agent_EMEA,OU=Groups,DC=hsbc,DC=com" \
-  -H "X-HSBC-E2E-Trust-Token: ADMIN_GLOBAL_DEMO"
+curl -X POST http://localhost:8094/papi/v1/ad-groups/lookup \
+  -H "X-HSBC-E2E-Trust-Token: ADMIN_GLOBAL_DEMO" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "data": {
+      "groupIdentifier": "CN=Voice_Agent_EMEA,OU=Groups,DC=hsbc,DC=com"
+    }
+  }'
 ```
 
 **Response (200 OK):**
@@ -687,10 +703,10 @@ curl -X GET "http://localhost:8094/papi/v1/ad-groups/CN=Voice_Agent_EMEA,OU=Grou
     },
     "microFrontends": [
       {
-        "key": "embedded_banking",
+        "key": "money-transfer",
         "url": "http://localhost:5175",
-        "functions": ["account_lookup"],
-        "defaultFunction": "account_lookup"
+        "functions": ["quick-transfer"],
+        "defaultFunction": "quick-transfer"
       }
     ],
     "makerAdGroup": "CN=EMEA_Makers,OU=Groups,DC=hsbc,DC=com",
@@ -712,7 +728,7 @@ curl -X GET "http://localhost:8094/papi/v1/ad-groups/CN=Voice_Agent_EMEA,OU=Grou
 #### Copy AD Group Configuration
 Copies the configuration from one AD group to another.
 
-**Endpoint:** `POST /papi/v1/copy-ad-group-configurations`
+**Endpoint:** `POST /papi/v1/ad-group-configuration-copies`
 
 **Authentication:** Required (admin)
 
@@ -747,7 +763,7 @@ Copies the configuration from one AD group to another.
 
 **Request Example:**
 ```bash
-curl -X POST http://localhost:8094/papi/v1/copy-ad-group-configurations \
+curl -X POST http://localhost:8094/papi/v1/ad-group-configuration-copies \
   -H "X-HSBC-E2E-Trust-Token: ADMIN_GLOBAL_DEMO" \
   -H "Content-Type: application/json" \
   -d '{
@@ -805,22 +821,27 @@ Submits a configuration change for approval (maker action).
 **Request Body:**
 ```json
 {
-  "changeType": "AD_GROUP_UPDATE",
-  "targetIdentifier": "CN=Voice_Agent_EMEA,OU=Groups,DC=hsbc,DC=com",
-  "changePayload": {
-    "columns": {
-      "new_column": { "enabled": true, "order": 10 }
-    }
-  },
-  "justification": "Adding new customer sentiment column for EMEA team"
+  "data": {
+    "targetGroupIdentifier": "CN=Chat_Agent_AMER,OU=Agents,OU=Groups,DC=hsbc,DC=com",
+    "changeDescription": "Enable money-transfer app for Chat Agent AMER",
+    "proposedConfig": {
+      "applicationChanges": [
+        {
+          "appCode": "money-transfer",
+          "proposedStateIndicator": true
+        }
+      ]
+    },
+    "submittedByText": "600016"
+  }
 }
 ```
 
 **Fields:**
-- `changeType` (string, required): Type of change. Values: `AD_GROUP_UPDATE`, `ROLE_TEMPLATE_UPDATE`, `NOTICE_CREATE`, `NOTICE_UPDATE`, `NOTICE_DELETE`
-- `targetIdentifier` (string, required): Identifier of the resource being changed
-- `changePayload` (object, required): The actual change data
-- `justification` (string, optional): Reason for the change
+- `data.targetGroupIdentifier` (string, required): AD group DN being changed
+- `data.proposedConfig` (object, required): Proposed configuration delta
+- `data.submittedByText` (string, required): Submitter identifier for audit
+- `data.changeDescription` (string, optional): Human-readable reason for the change
 
 **Request Example:**
 ```bash
@@ -828,12 +849,16 @@ curl -X POST http://localhost:8094/papi/v1/pending-changes \
   -H "X-HSBC-E2E-Trust-Token: ADMIN_MAKER_DEMO" \
   -H "Content-Type: application/json" \
   -d '{
-    "changeType": "AD_GROUP_UPDATE",
-    "targetIdentifier": "CN=Voice_Agent_EMEA,OU=Groups,DC=hsbc,DC=com",
-    "changePayload": {
-      "columns": { "sentiment": { "enabled": true } }
-    },
-    "justification": "Enable sentiment column"
+    "data": {
+      "targetGroupIdentifier": "CN=Chat_Agent_AMER,OU=Agents,OU=Groups,DC=hsbc,DC=com",
+      "changeDescription": "Enable money-transfer app for Chat Agent AMER",
+      "proposedConfig": {
+        "applicationChanges": [
+          { "appCode": "money-transfer", "proposedStateIndicator": true }
+        ]
+      },
+      "submittedByText": "600016"
+    }
   }'
 ```
 
@@ -841,44 +866,43 @@ curl -X POST http://localhost:8094/papi/v1/pending-changes \
 ```json
 {
   "data": {
-    "changeIdentifier": "CHG-20240115-001",
-    "status": "PENDING_APPROVAL",
-    "submittedBy": "maker.user@hsbc.com",
-    "submittedAt": "2024-01-15T10:30:00Z",
-    "changeType": "AD_GROUP_UPDATE",
-    "targetIdentifier": "CN=Voice_Agent_EMEA,OU=Groups,DC=hsbc,DC=com",
-    "justification": "Enable sentiment column",
-    "isCritical": true
+    "pendingChange": {
+      "changeIdentifier": "87975d7e-602e-4bfb-9bc5-a58ece263b6b",
+      "targetGroupIdentifier": "CN=Chat_Agent_AMER,OU=Agents,OU=Groups,DC=hsbc,DC=com",
+      "statusCode": "PENDING_LEVEL_ONE",
+      "changeType": "CONFIG_UPDATE",
+      "createdByText": "600020",
+      "createdAtDatetime": "2026-02-16T02:15:52.944835Z"
+    }
   }
 }
 ```
 
 **Response Codes:**
 - `201 Created` - Change submitted successfully
-- `400 Bad Request` - Invalid change payload
+- `400 Bad Request` - Invalid payload
 - `401 Unauthorized` - Missing or invalid X-HSBC-E2E-Trust-Token
 - `403 Forbidden` - User does not have MAKER access level
-
-**Note:** If user has SUPER_ADMIN access level, the change is auto-approved and applied immediately.
+- `409 Conflict` - Pending change already exists for the same target group
 
 ---
 
 #### List Pending Changes
-Retrieves all pending changes awaiting approval.
+Retrieves pending changes with optional filters.
 
 **Endpoint:** `GET /papi/v1/pending-changes`
 
-**Authentication:** Required (admin with CHECKER or SUPER_ADMIN access level)
+**Authentication:** Required (admin)
 
 **Query Parameters:**
-- `status` (string, optional): Filter by status. Values: `PENDING_APPROVAL`, `APPROVED`, `REJECTED`, `WITHDRAWN`
-- `changeType` (string, optional): Filter by change type
-- `page` (integer, optional): Page number. Default: 0
-- `size` (integer, optional): Page size. Default: 20
+- `statusCode` (string, optional): `PENDING_LEVEL_ONE`, `PENDING_LEVEL_TWO`, `APPROVED`, `REJECTED`, `CANCELLED`, `MY_SUBMISSIONS`
+- `targetGroupIdentifier` (string, optional): Target AD group DN
+- `offset` (integer, optional): Pagination offset
+- `limit` (integer, optional): Pagination size
 
 **Request Example:**
 ```bash
-curl -X GET "http://localhost:8094/papi/v1/pending-changes?status=PENDING_APPROVAL" \
+curl -X GET "http://localhost:8094/papi/v1/pending-changes?statusCode=PENDING_LEVEL_ONE&offset=0&limit=20" \
   -H "X-HSBC-E2E-Trust-Token: ADMIN_CHECKER_DEMO"
 ```
 
@@ -886,22 +910,23 @@ curl -X GET "http://localhost:8094/papi/v1/pending-changes?status=PENDING_APPROV
 ```json
 {
   "data": {
-    "content": [
+    "pendingChanges": [
       {
-        "changeIdentifier": "CHG-20240115-001",
-        "status": "PENDING_APPROVAL",
-        "submittedBy": "maker.user@hsbc.com",
-        "submittedAt": "2024-01-15T10:30:00Z",
-        "changeType": "AD_GROUP_UPDATE",
-        "targetIdentifier": "CN=Voice_Agent_EMEA,OU=Groups,DC=hsbc,DC=com",
-        "justification": "Enable sentiment column",
-        "isCritical": true
+        "changeIdentifier": "731d23c8-8107-40a3-b899-7066b15ad1bd",
+        "targetGroupIdentifier": "CN=Voice_Agent_EMEA,OU=Agents,OU=Groups,DC=hsbc,DC=com",
+        "statusCode": "PENDING_LEVEL_ONE",
+        "changeType": "CONFIG_UPDATE",
+        "createdByText": "600001"
       }
-    ],
-    "totalElements": 5,
-    "totalPages": 1,
-    "currentPage": 0,
-    "pageSize": 20
+    ]
+  },
+  "meta": {
+    "pagination": {
+      "offset": 0,
+      "limit": 20,
+      "total": 1,
+      "hasMore": false
+    }
   }
 }
 ```
@@ -909,7 +934,7 @@ curl -X GET "http://localhost:8094/papi/v1/pending-changes?status=PENDING_APPROV
 **Response Codes:**
 - `200 OK` - List retrieved successfully
 - `401 Unauthorized` - Missing or invalid X-HSBC-E2E-Trust-Token
-- `403 Forbidden` - User does not have CHECKER access level
+- `403 Forbidden` - User does not have access
 
 ---
 
@@ -921,11 +946,11 @@ Retrieves detailed information about a specific pending change.
 **Authentication:** Required (admin)
 
 **Path Parameters:**
-- `changeIdentifier` (string, required): Unique identifier for the pending change
+- `changeIdentifier` (string, required): Unique change UUID
 
 **Request Example:**
 ```bash
-curl -X GET http://localhost:8094/papi/v1/pending-changes/CHG-20240115-001 \
+curl -X GET http://localhost:8094/papi/v1/pending-changes/731d23c8-8107-40a3-b899-7066b15ad1bd \
   -H "X-HSBC-E2E-Trust-Token: ADMIN_CHECKER_DEMO"
 ```
 
@@ -933,49 +958,41 @@ curl -X GET http://localhost:8094/papi/v1/pending-changes/CHG-20240115-001 \
 ```json
 {
   "data": {
-    "changeIdentifier": "CHG-20240115-001",
-    "status": "PENDING_APPROVAL",
-    "submittedBy": "maker.user@hsbc.com",
-    "submittedByDisplayName": "Maker User",
-    "submittedAt": "2024-01-15T10:30:00Z",
-    "changeType": "AD_GROUP_UPDATE",
-    "targetIdentifier": "CN=Voice_Agent_EMEA,OU=Groups,DC=hsbc,DC=com",
-    "changePayload": {
-      "columns": {
-        "sentiment": { "enabled": true, "order": 10 }
-      }
-    },
-    "justification": "Enable sentiment column for EMEA team",
-    "isCritical": true,
-    "currentState": {
-      "columns": {
-        "customer_info": { "enabled": true, "order": 1 }
-      }
+    "pendingChange": {
+      "changeIdentifier": "731d23c8-8107-40a3-b899-7066b15ad1bd",
+      "targetGroupIdentifier": "CN=Voice_Agent_EMEA,OU=Agents,OU=Groups,DC=hsbc,DC=com",
+      "statusCode": "PENDING_LEVEL_ONE",
+      "changeType": "CONFIG_UPDATE",
+      "proposedConfig": {
+        "applicationChanges": []
+      },
+      "createdByText": "600001",
+      "createdAtDatetime": "2026-02-16T01:41:58.949277Z"
     }
   }
 }
 ```
 
 **Response Codes:**
-- `200 OK` - Change details retrieved successfully
+- `200 OK` - Change detail retrieved
 - `401 Unauthorized` - Missing or invalid X-HSBC-E2E-Trust-Token
 - `404 Not Found` - Change identifier does not exist
 
 ---
 
 #### Withdraw Pending Change
-Allows the maker to withdraw their own pending change before approval.
+Allows the maker to cancel their own pending change before approval.
 
 **Endpoint:** `DELETE /papi/v1/pending-changes/{changeIdentifier}`
 
-**Authentication:** Required (admin, must be the maker who submitted the change)
+**Authentication:** Required (admin)
 
 **Path Parameters:**
-- `changeIdentifier` (string, required): Unique identifier for the pending change
+- `changeIdentifier` (string, required): Unique change UUID
 
 **Request Example:**
 ```bash
-curl -X DELETE http://localhost:8094/papi/v1/pending-changes/CHG-20240115-001 \
+curl -X DELETE http://localhost:8094/papi/v1/pending-changes/87975d7e-602e-4bfb-9bc5-a58ece263b6b \
   -H "X-HSBC-E2E-Trust-Token: ADMIN_MAKER_DEMO"
 ```
 
@@ -983,19 +1000,18 @@ curl -X DELETE http://localhost:8094/papi/v1/pending-changes/CHG-20240115-001 \
 ```json
 {
   "data": {
-    "message": "Change CHG-20240115-001 withdrawn successfully",
-    "changeIdentifier": "CHG-20240115-001",
-    "status": "WITHDRAWN"
+    "statusCode": "CANCELLED",
+    "messageText": "Change cancelled successfully"
   }
 }
 ```
 
 **Response Codes:**
-- `200 OK` - Change withdrawn successfully
+- `200 OK` - Change cancelled
+- `400 Bad Request` - Change not cancellable in current state
 - `401 Unauthorized` - Missing or invalid X-HSBC-E2E-Trust-Token
-- `403 Forbidden` - User is not the original maker
+- `403 Forbidden` - User is not authorized to cancel this change
 - `404 Not Found` - Change identifier does not exist
-- `409 Conflict` - Change has already been approved or rejected
 
 ---
 
@@ -1009,14 +1025,12 @@ Approves a pending change (checker action).
 **Request Body:**
 ```json
 {
-  "changeIdentifier": "CHG-20240115-001",
-  "approverComments": "Reviewed and approved. Change aligns with EMEA requirements."
+  "data": {
+    "changeIdentifier": "731d23c8-8107-40a3-b899-7066b15ad1bd",
+    "commentText": "Reviewed and approved"
+  }
 }
 ```
-
-**Fields:**
-- `changeIdentifier` (string, required): Unique identifier for the pending change
-- `approverComments` (string, optional): Checker's comments on the approval
 
 **Request Example:**
 ```bash
@@ -1024,8 +1038,10 @@ curl -X POST http://localhost:8094/papi/v1/change-approvals \
   -H "X-HSBC-E2E-Trust-Token: ADMIN_CHECKER_DEMO" \
   -H "Content-Type: application/json" \
   -d '{
-    "changeIdentifier": "CHG-20240115-001",
-    "approverComments": "Approved"
+    "data": {
+      "changeIdentifier": "731d23c8-8107-40a3-b899-7066b15ad1bd",
+      "commentText": "Approved"
+    }
   }'
 ```
 
@@ -1033,24 +1049,21 @@ curl -X POST http://localhost:8094/papi/v1/change-approvals \
 ```json
 {
   "data": {
-    "success": true,
-    "changeIdentifier": "CHG-20240115-001",
-    "status": "APPROVED",
-    "approvedBy": "checker.user@hsbc.com",
-    "approvedAt": "2024-01-15T11:00:00Z",
-    "message": "Change approved and applied successfully"
+    "approval": {
+      "changeIdentifier": "731d23c8-8107-40a3-b899-7066b15ad1bd",
+      "statusCode": "APPROVED",
+      "messageText": "Change approved and applied successfully"
+    }
   }
 }
 ```
 
 **Response Codes:**
 - `200 OK` - Change approved successfully
-- `400 Bad Request` - Change is not in PENDING_APPROVAL state
+- `400 Bad Request` - Invalid request
 - `401 Unauthorized` - Missing or invalid X-HSBC-E2E-Trust-Token
-- `403 Forbidden` - User does not have CHECKER access level or is the same as maker
+- `403 Forbidden` - User is not authorized to approve this change
 - `404 Not Found` - Change identifier does not exist
-
-**Note:** Upon approval, the change is immediately applied to the target resource.
 
 ---
 
@@ -1064,14 +1077,12 @@ Rejects a pending change (checker action).
 **Request Body:**
 ```json
 {
-  "changeIdentifier": "CHG-20240115-001",
-  "rejectionReason": "Change conflicts with global policy. Please align with security requirements before resubmitting."
+  "data": {
+    "changeIdentifier": "5f33cfa2-a74c-4861-aa31-aaa424090efa",
+    "reasonText": "Policy mismatch"
+  }
 }
 ```
-
-**Fields:**
-- `changeIdentifier` (string, required): Unique identifier for the pending change
-- `rejectionReason` (string, required): Reason for rejection
 
 **Request Example:**
 ```bash
@@ -1079,8 +1090,10 @@ curl -X POST http://localhost:8094/papi/v1/change-rejections \
   -H "X-HSBC-E2E-Trust-Token: ADMIN_CHECKER_DEMO" \
   -H "Content-Type: application/json" \
   -d '{
-    "changeIdentifier": "CHG-20240115-001",
-    "rejectionReason": "Does not meet security requirements"
+    "data": {
+      "changeIdentifier": "5f33cfa2-a74c-4861-aa31-aaa424090efa",
+      "reasonText": "Policy mismatch"
+    }
   }'
 ```
 
@@ -1088,23 +1101,76 @@ curl -X POST http://localhost:8094/papi/v1/change-rejections \
 ```json
 {
   "data": {
-    "success": true,
-    "changeIdentifier": "CHG-20240115-001",
-    "status": "REJECTED",
-    "rejectedBy": "checker.user@hsbc.com",
-    "rejectedAt": "2024-01-15T11:00:00Z",
-    "rejectionReason": "Does not meet security requirements",
-    "message": "Change rejected successfully"
+    "rejection": {
+      "changeIdentifier": "5f33cfa2-a74c-4861-aa31-aaa424090efa",
+      "statusCode": "REJECTED",
+      "messageText": "Change rejected",
+      "rejectionReasonText": "Policy mismatch"
+    }
   }
 }
 ```
 
 **Response Codes:**
 - `200 OK` - Change rejected successfully
-- `400 Bad Request` - Change is not in PENDING_APPROVAL state or missing rejection reason
+- `400 Bad Request` - Invalid request payload
 - `401 Unauthorized` - Missing or invalid X-HSBC-E2E-Trust-Token
-- `403 Forbidden` - User does not have CHECKER access level or is the same as maker
+- `403 Forbidden` - User is not authorized to reject this change
 - `404 Not Found` - Change identifier does not exist
+
+---
+
+#### Direct Save AD Group Configuration (Super Admin)
+Applies an AD-group configuration change immediately, bypassing maker-checker approval.
+
+**Endpoint:** `POST /papi/v1/ad-group-configs`
+
+**Authentication:** Required (admin with SUPER_ADMIN access level)
+
+**Request Body:**
+```json
+{
+  "data": {
+    "targetGroupIdentifier": "CN=Chat_Agent_AMER,OU=Agents,OU=Groups,DC=hsbc,DC=com",
+    "changeType": "CONFIG_UPDATE",
+    "proposedState": {
+      "applicationChanges": [
+        {
+          "appCode": "money-transfer",
+          "proposedStateIndicator": true
+        }
+      ]
+    },
+    "superAdminIdText": "600016"
+  }
+}
+```
+
+**Request Example:**
+```bash
+curl -X POST http://localhost:8094/papi/v1/ad-group-configs \
+  -H "X-HSBC-E2E-Trust-Token: ADMIN_SUPER_DEMO" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "data": {
+      "targetGroupIdentifier": "CN=Chat_Agent_AMER,OU=Agents,OU=Groups,DC=hsbc,DC=com",
+      "changeType": "CONFIG_UPDATE",
+      "proposedState": {
+        "applicationChanges": [
+          { "appCode": "money-transfer", "proposedStateIndicator": true }
+        ]
+      },
+      "superAdminIdText": "600016"
+    }
+  }'
+```
+
+**Response Codes:**
+- `200 OK` - Configuration saved successfully
+- `400 Bad Request` - Invalid request payload
+- `401 Unauthorized` - Missing or invalid X-HSBC-E2E-Trust-Token
+- `404 Not Found` - AD group does not exist
+- `409 Conflict` - Optimistic locking conflict
 
 ---
 
@@ -1115,7 +1181,7 @@ Admin notices are system-wide or role-specific announcements displayed to users.
 #### Create Notice
 Creates a new admin notice.
 
-**Endpoint:** `POST /papi/v1/create-notices`
+**Endpoint:** `POST /papi/v1/notices`
 
 **Authentication:** Required (admin)
 
@@ -1145,7 +1211,7 @@ Creates a new admin notice.
 
 **Request Example:**
 ```bash
-curl -X POST http://localhost:8094/papi/v1/create-notices \
+curl -X POST http://localhost:8094/papi/v1/notices \
   -H "X-HSBC-E2E-Trust-Token: ADMIN_GLOBAL_DEMO" \
   -H "Content-Type: application/json" \
   -d '{
@@ -1161,7 +1227,7 @@ curl -X POST http://localhost:8094/papi/v1/create-notices \
 ```json
 {
   "data": {
-    "noticeIdentifier": "NOT-20240115-001",
+    "noticeIdentifier": "a0000000-0000-0000-0000-000000000001",
     "noticeCode": "SYSTEM_MAINTENANCE_2024",
     "title": "Scheduled Maintenance Window",
     "message": "The system will be unavailable...",
@@ -1185,16 +1251,16 @@ curl -X POST http://localhost:8094/papi/v1/create-notices \
 #### List Notices
 Retrieves all admin notices with optional status filter.
 
-**Endpoint:** `GET /papi/v1/list-notices`
+**Endpoint:** `GET /papi/v1/notices`
 
 **Authentication:** Required (admin)
 
 **Query Parameters:**
-- `status` (string, optional): Filter by status. Values: `ACTIVE`, `PAUSED`, `RETIRED`
+- `statusCode` (string, optional): Filter by status. Values: `DRAFT`, `ACTIVE`, `ARCHIVED`
 
 **Request Example:**
 ```bash
-curl -X GET "http://localhost:8094/papi/v1/list-notices?status=ACTIVE" \
+curl -X GET "http://localhost:8094/papi/v1/notices?statusCode=ACTIVE" \
   -H "X-HSBC-E2E-Trust-Token: ADMIN_GLOBAL_DEMO"
 ```
 
@@ -1203,7 +1269,7 @@ curl -X GET "http://localhost:8094/papi/v1/list-notices?status=ACTIVE" \
 {
   "data": [
     {
-      "noticeIdentifier": "NOT-20240115-001",
+      "noticeIdentifier": "a0000000-0000-0000-0000-000000000001",
       "noticeCode": "SYSTEM_MAINTENANCE_2024",
       "title": "Scheduled Maintenance Window",
       "message": "The system will be unavailable...",
@@ -1227,54 +1293,10 @@ curl -X GET "http://localhost:8094/papi/v1/list-notices?status=ACTIVE" \
 
 ---
 
-#### Get Notice
-Retrieves a specific admin notice by identifier.
-
-**Endpoint:** `GET /papi/v1/update-notices/{noticeIdentifier}`
-
-**Authentication:** Required (admin)
-
-**Path Parameters:**
-- `noticeIdentifier` (string, required): Unique identifier for the notice
-
-**Request Example:**
-```bash
-curl -X GET http://localhost:8094/papi/v1/update-notices/NOT-20240115-001 \
-  -H "X-HSBC-E2E-Trust-Token: ADMIN_GLOBAL_DEMO"
-```
-
-**Response (200 OK):**
-```json
-{
-  "data": {
-    "noticeIdentifier": "NOT-20240115-001",
-    "noticeCode": "SYSTEM_MAINTENANCE_2024",
-    "title": "Scheduled Maintenance Window",
-    "message": "The system will be unavailable...",
-    "severity": "INFO",
-    "targetRoles": ["voice_agent", "chat_agent"],
-    "status": "ACTIVE",
-    "startDate": "2024-01-18T00:00:00Z",
-    "endDate": "2024-01-20T23:59:59Z",
-    "createdBy": "admin.user@hsbc.com",
-    "createdAt": "2024-01-15T10:00:00Z",
-    "lastModified": "2024-01-15T10:00:00Z"
-  }
-}
-```
-
-**Response Codes:**
-- `200 OK` - Notice retrieved successfully
-- `401 Unauthorized` - Missing or invalid X-HSBC-E2E-Trust-Token
-- `403 Forbidden` - User is not an admin
-- `404 Not Found` - Notice does not exist
-
----
-
 #### Update Notice
 Updates an existing admin notice.
 
-**Endpoint:** `PUT /papi/v1/update-notices/{noticeIdentifier}`
+**Endpoint:** `PUT /papi/v1/notices/{noticeIdentifier}`
 
 **Authentication:** Required (admin)
 
@@ -1297,7 +1319,7 @@ Updates an existing admin notice.
 
 **Request Example:**
 ```bash
-curl -X PUT http://localhost:8094/papi/v1/update-notices/NOT-20240115-001 \
+curl -X PUT http://localhost:8094/papi/v1/notices/a0000000-0000-0000-0000-000000000001 \
   -H "X-HSBC-E2E-Trust-Token: ADMIN_GLOBAL_DEMO" \
   -H "Content-Type: application/json" \
   -d '{
@@ -1311,7 +1333,7 @@ curl -X PUT http://localhost:8094/papi/v1/update-notices/NOT-20240115-001 \
 ```json
 {
   "data": {
-    "noticeIdentifier": "NOT-20240115-001",
+    "noticeIdentifier": "a0000000-0000-0000-0000-000000000001",
     "noticeCode": "SYSTEM_MAINTENANCE_2024",
     "title": "Updated: Scheduled Maintenance Window",
     "message": "Maintenance window has been extended...",
@@ -1331,63 +1353,42 @@ curl -X PUT http://localhost:8094/papi/v1/update-notices/NOT-20240115-001 \
 
 ---
 
-#### Delete Notice
-Permanently deletes an admin notice.
+#### Update Notice Status
+Updates only the status of an admin notice (DRAFT, ACTIVE, or ARCHIVED).
 
-**Endpoint:** `DELETE /papi/v1/update-notices/{noticeIdentifier}`
+**Endpoint:** `PATCH /papi/v1/notices/{noticeIdentifier}/status`
 
 **Authentication:** Required (admin)
 
 **Path Parameters:**
 - `noticeIdentifier` (string, required): Unique identifier for the notice
 
-**Request Example:**
-```bash
-curl -X DELETE http://localhost:8094/papi/v1/update-notices/NOT-20240115-001 \
-  -H "X-HSBC-E2E-Trust-Token: ADMIN_GLOBAL_DEMO"
-```
-
-**Response (200 OK):**
+**Request Body:**
 ```json
 {
   "data": {
-    "message": "Notice NOT-20240115-001 deleted successfully"
+    "statusCode": "ARCHIVED"
   }
 }
 ```
 
-**Response Codes:**
-- `200 OK` - Notice deleted successfully
-- `401 Unauthorized` - Missing or invalid X-HSBC-E2E-Trust-Token
-- `403 Forbidden` - User is not an admin
-- `404 Not Found` - Notice does not exist
-
----
-
-#### Update Notice Status
-Updates only the status of an admin notice (ACTIVE, PAUSED, or RETIRED).
-
-**Endpoint:** `PATCH /papi/v1/update-status/{noticeIdentifier}`
-
-**Authentication:** Required (admin)
-
-**Path Parameters:**
-- `noticeIdentifier` (string, required): Unique identifier for the notice
-
-**Query Parameters:**
-- `status` (string, required): New status. Values: `ACTIVE`, `PAUSED`, `RETIRED`
-
 **Request Example:**
 ```bash
-curl -X PATCH "http://localhost:8094/papi/v1/update-status/NOT-20240115-001?status=PAUSED" \
-  -H "X-HSBC-E2E-Trust-Token: ADMIN_GLOBAL_DEMO"
+curl -X PATCH http://localhost:8094/papi/v1/notices/a0000000-0000-0000-0000-000000000001/status \
+  -H "X-HSBC-E2E-Trust-Token: ADMIN_GLOBAL_DEMO" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "data": {
+      "statusCode": "ARCHIVED"
+    }
+  }'
 ```
 
 **Response (200 OK):**
 ```json
 {
   "data": {
-    "noticeIdentifier": "NOT-20240115-001",
+    "noticeIdentifier": "a0000000-0000-0000-0000-000000000001",
     "status": "PAUSED",
     "lastModified": "2024-01-15T12:00:00Z",
     "message": "Notice status updated successfully"
@@ -1426,18 +1427,18 @@ curl -X GET http://localhost:8094/papi/v1/embedded-apps \
 {
   "data": [
     {
-      "appKey": "embedded_banking",
+      "appKey": "money-transfer",
       "appName": "Embedded Banking",
       "appUrl": "http://localhost:5175",
       "description": "Customer account and transaction management",
       "availableFunctions": [
         {
-          "functionKey": "account_lookup",
+          "functionKey": "quick-transfer",
           "functionName": "Account Lookup",
           "description": "Search customer accounts"
         },
         {
-          "functionKey": "balance_inquiry",
+          "functionKey": "view-transfers",
           "functionName": "Balance Inquiry",
           "description": "Check account balances"
         }
@@ -1468,7 +1469,7 @@ Retrieves details of a specific embedded application.
 
 **Request Example:**
 ```bash
-curl -X GET http://localhost:8094/papi/v1/embedded-apps/embedded_banking \
+curl -X GET http://localhost:8094/papi/v1/embedded-apps/money-transfer \
   -H "X-HSBC-E2E-Trust-Token: ADMIN_GLOBAL_DEMO"
 ```
 
@@ -1476,13 +1477,13 @@ curl -X GET http://localhost:8094/papi/v1/embedded-apps/embedded_banking \
 ```json
 {
   "data": {
-    "appKey": "embedded_banking",
+    "appKey": "money-transfer",
     "appName": "Embedded Banking",
     "appUrl": "http://localhost:5175",
     "description": "Customer account and transaction management",
     "availableFunctions": [
       {
-        "functionKey": "account_lookup",
+        "functionKey": "quick-transfer",
         "functionName": "Account Lookup",
         "description": "Search customer accounts"
       }
@@ -1508,13 +1509,13 @@ curl -X GET http://localhost:8094/papi/v1/embedded-apps/embedded_banking \
 #### Get User's Embedded Apps
 Retrieves embedded apps configured for the authenticated user's AD groups.
 
-**Endpoint:** `GET /papi/v1/user-apps`
+**Endpoint:** `GET /papi/v1/embedded-apps/user-apps`
 
 **Authentication:** Required (any role)
 
 **Request Example:**
 ```bash
-curl -X GET http://localhost:8094/papi/v1/user-apps \
+curl -X GET http://localhost:8094/papi/v1/embedded-apps/user-apps \
   -H "X-HSBC-E2E-Trust-Token: VOICE_AGENT_DEMO"
 ```
 
@@ -1523,11 +1524,11 @@ curl -X GET http://localhost:8094/papi/v1/user-apps \
 {
   "data": [
     {
-      "appKey": "embedded_banking",
+      "appKey": "money-transfer",
       "appName": "Embedded Banking",
       "appUrl": "http://localhost:5175",
-      "functions": ["account_lookup", "balance_inquiry"],
-      "defaultFunction": "account_lookup",
+      "functions": ["quick-transfer", "view-transfers"],
+      "defaultFunction": "quick-transfer",
       "adGroupIdentifier": "CN=Voice_Agent_EMEA,OU=Groups,DC=hsbc,DC=com"
     }
   ]
@@ -1543,31 +1544,44 @@ curl -X GET http://localhost:8094/papi/v1/user-apps \
 #### Get App Configuration for AD Group
 Retrieves the embedded app configuration for a specific AD group.
 
-**Endpoint:** `GET /papi/v1/embedded-apps-ad-groups/{appKey}`
+**Endpoint:** `POST /papi/v1/embedded-apps-ad-groups/{appKey}`
 
 **Authentication:** Required (admin)
 
 **Path Parameters:**
 - `appKey` (string, required): Unique key identifying the embedded app
 
-**Query Parameters:**
-- `groupIdentifier` (string, required): DN of the AD group
+**Request Body:**
+```json
+{
+  "data": {
+    "groupIdentifier": "CN=Chat_Agent_AMER,OU=Agents,OU=Groups,DC=hsbc,DC=com"
+  }
+}
+```
 
 **Request Example:**
 ```bash
-curl -X GET "http://localhost:8094/papi/v1/embedded-apps-ad-groups/embedded_banking?groupIdentifier=CN=Voice_Agent_EMEA,OU=Groups,DC=hsbc,DC=com" \
-  -H "X-HSBC-E2E-Trust-Token: ADMIN_GLOBAL_DEMO"
+curl -X POST http://localhost:8094/papi/v1/embedded-apps-ad-groups/money-transfer \
+  -H "X-HSBC-E2E-Trust-Token: ADMIN_GLOBAL_DEMO" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "data": {
+      "groupIdentifier": "CN=Chat_Agent_AMER,OU=Agents,OU=Groups,DC=hsbc,DC=com"
+    }
+  }'
 ```
 
 **Response (200 OK):**
 ```json
 {
   "data": {
-    "appKey": "embedded_banking",
-    "groupIdentifier": "CN=Voice_Agent_EMEA,OU=Groups,DC=hsbc,DC=com",
-    "functions": ["account_lookup", "balance_inquiry"],
-    "defaultFunction": "account_lookup",
-    "lastModified": "2024-01-15T10:00:00Z"
+    "appConfig": {
+      "appKey": "money-transfer",
+      "groupIdentifier": "CN=Chat_Agent_AMER,OU=Agents,OU=Groups,DC=hsbc,DC=com",
+      "assignedFunctionValues": ["quick-transfer", "view-transfers"],
+      "defaultFunctionText": null
+    }
   }
 }
 ```
@@ -1593,26 +1607,30 @@ Updates the embedded app configuration for a specific AD group.
 **Request Body:**
 ```json
 {
-  "groupIdentifier": "CN=Voice_Agent_EMEA,OU=Groups,DC=hsbc,DC=com",
-  "functions": ["account_lookup", "balance_inquiry", "transaction_history"],
-  "defaultFunction": "account_lookup"
+  "data": {
+    "groupIdentifier": "CN=Chat_Agent_AMER,OU=Agents,OU=Groups,DC=hsbc,DC=com",
+    "functionValues": ["quick-transfer", "view-transfers"],
+    "defaultFunctionText": "quick-transfer"
+  }
 }
 ```
 
 **Fields:**
-- `groupIdentifier` (string, required): DN of the AD group
-- `functions` (array, required): List of function keys enabled for this AD group
-- `defaultFunction` (string, optional): Default function to load. Must be in functions list
+- `data.groupIdentifier` (string, required): DN of the AD group
+- `data.functionValues` (array, optional): Function keys enabled for this AD group
+- `data.defaultFunctionText` (string, optional): Default function to load
 
 **Request Example:**
 ```bash
-curl -X PUT http://localhost:8094/papi/v1/embedded-apps-ad-groups/embedded_banking \
+curl -X PUT http://localhost:8094/papi/v1/embedded-apps-ad-groups/money-transfer \
   -H "X-HSBC-E2E-Trust-Token: ADMIN_GLOBAL_DEMO" \
   -H "Content-Type: application/json" \
   -d '{
-    "groupIdentifier": "CN=Voice_Agent_EMEA,OU=Groups,DC=hsbc,DC=com",
-    "functions": ["account_lookup", "balance_inquiry"],
-    "defaultFunction": "account_lookup"
+    "data": {
+      "groupIdentifier": "CN=Chat_Agent_AMER,OU=Agents,OU=Groups,DC=hsbc,DC=com",
+      "functionValues": ["quick-transfer", "view-transfers"],
+      "defaultFunctionText": "quick-transfer"
+    }
   }'
 ```
 
@@ -1620,12 +1638,12 @@ curl -X PUT http://localhost:8094/papi/v1/embedded-apps-ad-groups/embedded_banki
 ```json
 {
   "data": {
-    "appKey": "embedded_banking",
-    "groupIdentifier": "CN=Voice_Agent_EMEA,OU=Groups,DC=hsbc,DC=com",
-    "functions": ["account_lookup", "balance_inquiry"],
-    "defaultFunction": "account_lookup",
-    "lastModified": "2024-01-15T11:30:00Z",
-    "message": "App configuration updated successfully"
+    "appConfig": {
+      "appKey": "money-transfer",
+      "groupIdentifier": "CN=Chat_Agent_AMER,OU=Agents,OU=Groups,DC=hsbc,DC=com",
+      "assignedFunctionValues": ["quick-transfer", "view-transfers"],
+      "defaultFunctionText": null
+    }
   }
 }
 ```
@@ -1649,7 +1667,9 @@ Retrieves all embedded apps configured for a specific AD group.
 **Request Body:**
 ```json
 {
-  "groupIdentifier": "CN=Voice_Agent_EMEA,OU=Groups,DC=hsbc,DC=com"
+  "data": {
+    "groupIdentifier": "CN=Chat_Agent_AMER,OU=Agents,OU=Groups,DC=hsbc,DC=com"
+  }
 }
 ```
 
@@ -1659,22 +1679,28 @@ curl -X POST http://localhost:8094/papi/v1/embedded-apps-ad-groups \
   -H "X-HSBC-E2E-Trust-Token: ADMIN_GLOBAL_DEMO" \
   -H "Content-Type: application/json" \
   -d '{
-    "groupIdentifier": "CN=Voice_Agent_EMEA,OU=Groups,DC=hsbc,DC=com"
+    "data": {
+      "groupIdentifier": "CN=Chat_Agent_AMER,OU=Agents,OU=Groups,DC=hsbc,DC=com"
+    }
   }'
 ```
 
 **Response (200 OK):**
 ```json
 {
-  "data": [
-    {
-      "appKey": "embedded_banking",
-      "appName": "Embedded Banking",
-      "appUrl": "http://localhost:5175",
-      "functions": ["account_lookup", "balance_inquiry"],
-      "defaultFunction": "account_lookup"
-    }
-  ]
+  "data": {
+    "embeddedApps": [
+      {
+        "appKey": "money-transfer",
+        "titleText": "Money Transfer",
+        "appFunctionValues": [
+          "quick-transfer",
+          "view-transfers",
+          "domestic-transfer"
+        ]
+      }
+    ]
+  }
 }
 ```
 
@@ -2039,6 +2065,62 @@ curl -X GET http://localhost:8094/papi/v1/role-layout-templates/voice_agent \
 
 ---
 
+### Audit & Activity
+
+Audit endpoints provide user-level activity history and admin audit reporting.
+
+#### Get My Activity
+Returns audit entries for the authenticated user.
+
+**Endpoint:** `GET /papi/v1/my-activity`
+
+**Authentication:** Required (any role)
+
+**Query Parameters:**
+- `offset` (integer, optional): Zero-based offset. Default: 0
+- `limit` (integer, optional): Max items to return. Default: 20
+- `timeRange` (string, optional): One of `TODAY`, `WEEK`, `MONTH`
+
+**Request Example:**
+```bash
+curl -X GET "http://localhost:8094/papi/v1/my-activity?offset=0&limit=20&timeRange=WEEK" \
+  -H "X-HSBC-E2E-Trust-Token: VOICE_AGENT_DEMO"
+```
+
+**Response Codes:**
+- `200 OK` - Activity log retrieved successfully
+- `401 Unauthorized` - Missing or invalid X-HSBC-E2E-Trust-Token
+
+---
+
+#### Query Audit Logs
+Returns audit entries with optional compliance filters.
+
+**Endpoint:** `GET /papi/v1/audit-logs`
+
+**Authentication:** Required (admin)
+
+**Query Parameters (all optional):**
+- `offset`, `limit`
+- `action` (`SUBMIT`, `L1_APPROVE`, `L2_APPROVE`, `REJECT`, `CANCEL`, `DIRECT_SAVE`)
+- `targetGroupIdentifier`, `performedBy`, `marketCode`, `regionCode`
+- `changeType` (`CONFIG_UPDATE`, `APP_UPDATE`)
+- `startDate`, `endDate` (ISO 8601)
+- `criticalOnly` (boolean)
+
+**Request Example:**
+```bash
+curl -X GET "http://localhost:8094/papi/v1/audit-logs?offset=0&limit=20&action=SUBMIT&regionCode=EMEA" \
+  -H "X-HSBC-E2E-Trust-Token: ADMIN_GLOBAL_DEMO"
+```
+
+**Response Codes:**
+- `200 OK` - Audit logs retrieved successfully
+- `401 Unauthorized` - Missing or invalid X-HSBC-E2E-Trust-Token
+- `403 Forbidden` - User is not an admin
+
+---
+
 ### User Roles (Supervisor Operations)
 
 Supervisor operations for managing user role assignments and primary roles.
@@ -2046,34 +2128,37 @@ Supervisor operations for managing user role assignments and primary roles.
 #### Set Primary Role for User
 Sets the primary role for a specific user. Used when a user has multiple roles (e.g., voice_agent + supervisor).
 
-**Endpoint:** `POST /papi/v1/users/{userIdentifier}/primaries/{roleName}`
+**Endpoint:** `POST /papi/v1/users/{userIdentifier}/primaries`
 
 **Authentication:** Required (supervisor or admin)
 
 **Path Parameters:**
-- `userIdentifier` (string, required): User ID (e.g., EMP001)
-- `roleName` (string, required): Role name to set as primary
+- `userIdentifier` (string, required): User ID (e.g., 600016)
 
 **Request Body:**
 ```json
 {
-  "adGroupIdentifier": "CN=Voice_Agent_EMEA,OU=Groups,DC=hsbc,DC=com",
-  "updatedBy": "supervisor@hsbc.com"
+  "data": {
+    "roleNameText": "voice_agent",
+    "adGroupIdentifier": "CN=Voice_Agent_EMEA,OU=Groups,DC=hsbc,DC=com"
+  }
 }
 ```
 
 **Fields:**
+- `roleNameText` (string, required): Role name to set as primary
 - `adGroupIdentifier` (string, required): DN of the AD group for this role assignment
-- `updatedBy` (string, optional): Identifier of the user making the change
 
 **Request Example:**
 ```bash
-curl -X POST http://localhost:8094/papi/v1/users/EMP001/primaries/voice_agent \
+curl -X POST http://localhost:8094/papi/v1/users/600016/primaries \
   -H "X-HSBC-E2E-Trust-Token: SUPERVISOR_DEMO" \
   -H "Content-Type: application/json" \
   -d '{
-    "adGroupIdentifier": "CN=Voice_Agent_EMEA,OU=Groups,DC=hsbc,DC=com",
-    "updatedBy": "supervisor@hsbc.com"
+    "data": {
+      "roleNameText": "voice_agent",
+      "adGroupIdentifier": "CN=Voice_Agent_EMEA,OU=Groups,DC=hsbc,DC=com"
+    }
   }'
 ```
 
@@ -2083,7 +2168,7 @@ curl -X POST http://localhost:8094/papi/v1/users/EMP001/primaries/voice_agent \
   "data": {
     "success": true,
     "message": "Primary assignment updated successfully",
-    "userId": "EMP001",
+    "userId": "600016",
     "roleName": "voice_agent",
     "adGroupIdentifier": "CN=Voice_Agent_EMEA,OU=Groups,DC=hsbc,DC=com",
     "updatedAt": "2024-01-15T10:30:00Z"
@@ -2103,42 +2188,45 @@ curl -X POST http://localhost:8094/papi/v1/users/EMP001/primaries/voice_agent \
 #### Bulk Set Primary Roles
 Sets primary roles for multiple users in a single operation.
 
-**Endpoint:** `POST /papi/v1/bulk-primaries`
+**Endpoint:** `POST /papi/v1/users/primary-assignments`
 
 **Authentication:** Required (supervisor or admin)
 
 **Request Body:**
 ```json
 {
-  "assignments": [
-    {
-      "userId": "EMP001",
-      "roleName": "voice_agent",
-      "adGroupIdentifier": "CN=Voice_Agent_EMEA,OU=Groups,DC=hsbc,DC=com"
-    },
-    {
-      "userId": "EMP002",
-      "roleName": "chat_agent",
-      "adGroupIdentifier": "CN=Chat_Agent_APAC,OU=Groups,DC=hsbc,DC=com"
-    }
-  ],
-  "updatedBy": "supervisor@hsbc.com"
+  "data": {
+    "assignmentValues": [
+      {
+        "userIdentifier": "600016",
+        "roleNameText": "voice_agent",
+        "adGroupIdentifier": "CN=Voice_Agent_EMEA,OU=Groups,DC=hsbc,DC=com"
+      },
+      {
+        "userIdentifier": "EMP002",
+        "roleNameText": "chat_agent",
+        "adGroupIdentifier": "CN=Chat_Agent_APAC,OU=Groups,DC=hsbc,DC=com"
+      }
+    ]
+  }
 }
 ```
 
 **Request Example:**
 ```bash
-curl -X POST http://localhost:8094/papi/v1/bulk-primaries \
+curl -X POST http://localhost:8094/papi/v1/users/primary-assignments \
   -H "X-HSBC-E2E-Trust-Token: SUPERVISOR_DEMO" \
   -H "Content-Type: application/json" \
   -d '{
-    "assignments": [
-      {
-        "userId": "EMP001",
-        "roleName": "voice_agent",
-        "adGroupIdentifier": "CN=Voice_Agent_EMEA,OU=Groups,DC=hsbc,DC=com"
-      }
-    ]
+    "data": {
+      "assignmentValues": [
+        {
+          "userIdentifier": "600016",
+          "roleNameText": "voice_agent",
+          "adGroupIdentifier": "CN=Voice_Agent_EMEA,OU=Groups,DC=hsbc,DC=com"
+        }
+      ]
+    }
   }'
 ```
 
@@ -2151,7 +2239,7 @@ curl -X POST http://localhost:8094/papi/v1/bulk-primaries \
     "failureCount": 0,
     "results": [
       {
-        "userId": "EMP001",
+        "userId": "600016",
         "success": true,
         "message": "Primary assignment updated successfully"
       },
@@ -2174,33 +2262,6 @@ curl -X POST http://localhost:8094/papi/v1/bulk-primaries \
 
 ---
 
-### Health Check
-
-#### Health Status
-Returns the health status of the PAPI service.
-
-**Endpoint:** `GET /papi/v1/actuator/health`
-
-**Authentication:** Not required
-
-**Request Example:**
-```bash
-curl -X GET http://localhost:8094/papi/v1/actuator/health
-```
-
-**Response (200 OK):**
-```json
-{
-  "status": "UP"
-}
-```
-
-**Response Codes:**
-- `200 OK` - Service is healthy
-- `503 Service Unavailable` - Service is unhealthy
-
----
-
 ## curl Examples
 
 ### Agent Operations
@@ -2213,18 +2274,26 @@ curl -X GET http://localhost:8094/papi/v1/sessions \
 
 **Acknowledge notice:**
 ```bash
-curl -X POST http://localhost:8094/papi/v1/notices \
+curl -X POST http://localhost:8094/papi/v1/sessions/notice-acknowledgments \
   -H "X-HSBC-E2E-Trust-Token: VOICE_AGENT_DEMO" \
   -H "Content-Type: application/json" \
   -d '{
-    "noticeCode": "MAINT_2024",
-    "state": "ACKNOWLEDGED"
+    "data": {
+      "noticeCode": "MAINT_2024",
+      "stateCode": "ACKNOWLEDGED"
+    }
   }'
 ```
 
 **Get user's embedded apps:**
 ```bash
-curl -X GET http://localhost:8094/papi/v1/user-apps \
+curl -X GET http://localhost:8094/papi/v1/embedded-apps/user-apps \
+  -H "X-HSBC-E2E-Trust-Token: VOICE_AGENT_DEMO"
+```
+
+**Get my activity feed:**
+```bash
+curl -X GET "http://localhost:8094/papi/v1/my-activity?offset=0&limit=20&timeRange=WEEK" \
   -H "X-HSBC-E2E-Trust-Token: VOICE_AGENT_DEMO"
 ```
 
@@ -2243,64 +2312,101 @@ curl -X GET http://localhost:8094/papi/v1/regions-countries/EMEA \
 
 **List AD groups with filters:**
 ```bash
-curl -X GET "http://localhost:8094/papi/v1/ad-groups?role=voice_agent&region=EMEA&page=0&size=10" \
+curl -X GET "http://localhost:8094/papi/v1/ad-groups?role=voice_agent&region=EMEA&offset=0&limit=10" \
   -H "X-HSBC-E2E-Trust-Token: ADMIN_GLOBAL_DEMO"
 ```
 
 **Get AD group configuration:**
 ```bash
-curl -X GET "http://localhost:8094/papi/v1/ad-groups/CN=Voice_Agent_EMEA,OU=Groups,DC=hsbc,DC=com" \
-  -H "X-HSBC-E2E-Trust-Token: ADMIN_GLOBAL_DEMO"
+curl -X POST http://localhost:8094/papi/v1/ad-groups/lookup \
+  -H "X-HSBC-E2E-Trust-Token: ADMIN_GLOBAL_DEMO" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "data": {
+      "groupIdentifier": "CN=Voice_Agent_EMEA,OU=Groups,DC=hsbc,DC=com"
+    }
+  }'
 ```
 
 **Copy AD group configuration:**
 ```bash
-curl -X POST http://localhost:8094/papi/v1/copy-ad-group-configurations \
+curl -X POST http://localhost:8094/papi/v1/ad-group-configuration-copies \
   -H "X-HSBC-E2E-Trust-Token: ADMIN_GLOBAL_DEMO" \
   -H "Content-Type: application/json" \
   -d '{
-    "sourceGroupIdentifier": "CN=Voice_Agent_EMEA,OU=Groups,DC=hsbc,DC=com",
-    "targetGroupIdentifier": "CN=Voice_Agent_APAC,OU=Groups,DC=hsbc,DC=com",
-    "copyOptions": {
-      "copyColumns": true,
-      "copyWidgets": true,
-      "copyFeatures": true,
-      "copyMicroFrontends": true,
-      "overwriteExisting": false
+    "data": {
+      "sourceGroupIdentifier": "CN=Voice_Agent_EMEA,OU=Groups,DC=hsbc,DC=com",
+      "targetGroupIdentifier": "CN=Voice_Agent_APAC,OU=Groups,DC=hsbc,DC=com",
+      "copyOptions": {
+        "copyColumns": true,
+        "copyWidgets": true,
+        "copyFeatures": true,
+        "copyMicroFrontends": true,
+        "overwriteExisting": false
+      }
     }
   }'
 ```
 
 **Create admin notice:**
 ```bash
-curl -X POST http://localhost:8094/papi/v1/create-notices \
+curl -X POST http://localhost:8094/papi/v1/notices \
   -H "X-HSBC-E2E-Trust-Token: ADMIN_GLOBAL_DEMO" \
   -H "Content-Type: application/json" \
   -d '{
-    "noticeCode": "MAINT_2024",
-    "title": "System Maintenance",
-    "message": "Scheduled maintenance on Saturday",
-    "severity": "INFO",
-    "status": "ACTIVE"
+    "data": {
+      "titleText": "System Maintenance",
+      "messageText": "Scheduled maintenance on Saturday",
+      "severityValue": "INFO",
+      "statusCode": "ACTIVE",
+      "broadcastToAllFlag": true
+    }
   }'
 ```
 
 **List active notices:**
 ```bash
-curl -X GET "http://localhost:8094/papi/v1/list-notices?status=ACTIVE" \
+curl -X GET "http://localhost:8094/papi/v1/notices?statusCode=ACTIVE" \
   -H "X-HSBC-E2E-Trust-Token: ADMIN_GLOBAL_DEMO"
 ```
 
 **Update embedded app configuration:**
 ```bash
-curl -X PUT http://localhost:8094/papi/v1/embedded-apps-ad-groups/embedded_banking \
+curl -X PUT http://localhost:8094/papi/v1/embedded-apps-ad-groups/money-transfer \
   -H "X-HSBC-E2E-Trust-Token: ADMIN_GLOBAL_DEMO" \
   -H "Content-Type: application/json" \
   -d '{
-    "groupIdentifier": "CN=Voice_Agent_EMEA,OU=Groups,DC=hsbc,DC=com",
-    "functions": ["account_lookup", "balance_inquiry"],
-    "defaultFunction": "account_lookup"
+    "data": {
+      "groupIdentifier": "CN=Voice_Agent_EMEA,OU=Groups,DC=hsbc,DC=com",
+      "functionValues": ["quick-transfer", "view-transfers"],
+      "defaultFunctionText": "quick-transfer"
+    }
   }'
+```
+
+**Direct save AD-group config (super admin):**
+```bash
+curl -X POST http://localhost:8094/papi/v1/ad-group-configs \
+  -H "X-HSBC-E2E-Trust-Token: ADMIN_SUPER_DEMO" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "data": {
+      "targetGroupIdentifier": "CN=Chat_Agent_AMER,OU=Agents,OU=Groups,DC=hsbc,DC=com",
+      "changeType": "CONFIG_UPDATE",
+      "proposedState": {
+        "applicationChanges": [
+          { "appCode": "money-transfer", "proposedStateIndicator": true }
+        ]
+      },
+      "superAdminIdText": "600016"
+    }
+  }'
+```
+
+**Query audit logs:**
+```bash
+curl -X GET "http://localhost:8094/papi/v1/audit-logs?offset=0&limit=20&action=SUBMIT&regionCode=EMEA" \
+  -H "X-HSBC-E2E-Trust-Token: ADMIN_GLOBAL_DEMO"
 ```
 
 ### Approval Workflow
@@ -2311,20 +2417,22 @@ curl -X POST http://localhost:8094/papi/v1/pending-changes \
   -H "X-HSBC-E2E-Trust-Token: ADMIN_MAKER_DEMO" \
   -H "Content-Type: application/json" \
   -d '{
-    "changeType": "AD_GROUP_UPDATE",
-    "targetIdentifier": "CN=Voice_Agent_EMEA,OU=Groups,DC=hsbc,DC=com",
-    "changePayload": {
-      "columns": {
-        "sentiment": { "enabled": true, "order": 10 }
-      }
-    },
-    "justification": "Enable sentiment analysis"
+    "data": {
+      "targetGroupIdentifier": "CN=Chat_Agent_AMER,OU=Agents,OU=Groups,DC=hsbc,DC=com",
+      "changeDescription": "Enable money-transfer app for Chat Agent AMER",
+      "proposedConfig": {
+        "applicationChanges": [
+          { "appCode": "money-transfer", "proposedStateIndicator": true }
+        ]
+      },
+      "submittedByText": "600016"
+    }
   }'
 ```
 
 **List pending changes (checker):**
 ```bash
-curl -X GET "http://localhost:8094/papi/v1/pending-changes?status=PENDING_APPROVAL" \
+curl -X GET "http://localhost:8094/papi/v1/pending-changes?statusCode=PENDING_LEVEL_ONE" \
   -H "X-HSBC-E2E-Trust-Token: ADMIN_CHECKER_DEMO"
 ```
 
@@ -2334,8 +2442,10 @@ curl -X POST http://localhost:8094/papi/v1/change-approvals \
   -H "X-HSBC-E2E-Trust-Token: ADMIN_CHECKER_DEMO" \
   -H "Content-Type: application/json" \
   -d '{
-    "changeIdentifier": "CHG-20240115-001",
-    "approverComments": "Approved after review"
+    "data": {
+      "changeIdentifier": "731d23c8-8107-40a3-b899-7066b15ad1bd",
+      "commentText": "Approved after review"
+    }
   }'
 ```
 
@@ -2345,14 +2455,16 @@ curl -X POST http://localhost:8094/papi/v1/change-rejections \
   -H "X-HSBC-E2E-Trust-Token: ADMIN_CHECKER_DEMO" \
   -H "Content-Type: application/json" \
   -d '{
-    "changeIdentifier": "CHG-20240115-001",
-    "rejectionReason": "Does not meet security requirements"
+    "data": {
+      "changeIdentifier": "731d23c8-8107-40a3-b899-7066b15ad1bd",
+      "reasonText": "Does not meet security requirements"
+    }
   }'
 ```
 
 **Withdraw change (maker):**
 ```bash
-curl -X DELETE http://localhost:8094/papi/v1/pending-changes/CHG-20240115-001 \
+curl -X DELETE http://localhost:8094/papi/v1/pending-changes/731d23c8-8107-40a3-b899-7066b15ad1bd \
   -H "X-HSBC-E2E-Trust-Token: ADMIN_MAKER_DEMO"
 ```
 
@@ -2360,33 +2472,37 @@ curl -X DELETE http://localhost:8094/papi/v1/pending-changes/CHG-20240115-001 \
 
 **Set primary role:**
 ```bash
-curl -X POST http://localhost:8094/papi/v1/users/EMP001/primaries/voice_agent \
+curl -X POST http://localhost:8094/papi/v1/users/600016/primaries \
   -H "X-HSBC-E2E-Trust-Token: SUPERVISOR_DEMO" \
   -H "Content-Type: application/json" \
   -d '{
-    "adGroupIdentifier": "CN=Voice_Agent_EMEA,OU=Groups,DC=hsbc,DC=com",
-    "updatedBy": "supervisor@hsbc.com"
+    "data": {
+      "roleNameText": "voice_agent",
+      "adGroupIdentifier": "CN=Voice_Agent_EMEA,OU=Groups,DC=hsbc,DC=com"
+    }
   }'
 ```
 
 **Bulk set primary roles:**
 ```bash
-curl -X POST http://localhost:8094/papi/v1/bulk-primaries \
+curl -X POST http://localhost:8094/papi/v1/users/primary-assignments \
   -H "X-HSBC-E2E-Trust-Token: SUPERVISOR_DEMO" \
   -H "Content-Type: application/json" \
   -d '{
-    "assignments": [
-      {
-        "userId": "EMP001",
-        "roleName": "voice_agent",
-        "adGroupIdentifier": "CN=Voice_Agent_EMEA,OU=Groups,DC=hsbc,DC=com"
-      },
-      {
-        "userId": "EMP002",
-        "roleName": "chat_agent",
-        "adGroupIdentifier": "CN=Chat_Agent_APAC,OU=Groups,DC=hsbc,DC=com"
-      }
-    ]
+    "data": {
+      "assignmentValues": [
+        {
+          "userIdentifier": "600016",
+          "roleNameText": "voice_agent",
+          "adGroupIdentifier": "CN=Voice_Agent_EMEA,OU=Groups,DC=hsbc,DC=com"
+        },
+        {
+          "userIdentifier": "EMP002",
+          "roleNameText": "chat_agent",
+          "adGroupIdentifier": "CN=Chat_Agent_APAC,OU=Groups,DC=hsbc,DC=com"
+        }
+      ]
+    }
   }'
 ```
 
@@ -2423,12 +2539,14 @@ curl -X GET http://localhost:8094/papi/v1/ad-groups \
 
 #### Validation Error
 ```bash
-curl -X POST http://localhost:8094/papi/v1/notices \
+curl -X POST http://localhost:8094/papi/v1/sessions/notice-acknowledgments \
   -H "X-HSBC-E2E-Trust-Token: VOICE_AGENT_DEMO" \
   -H "Content-Type: application/json" \
   -d '{
-    "noticeCode": "",
-    "state": "INVALID_STATE"
+    "data": {
+      "noticeCode": "",
+      "stateCode": "INVALID_STATE"
+    }
   }'
 ```
 
@@ -2440,7 +2558,7 @@ curl -X POST http://localhost:8094/papi/v1/notices \
       "code": "VALIDATION_ERROR",
       "causes": [
         "Field 'noticeCode' must not be empty",
-        "Field 'state' must be one of: ACKNOWLEDGED, DISMISSED"
+        "Field 'stateCode' must be one of: ACKNOWLEDGED, DISMISSED"
       ]
     }
   ]
@@ -2449,8 +2567,14 @@ curl -X POST http://localhost:8094/papi/v1/notices \
 
 #### Resource Not Found
 ```bash
-curl -X GET http://localhost:8094/papi/v1/ad-groups/CN=NonExistent,OU=Groups,DC=hsbc,DC=com \
-  -H "X-HSBC-E2E-Trust-Token: ADMIN_GLOBAL_DEMO"
+curl -X POST http://localhost:8094/papi/v1/ad-groups/lookup \
+  -H "X-HSBC-E2E-Trust-Token: ADMIN_GLOBAL_DEMO" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "data": {
+      "groupIdentifier": "CN=NonExistent,OU=Groups,DC=hsbc,DC=com"
+    }
+  }'
 ```
 
 **Response (404 Not Found):**
@@ -2469,15 +2593,19 @@ curl -X GET http://localhost:8094/papi/v1/ad-groups/CN=NonExistent,OU=Groups,DC=
 
 #### Conflict Error
 ```bash
-curl -X POST http://localhost:8094/papi/v1/add-entitlements \
+curl -X POST http://localhost:8094/papi/v1/entitlements \
   -H "X-HSBC-E2E-Trust-Token: ADMIN_GLOBAL_DEMO" \
   -H "Content-Type: application/json" \
   -d '{
-    "entitlementType": "widgets",
-    "key": "existing_widget",
-    "value": { "enabled": true },
-    "targetRoles": ["voice_agent"],
-    "allowOverwrite": false
+    "data": {
+      "entitlementTypeCode": "widgets",
+      "keyCode": "existing_widget",
+      "stateValue": {
+        "stateText": "ENABLED"
+      },
+      "targetRoleValues": ["voice_agent"],
+      "allowOverwriteIndicator": false
+    }
   }'
 ```
 
@@ -9200,32 +9328,27 @@ components:
           description: Whether the function is enabled.
       additionalProperties: false
     SubmitChangeRequest:
-      title: SubmitChangeRequest
-      description: Request to submit an AD group configuration change for approval. The submitter identity is extracted from the X-HSBC-E2E-Trust-Token.
       type: object
-      additionalProperties: false
-      required:
-        - targetGroupIdentifier
-        - proposedConfig
+      description: Request to create a new pending configuration change.
       properties:
         targetGroupIdentifier:
           type: string
-          description: AD group identifier the change applies to
+          description: Target AD group identifier (DN).
           minLength: 1
           maxLength: 500
-          example: 'CN=APAC_Voice_Agents,OU=CCaaS,DC=hsbc,DC=com'
         changeDescription:
           type: string
-          description: Description of the configuration change
-          minLength: 0
+          description: Description of the change.
+          minLength: 1
           maxLength: 1000
-          example: Enable sentiment analysis widget for APAC voice agents.
         proposedConfig:
-          type: object
-          description: Proposed state after change
-          additionalProperties: true
-          minProperties: 0
-          maxProperties: 1000
+          description: Proposed configuration changes.
+          $ref: '#/components/schemas/ConfigChanges'
+        submittedByText:
+          type: string
+          description: Employee ID of the submitter for audit trail.
+          minLength: 1
+          maxLength: 100
         changedFields:
           type: array
           items:
@@ -9234,10 +9357,14 @@ components:
         configVersionNumber:
           type: integer
           format: int64
-          description: Optimistic locking version of the AD group configuration at the time the maker loaded it. Used to detect concurrent edits.
+          description: Optimistic locking version of the AD group config at time of submission. Used to detect concurrent edits.
           minimum: 0
-          maximum: 9999999999
-          example: 1
+          maximum: 9223372036854776000
+      required:
+        - targetGroupIdentifier
+        - proposedConfig
+        - submittedByText
+      additionalProperties: false
     SubmitChangeRequestEnvelope:
       title: SubmitChangeRequestEnvelope
       type: object
@@ -9313,121 +9440,174 @@ components:
           description: Reject change request payload
           $ref: '#/components/schemas/RejectChangeRequest'
     PendingChangeResponse:
-      title: PendingChangeResponse
-      description: Detailed response for a pending configuration change including audit trail.
       type: object
-      additionalProperties: false
+      description: Response envelope for a pending change operation.
+      properties:
+        data:
+          $ref: '#/components/schemas/PendingChangeVo'
+      required:
+        - data
+    PendingChangeVo:
+      type: object
+      description: Pending change value object with full details.
       properties:
         changeIdentifier:
-          type: string
           description: Unique identifier for the pending change.
-          minLength: 1
-          maxLength: 500
-          example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+          $ref: '#/components/schemas/UUIDPattern'
         targetGroupIdentifier:
           type: string
-          description: AD group being modified
+          description: Target AD group distinguished name (DN).
           minLength: 1
           maxLength: 500
-          example: 'CN=APAC_Voice_Agents,OU=CCaaS,DC=hsbc,DC=com'
         targetGroupName:
           type: string
-          description: Display name of the target AD group
+          description: Human-readable name of the target AD group.
+          nullable: true
           minLength: 1
-          maxLength: 200
-          example: APAC Voice Agents
+          maxLength: 255
         isCriticalIndicator:
           type: boolean
-          description: Whether this change is marked as critical requiring super admin approval
-          example: false
-        changeType:
-          type: string
-          description: Type of configuration change
-          minLength: 1
-          maxLength: 100
-          example: LAYOUT_OVERRIDE
-        currentConfig:
-          type: object
-          description: Current configuration state before the change
-          additionalProperties: true
-          minProperties: 0
-          maxProperties: 1000
-        proposedConfig:
-          type: object
-          description: Proposed configuration state after the change
-          additionalProperties: true
-          minProperties: 0
-          maxProperties: 1000
+          description: Whether the change was evaluated as critical and requires L2 approval.
+          nullable: true
         statusCode:
-          type: string
-          description: Current status of the pending change
-          minLength: 1
-          maxLength: 50
-          example: PENDING_APPROVAL
-        approvedByText:
-          type: string
-          description: User who approved the change
-          minLength: 0
-          maxLength: 120
-          example: john.smith@hsbc.com
-        approvedAtDatetime:
-          type: string
-          description: Timestamp when change was approved
-          format: date-time
-          minLength: 20
-          maxLength: 30
-          example: '2026-01-15T10:30:00Z'
-        commentText:
-          type: string
-          description: Approval comment for audit trail
-          minLength: 0
-          maxLength: 1000
-          example: Change reviewed and approved for APAC region rollout.
-        rejectedByText:
-          type: string
-          description: User who rejected the change
-          minLength: 0
-          maxLength: 120
-          example: jane.doe@hsbc.com
-        rejectedAtDatetime:
-          type: string
-          description: Timestamp when change was rejected
-          format: date-time
-          minLength: 20
-          maxLength: 30
-          example: '2026-01-15T11:00:00Z'
-        rejectionReasonText:
-          type: string
-          description: Reason for rejection
-          minLength: 0
-          maxLength: 1000
-          example: Configuration conflicts with existing EMEA regional policy.
+          $ref: '#/components/schemas/PendingChangeStatus'
+        changeType:
+          $ref: '#/components/schemas/ChangeType'
+        changeRequest:
+          $ref: '#/components/schemas/ChangeRequest'
+        proposedConfig:
+          description: Proposed configuration changes.
+          $ref: '#/components/schemas/ConfigChanges'
+        currentConfig:
+          description: Current configuration before changes.
+          $ref: '#/components/schemas/ConfigChanges'
+        matchedRules:
+          type: array
+          description: Rules matched during change evaluation.
+          items:
+            $ref: '#/components/schemas/MatchedRule'
         createdByText:
           type: string
-          description: User who submitted the change
-          minLength: 0
-          maxLength: 120
-          example: maker.user@hsbc.com
+          description: User who created the change request.
+          minLength: 1
+          maxLength: 500
         createdAtDatetime:
           type: string
-          description: Timestamp when change was submitted
           format: date-time
+          description: Creation timestamp (UTC).
           minLength: 20
           maxLength: 30
-          example: '2026-01-14T09:00:00Z'
         updatedByText:
           type: string
-          description: User who last updated the change
-          minLength: 0
-          maxLength: 120
-          example: checker.user@hsbc.com
+          description: User who last updated the change request.
+          nullable: true
+          minLength: 1
+          maxLength: 500
         updatedAtDatetime:
           type: string
-          description: Timestamp of last update
           format: date-time
+          description: Last updated timestamp (UTC).
+          nullable: true
           minLength: 20
           maxLength: 30
-          example: '2026-01-15T10:30:00Z'
+        approvedByText:
+          type: string
+          description: User who approved the change.
+          nullable: true
+          minLength: 1
+          maxLength: 500
+        rejectedByText:
+          type: string
+          description: User who rejected the change.
+          nullable: true
+          minLength: 1
+          maxLength: 500
+        rejectionReasonText:
+          type: string
+          description: Reason for rejection.
+          nullable: true
+          minLength: 0
+          maxLength: 1000
+        commentText:
+          type: string
+          description: Comment text for audit trail.
+          nullable: true
+          minLength: 0
+          maxLength: 1000
+      additionalProperties: false
+    PendingChangeStatus:
+      type: string
+      description: Status of a pending configuration change
+      enum:
+        - PENDING_LEVEL_ONE
+        - PENDING_LEVEL_TWO
+        - APPROVED
+        - REJECTED
+        - CANCELLED
+        - EXPIRED
+      nullable: true
+    ChangeType:
+      type: string
+      description: Type of change for pending configuration updates
+      enum:
+        - CONFIG_UPDATE
+        - APP_UPDATE
+        - FUNCTION_TOGGLE
+        - NONE
+      nullable: true
+    ChangeRequest:
+      type: object
+      description: Change summary for rule evaluation
+      properties:
+        changedFieldNames:
+          type: array
+          description: 'Names of simple fields changed (e.g., roleName, market)'
+          items:
+            type: string
+            minLength: 0
+            maxLength: 1000
+        changedAppCodes:
+          type: array
+          description: Application codes impacted by this change
+          items:
+            type: string
+            minLength: 0
+            maxLength: 1000
+        changedFunctionCodes:
+          type: array
+          description: Function codes impacted by this change
+          items:
+            type: string
+            minLength: 0
+            maxLength: 1000
+        changedAppFunctions:
+          type: array
+          description: Specific app-function pairs impacted by this change
+          items:
+            $ref: '#/components/schemas/AppFunctionChange'
+      nullable: true
+    MatchedRule:
+      type: object
+      description: A rule that matched during change evaluation.
+      properties:
+        ruleIdentifier:
+          type: integer
+          format: int64
+          description: Unique identifier for the matched rule.
+          minimum: 1
+          maximum: 9223372036854776000
+        ruleName:
+          type: string
+          description: Name of the matched rule.
+          minLength: 1
+          maxLength: 200
+        approvalLevelNumber:
+          type: integer
+          format: int32
+          description: Level of approval required by this rule.
+          minimum: 1
+          maximum: 3
+      additionalProperties: false
     ApprovalResultResponse:
       title: ApprovalResultResponse
       description: Result of an approval or rejection action on a pending change.
@@ -9496,40 +9676,47 @@ components:
       properties:
         targetGroupIdentifier:
           type: string
-          description: AD group distinguished name (DN) to apply changes to.
+          description: AD group DN to apply changes to.
           minLength: 1
           maxLength: 500
         currentState:
-          type: object
-          description: Current configuration state before changes.
-          additionalProperties: true
+          description: Current configuration state.
+          $ref: '#/components/schemas/ConfigChanges'
         proposedState:
-          type: object
           description: Proposed configuration state to apply.
-          additionalProperties: true
-        changedApps:
-          type: array
-          description: List of changed application codes.
-          items:
-            type: string
-        changedFunctions:
-          type: array
-          description: List of changed function codes.
-          items:
-            type: string
-        changedFields:
-          type: array
-          description: List of changed field names.
-          items:
-            type: string
+          $ref: '#/components/schemas/ConfigChanges'
+        changeType:
+          type: string
+          description: Type of change.
+          enum:
+            - CONFIG_UPDATE
+            - APP_UPDATE
+          default: CONFIG_UPDATE
+        superAdminIdText:
+          type: string
+          description: Employee ID of the Super Admin.
+          minLength: 1
+          maxLength: 100
+        superAdminNameText:
+          type: string
+          description: Display name of the Super Admin.
+          maxLength: 255
         configVersionNumber:
           type: integer
           format: int64
           description: Optimistic locking version.
           nullable: true
+        superAdminAdGroupValues:
+          type: array
+          description: AD group distinguished names of the Super Admin for per-group authorization verification.
+          items:
+            type: string
+            minLength: 1
+            maxLength: 500
       required:
         - targetGroupIdentifier
         - proposedState
+        - superAdminIdText
       additionalProperties: false
     DirectSaveRequestEnvelope:
       type: object
@@ -10547,7 +10734,7 @@ components:
           properties:
             pendingChange:
               description: Pending change details
-              $ref: '#/components/schemas/PendingChangeResponse'
+              $ref: '#/components/schemas/PendingChangeVo'
     DataResponseApprovalData:
       title: DataResponseApprovalData
       description: Response envelope containing approval result.
@@ -10889,7 +11076,7 @@ components:
               minItems: 0
               maxItems: 10000
               items:
-                $ref: '#/components/schemas/PendingChangeResponse'
+                $ref: '#/components/schemas/PendingChangeVo'
         meta:
           type: object
           description: Response metadata
@@ -11298,6 +11485,16 @@ components:
       $ref: 'components/schemas/approval/RejectChangeRequestEnvelope.yaml'
     PendingChangeResponse:
       $ref: 'components/schemas/approval/PendingChangeResponse.yaml'
+    PendingChangeVo:
+      $ref: 'components/schemas/approval/PendingChangeVo.yaml'
+    PendingChangeStatus:
+      $ref: 'components/schemas/approval/PendingChangeStatus.yaml'
+    ChangeType:
+      $ref: 'components/schemas/approval/ChangeType.yaml'
+    ChangeRequest:
+      $ref: 'components/schemas/approval/ChangeRequest.yaml'
+    MatchedRule:
+      $ref: 'components/schemas/approval/MatchedRule.yaml'
     ApprovalResultResponse:
       $ref: 'components/schemas/approval/ApprovalResultResponse.yaml'
     DirectSaveRequest:
@@ -12212,46 +12409,95 @@ properties:
     description: Approve change request payload
     $ref: './ApproveChangeRequest.yaml'
 ===ENDFILE
+===FILE: ./src/main/api/components/schemas/approval/ChangeRequest.yaml
+type: object
+description: Change summary for rule evaluation
+properties:
+  changedFieldNames:
+    type: array
+    description: Names of simple fields changed (e.g., roleName, market)
+    items:
+      type: string
+      minLength: 0
+      maxLength: 1000
+  changedAppCodes:
+    type: array
+    description: Application codes impacted by this change
+    items:
+      type: string
+      minLength: 0
+      maxLength: 1000
+  changedFunctionCodes:
+    type: array
+    description: Function codes impacted by this change
+    items:
+      type: string
+      minLength: 0
+      maxLength: 1000
+  changedAppFunctions:
+    type: array
+    description: Specific app-function pairs impacted by this change
+    items:
+      $ref: '../layout/AppFunctionChange.yaml'
+nullable: true
+===ENDFILE
+===FILE: ./src/main/api/components/schemas/approval/ChangeType.yaml
+type: string
+description: Type of change for pending configuration updates
+enum:
+  - CONFIG_UPDATE
+  - APP_UPDATE
+  - FUNCTION_TOGGLE
+  - NONE
+nullable: true
+===ENDFILE
 ===FILE: ./src/main/api/components/schemas/approval/DirectSaveRequest.yaml
 type: object
 description: Request data for Super Admin direct configuration save.
 properties:
   targetGroupIdentifier:
     type: string
-    description: AD group distinguished name (DN) to apply changes to.
+    description: AD group DN to apply changes to.
     minLength: 1
     maxLength: 500
   currentState:
-    type: object
-    description: Current configuration state before changes.
-    additionalProperties: true
+    description: Current configuration state.
+    $ref: '../layout/ConfigChanges.yaml'
   proposedState:
-    type: object
     description: Proposed configuration state to apply.
-    additionalProperties: true
-  changedApps:
-    type: array
-    description: List of changed application codes.
-    items:
-      type: string
-  changedFunctions:
-    type: array
-    description: List of changed function codes.
-    items:
-      type: string
-  changedFields:
-    type: array
-    description: List of changed field names.
-    items:
-      type: string
+    $ref: '../layout/ConfigChanges.yaml'
+  changeType:
+    type: string
+    description: Type of change.
+    enum:
+      - CONFIG_UPDATE
+      - APP_UPDATE
+    default: CONFIG_UPDATE
+  superAdminIdText:
+    type: string
+    description: Employee ID of the Super Admin.
+    minLength: 1
+    maxLength: 100
+  superAdminNameText:
+    type: string
+    description: Display name of the Super Admin.
+    maxLength: 255
   configVersionNumber:
     type: integer
     format: int64
     description: Optimistic locking version.
     nullable: true
+  superAdminAdGroupValues:
+    type: array
+    description: AD group distinguished names of the Super Admin for per-group authorization verification.
+    items:
+      type: string
+      minLength: 1
+      maxLength: 500
 required:
   - targetGroupIdentifier
   - proposedState
+  - superAdminIdText
 additionalProperties: false
 ===ENDFILE
 ===FILE: ./src/main/api/components/schemas/approval/DirectSaveRequestEnvelope.yaml
@@ -12285,122 +12531,138 @@ required:
   - data
 additionalProperties: false
 ===ENDFILE
-===FILE: ./src/main/api/components/schemas/approval/PendingChangeResponse.yaml
-title: PendingChangeResponse
-description: Detailed response for a pending configuration change including audit trail.
+===FILE: ./src/main/api/components/schemas/approval/MatchedRule.yaml
 type: object
-additionalProperties: false
+description: A rule that matched during change evaluation.
 properties:
-  changeIdentifier:
+  ruleIdentifier:
+    type: integer
+    format: int64
+    description: Unique identifier for the matched rule.
+    minimum: 1
+    maximum: 9223372036854775807
+  ruleName:
     type: string
-    description: Unique identifier for the pending change.
-    minLength: 1
-    maxLength: 500
-    example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-  targetGroupIdentifier:
-    type: string
-    description: AD group being modified
-    minLength: 1
-    maxLength: 500
-    example: "CN=APAC_Voice_Agents,OU=CCaaS,DC=hsbc,DC=com"
-  targetGroupName:
-    type: string
-    description: Display name of the target AD group
+    description: Name of the matched rule.
     minLength: 1
     maxLength: 200
-    example: "APAC Voice Agents"
+  approvalLevelNumber:
+    type: integer
+    format: int32
+    description: Level of approval required by this rule.
+    minimum: 1
+    maximum: 3
+additionalProperties: false
+===ENDFILE
+===FILE: ./src/main/api/components/schemas/approval/PendingChangeResponse.yaml
+type: object
+description: Response envelope for a pending change operation.
+properties:
+  data:
+    $ref: './PendingChangeVo.yaml'
+required:
+  - data
+===ENDFILE
+===FILE: ./src/main/api/components/schemas/approval/PendingChangeStatus.yaml
+type: string
+description: Status of a pending configuration change
+enum:
+  - PENDING_LEVEL_ONE
+  - PENDING_LEVEL_TWO
+  - APPROVED
+  - REJECTED
+  - CANCELLED
+  - EXPIRED
+nullable: true
+===ENDFILE
+===FILE: ./src/main/api/components/schemas/approval/PendingChangeVo.yaml
+type: object
+description: Pending change value object with full details.
+properties:
+  changeIdentifier:
+    description: Unique identifier for the pending change.
+    $ref: '../common/UUIDPattern.yaml'
+  targetGroupIdentifier:
+    type: string
+    description: Target AD group distinguished name (DN).
+    minLength: 1
+    maxLength: 500
+  targetGroupName:
+    type: string
+    description: Human-readable name of the target AD group.
+    nullable: true
+    minLength: 1
+    maxLength: 255
   isCriticalIndicator:
     type: boolean
-    description: Whether this change is marked as critical requiring super admin approval
-    example: false
-  changeType:
-    type: string
-    description: Type of configuration change
-    minLength: 1
-    maxLength: 100
-    example: "LAYOUT_OVERRIDE"
-  currentConfig:
-    type: object
-    description: Current configuration state before the change
-    additionalProperties: true
-    minProperties: 0
-    maxProperties: 1000
-  proposedConfig:
-    type: object
-    description: Proposed configuration state after the change
-    additionalProperties: true
-    minProperties: 0
-    maxProperties: 1000
+    description: Whether the change was evaluated as critical and requires L2 approval.
+    nullable: true
   statusCode:
-    type: string
-    description: Current status of the pending change
-    minLength: 1
-    maxLength: 50
-    example: "PENDING_APPROVAL"
-  approvedByText:
-    type: string
-    description: User who approved the change
-    minLength: 0
-    maxLength: 120
-    example: "john.smith@hsbc.com"
-  approvedAtDatetime:
-    type: string
-    description: Timestamp when change was approved
-    format: date-time
-    minLength: 20
-    maxLength: 30
-    example: "2026-01-15T10:30:00Z"
-  commentText:
-    type: string
-    description: Approval comment for audit trail
-    minLength: 0
-    maxLength: 1000
-    example: "Change reviewed and approved for APAC region rollout."
-  rejectedByText:
-    type: string
-    description: User who rejected the change
-    minLength: 0
-    maxLength: 120
-    example: "jane.doe@hsbc.com"
-  rejectedAtDatetime:
-    type: string
-    description: Timestamp when change was rejected
-    format: date-time
-    minLength: 20
-    maxLength: 30
-    example: "2026-01-15T11:00:00Z"
-  rejectionReasonText:
-    type: string
-    description: Reason for rejection
-    minLength: 0
-    maxLength: 1000
-    example: "Configuration conflicts with existing EMEA regional policy."
+    $ref: './PendingChangeStatus.yaml'
+  changeType:
+    $ref: './ChangeType.yaml'
+  changeRequest:
+    $ref: './ChangeRequest.yaml'
+  proposedConfig:
+    description: Proposed configuration changes.
+    $ref: '../layout/ConfigChanges.yaml'
+  currentConfig:
+    description: Current configuration before changes.
+    $ref: '../layout/ConfigChanges.yaml'
+  matchedRules:
+    type: array
+    description: Rules matched during change evaluation.
+    items:
+      $ref: './MatchedRule.yaml'
   createdByText:
     type: string
-    description: User who submitted the change
-    minLength: 0
-    maxLength: 120
-    example: "maker.user@hsbc.com"
+    description: User who created the change request.
+    minLength: 1
+    maxLength: 500
   createdAtDatetime:
     type: string
-    description: Timestamp when change was submitted
     format: date-time
+    description: Creation timestamp (UTC).
     minLength: 20
     maxLength: 30
-    example: "2026-01-14T09:00:00Z"
   updatedByText:
     type: string
-    description: User who last updated the change
-    minLength: 0
-    maxLength: 120
-    example: "checker.user@hsbc.com"
+    description: User who last updated the change request.
+    nullable: true
+    minLength: 1
+    maxLength: 500
   updatedAtDatetime:
     type: string
-    description: Timestamp of last update
     format: date-time
+    description: Last updated timestamp (UTC).
+    nullable: true
     minLength: 20
     maxLength: 30
-    example: "2026-01-15T10:30:00Z"
+  approvedByText:
+    type: string
+    description: User who approved the change.
+    nullable: true
+    minLength: 1
+    maxLength: 500
+  rejectedByText:
+    type: string
+    description: User who rejected the change.
+    nullable: true
+    minLength: 1
+    maxLength: 500
+  rejectionReasonText:
+    type: string
+    description: Reason for rejection.
+    nullable: true
+    minLength: 0
+    maxLength: 1000
+  commentText:
+    type: string
+    description: Comment text for audit trail.
+    nullable: true
+    minLength: 0
+    maxLength: 1000
+additionalProperties: false
 ===ENDFILE
 ===FILE: ./src/main/api/components/schemas/approval/RejectChangeRequest.yaml
 title: RejectChangeRequest
@@ -12437,32 +12699,27 @@ properties:
     $ref: './RejectChangeRequest.yaml'
 ===ENDFILE
 ===FILE: ./src/main/api/components/schemas/approval/SubmitChangeRequest.yaml
-title: SubmitChangeRequest
-description: Request to submit an AD group configuration change for approval. The submitter identity is extracted from the X-HSBC-E2E-Trust-Token.
 type: object
-additionalProperties: false
-required:
-  - targetGroupIdentifier
-  - proposedConfig
+description: Request to create a new pending configuration change.
 properties:
   targetGroupIdentifier:
     type: string
-    description: AD group identifier the change applies to
+    description: Target AD group identifier (DN).
     minLength: 1
     maxLength: 500
-    example: "CN=APAC_Voice_Agents,OU=CCaaS,DC=hsbc,DC=com"
   changeDescription:
     type: string
-    description: Description of the configuration change
-    minLength: 0
+    description: Description of the change.
+    minLength: 1
     maxLength: 1000
-    example: "Enable sentiment analysis widget for APAC voice agents."
   proposedConfig:
-    type: object
-    description: Proposed state after change
-    additionalProperties: true
-    minProperties: 0
-    maxProperties: 1000
+    description: Proposed configuration changes.
+    $ref: '../layout/ConfigChanges.yaml'
+  submittedByText:
+    type: string
+    description: Employee ID of the submitter for audit trail.
+    minLength: 1
+    maxLength: 100
   changedFields:
     type: array
     items:
@@ -12471,10 +12728,14 @@ properties:
   configVersionNumber:
     type: integer
     format: int64
-    description: Optimistic locking version of the AD group configuration at the time the maker loaded it. Used to detect concurrent edits.
+    description: Optimistic locking version of the AD group config at time of submission. Used to detect concurrent edits.
     minimum: 0
-    maximum: 9999999999
-    example: 1
+    maximum: 9223372036854775807
+required:
+  - targetGroupIdentifier
+  - proposedConfig
+  - submittedByText
+additionalProperties: false
 ===ENDFILE
 ===FILE: ./src/main/api/components/schemas/approval/SubmitChangeRequestEnvelope.yaml
 title: SubmitChangeRequestEnvelope
@@ -12699,7 +12960,7 @@ properties:
         minItems: 0
         maxItems: 10000
         items:
-          $ref: '../approval/PendingChangeResponse.yaml'
+          $ref: '../approval/PendingChangeVo.yaml'
   meta:
     type: object
     description: Response metadata
@@ -12958,7 +13219,7 @@ properties:
     properties:
       pendingChange:
         description: Pending change details
-        $ref: '../approval/PendingChangeResponse.yaml'
+        $ref: '../approval/PendingChangeVo.yaml'
 ===ENDFILE
 ===FILE: ./src/main/api/components/schemas/common/DataResponsePrimaryAssignmentData.yaml
 title: DataResponsePrimaryAssignmentData
@@ -16886,6 +17147,7 @@ public class SapiAdminOperationsClient {
 ===FILE: ./src/main/java/com/hsbc/ccaas/papi/client/SapiApprovalClient.java
 package com.hsbc.ccaas.papi.client;
 
+import com.hsbc.ccaas.papi.controller.model.ConfigChanges;
 import com.hsbc.ccaas.papi.constants.SapiApiPaths;
 import com.hsbc.ccaas.papi.dto.PaginatedResult;
 import com.hsbc.ccaas.papi.dto.sapi.*;
@@ -16917,7 +17179,7 @@ public class SapiApprovalClient {
     }
 
     public SapiPendingChange submitChange(String targetGroupIdentifier, String changeDescription,
-            Map<String, Object> proposedConfig, String submittedBy, List<String> changedFields,
+            ConfigChanges proposedConfig, String submittedBy, List<String> changedFields,
             Long configVersionNumber) {
         ValidationUtil.requireNotBlank(targetGroupIdentifier, "Target group identifier");
         logger.debug("Submitting change for approval: target={}", targetGroupIdentifier);
@@ -17015,8 +17277,8 @@ public class SapiApprovalClient {
         return SapiExceptionHandler.extractData(response);
     }
 
-    public void directSave(String targetGroupIdentifier, Map<String, Object> currentState,
-            Map<String, Object> proposedState, String superAdminId, String superAdminName,
+    public void directSave(String targetGroupIdentifier, ConfigChanges currentState,
+            ConfigChanges proposedState, String superAdminId, String superAdminName,
             Long configVersion, List<String> superAdminAdGroups) {
         ValidationUtil.requireNotBlank(targetGroupIdentifier, "Target group identifier");
         ValidationUtil.requireNotNull(proposedState, "Proposed state");
@@ -19929,7 +20191,7 @@ public class ApprovalResponseAssembler {
     }
 
     public ResponseEntity<DataResponsePendingChangeData> buildSubmitResponse(SapiPendingChange sapiResponse) {
-        PendingChangeResponse response = approvalResponseMapper.mapToPendingChangeResponse(sapiResponse);
+        PendingChangeVo response = approvalResponseMapper.mapToPendingChangeResponse(sapiResponse);
         var dataData = new DataResponsePendingChangeDataData();
         dataData.setPendingChange(response);
         return ResponseEntity
@@ -19939,7 +20201,7 @@ public class ApprovalResponseAssembler {
 
     public ResponseEntity<DataMetaResponsePendingChangesData> buildListResponse(
             PaginatedResult<SapiPendingChange> sapiResponse) {
-        List<PendingChangeResponse> pendingChanges = sapiResponse.items() != null
+        List<PendingChangeVo> pendingChanges = sapiResponse.items() != null
                 ? sapiResponse.items().stream()
                     .map(approvalResponseMapper::mapToPendingChangeResponse)
                     .toList()
@@ -19960,7 +20222,7 @@ public class ApprovalResponseAssembler {
         if (sapiResponse == null) {
             return ResponseEntity.notFound().build();
         }
-        PendingChangeResponse response = approvalResponseMapper.mapToPendingChangeResponse(sapiResponse);
+        PendingChangeVo response = approvalResponseMapper.mapToPendingChangeResponse(sapiResponse);
         var dataData = new DataResponsePendingChangeDataData();
         dataData.setPendingChange(response);
         return ResponseEntity.ok(new DataResponsePendingChangeData().data(dataData));
@@ -20000,11 +20262,15 @@ public class ApprovalResponseAssembler {
 package com.hsbc.ccaas.papi.controller.helper;
 
 import com.hsbc.ccaas.papi.controller.model.ApprovalResultResponse;
-import com.hsbc.ccaas.papi.controller.model.PendingChangeResponse;
+import com.hsbc.ccaas.papi.controller.model.ChangeType;
+import com.hsbc.ccaas.papi.controller.model.MatchedRule;
+import com.hsbc.ccaas.papi.controller.model.PendingChangeStatus;
+import com.hsbc.ccaas.papi.controller.model.PendingChangeVo;
 import com.hsbc.ccaas.papi.dto.sapi.ApprovalPayloads.SapiPendingChange;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.List;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -20014,15 +20280,17 @@ public class ApprovalResponseMapper {
     public static final String APPROVED_STATUS = "APPROVED";
     public static final String REJECTED_STATUS = "REJECTED";
 
-    public PendingChangeResponse mapToPendingChangeResponse(SapiPendingChange sapi) {
-        var response = new PendingChangeResponse()
+    public PendingChangeVo mapToPendingChangeResponse(SapiPendingChange sapi) {
+        var response = new PendingChangeVo()
                 .changeIdentifier(sapi.changeIdentifier())
                 .targetGroupIdentifier(sapi.targetGroupIdentifier())
-                .changeType(sapi.changeType())
+                .targetGroupName(sapi.targetGroupName())
+                .changeType(ChangeType.fromValue(sapi.changeType()))
                 .currentConfig(sapi.currentConfig())
                 .proposedConfig(sapi.proposedConfig())
-                .statusCode(sapi.statusCode())
+                .statusCode(PendingChangeStatus.fromValue(sapi.statusCode()))
                 .isCriticalIndicator(Boolean.TRUE.equals(sapi.isCriticalIndicator()))
+                .matchedRules(mapMatchedRules(sapi.matchedRules()))
                 .createdByText(sapi.createdByText())
                 .createdAtDatetime(toOffsetDateTime(sapi.createdAtDatetime()))
                 .updatedByText(sapi.updatedByText())
@@ -20071,13 +20339,23 @@ public class ApprovalResponseMapper {
         return ldt.atOffset(ZoneOffset.UTC);
     }
 
-    private void mapReviewFields(PendingChangeResponse response, SapiPendingChange sapi) {
+    private void mapReviewFields(PendingChangeVo response, SapiPendingChange sapi) {
         response.setApprovedByText(sapi.approvedByText());
-        response.setApprovedAtDatetime(toOffsetDateTime(sapi.approvedAtDatetime()));
         response.setCommentText(sapi.commentText());
         response.setRejectedByText(sapi.rejectedByText());
-        response.setRejectedAtDatetime(toOffsetDateTime(sapi.rejectedAt()));
         response.setRejectionReasonText(sapi.rejectionReasonText());
+    }
+
+    private List<MatchedRule> mapMatchedRules(List<com.hsbc.ccaas.papi.dto.sapi.ApprovalPayloads.SapiMatchedRule> rules) {
+        if (rules == null) {
+            return null;
+        }
+        return rules.stream()
+                .map(rule -> new MatchedRule()
+                        .ruleIdentifier(rule.ruleIdentifier())
+                        .ruleName(rule.ruleName())
+                        .approvalLevelNumber(rule.approvalLevelNumber()))
+                .toList();
     }
 }
 ===ENDFILE
@@ -20808,9 +21086,9 @@ public final class AdGroupPayloads {
 package com.hsbc.ccaas.papi.dto.sapi;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.hsbc.ccaas.papi.controller.model.ConfigChanges;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Payload records for approval workflow SAPI responses.
@@ -20827,10 +21105,10 @@ public final class ApprovalPayloads {
             String targetGroupIdentifier,
             String targetGroupName,
             String changeType,
-            Map<String, Object> currentConfig,
-            Map<String, Object> proposedConfig,
+            ConfigChanges currentConfig,
+            ConfigChanges proposedConfig,
             Boolean isCriticalIndicator,
-            List<Map<String, Object>> matchedRules,
+            List<SapiMatchedRule> matchedRules,
             String statusCode,
             String approvedByText,
             LocalDateTime approvedAtDatetime,
@@ -20842,6 +21120,11 @@ public final class ApprovalPayloads {
             LocalDateTime createdAtDatetime,
             String updatedByText,
             LocalDateTime updatedAtDatetime) {}
+
+    public record SapiMatchedRule(
+            Long ruleIdentifier,
+            String ruleName,
+            Integer approvalLevelNumber) {}
 
     public record PendingChangesPayload(
             List<SapiPendingChange> items,
@@ -20855,7 +21138,7 @@ public final class ApprovalPayloads {
     public record SubmitChangeData(
             String targetGroupIdentifier,
             String submittedByText,
-            Map<String, Object> proposedConfig,
+            ConfigChanges proposedConfig,
             String changeDescription,
             List<String> changedFields,
             Long configVersionNumber) {}
@@ -20888,9 +21171,9 @@ public final class ApprovalPayloads {
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record DirectSaveData(
             String targetGroupIdentifier,
-            Map<String, Object> proposedState,
+            ConfigChanges proposedState,
             String superAdminIdText,
-            Map<String, Object> currentState,
+            ConfigChanges currentState,
             String superAdminNameText,
             Long configVersionNumber,
             List<String> superAdminAdGroupValues) {}
@@ -28403,7 +28686,7 @@ class ApprovalWorkflowControllerTest {
             when(sapiApprovalClient.submitChange(anyString(), anyString(), any(), anyString(), any(), any()))
                 .thenReturn(sapiResponse);
             when(approvalResponseMapper.mapToPendingChangeResponse(any()))
-                .thenReturn(new PendingChangeResponse().changeIdentifier(CHANGE_ID).statusCode("PENDING_LEVEL_ONE"));
+                .thenReturn(new PendingChangeVo().changeIdentifier(CHANGE_ID).statusCode(PendingChangeStatus.PENDING_LEVEL_ONE));
 
             SubmitChangeRequest submitRequest = buildSubmitChangeRequest();
             SubmitChangeRequestEnvelope envelope = new SubmitChangeRequestEnvelope();
@@ -28436,7 +28719,7 @@ class ApprovalWorkflowControllerTest {
             when(sapiApprovalClient.submitChange(anyString(), anyString(), any(), anyString(), any(), any()))
                 .thenReturn(sapiResponse);
             when(approvalResponseMapper.mapToPendingChangeResponse(any()))
-                .thenReturn(new PendingChangeResponse().changeIdentifier(CHANGE_ID).statusCode("PENDING_LEVEL_ONE"));
+                .thenReturn(new PendingChangeVo().changeIdentifier(CHANGE_ID).statusCode(PendingChangeStatus.PENDING_LEVEL_ONE));
 
             SubmitChangeRequest submitRequest = buildSubmitChangeRequest();
             SubmitChangeRequestEnvelope envelope = new SubmitChangeRequestEnvelope();
@@ -28462,7 +28745,7 @@ class ApprovalWorkflowControllerTest {
             when(sapiApprovalClient.submitChange(anyString(), anyString(), any(), anyString(), any(), any()))
                 .thenReturn(sapiResponse);
             when(approvalResponseMapper.mapToPendingChangeResponse(any()))
-                .thenReturn(new PendingChangeResponse().changeIdentifier(CHANGE_ID).statusCode("PENDING_LEVEL_ONE"));
+                .thenReturn(new PendingChangeVo().changeIdentifier(CHANGE_ID).statusCode(PendingChangeStatus.PENDING_LEVEL_ONE));
 
             SubmitChangeRequest submitRequest = buildSubmitChangeRequest();
             SubmitChangeRequestEnvelope envelope = new SubmitChangeRequestEnvelope();
@@ -28564,7 +28847,7 @@ class ApprovalWorkflowControllerTest {
         void getPendingChange_found_returnsDetails() throws Exception {
             SapiPendingChange sapiResponse = new SapiPendingChange(
                 CHANGE_ID, GROUP_ID, "EMEA Voice Agents", "ROLE_CHANGE",
-                Map.of("roleName", "voice_agent"), Map.of("roleName", "chat_agent"),
+                configWithRole("voice_agent"), configWithRole("chat_agent"),
                 false, null, "PENDING_LEVEL_ONE",
                 null, null, null,
                 null, null, null,
@@ -28603,7 +28886,7 @@ class ApprovalWorkflowControllerTest {
             SapiPendingChange sapiResponse = new SapiPendingChange(
                 CHANGE_ID, "CN=London_Wealth_Management_Team,OU=Agents,DC=hsbc,DC=com",
                 null, "ROLE_CHANGE",
-                Map.of("roleName", "voice_agent"), Map.of("roleName", "chat_agent"),
+                configWithRole("voice_agent"), configWithRole("chat_agent"),
                 false, null, "PENDING_LEVEL_ONE",
                 null, null, null,
                 null, null, null,
@@ -29085,7 +29368,7 @@ class ApprovalWorkflowControllerTest {
         void mapReviewFields_mapsCorrectly() throws Exception {
             SapiPendingChange sapiResponse = new SapiPendingChange(
                 CHANGE_ID, GROUP_ID, "Test Group", "ROLE_CHANGE",
-                Map.of("roleName", "voice_agent"), Map.of("roleName", "chat_agent"),
+                configWithRole("voice_agent"), configWithRole("chat_agent"),
                 false, null, "PENDING_LEVEL_ONE",
                 null, null, null,
                 null, null, null,
@@ -29106,7 +29389,7 @@ class ApprovalWorkflowControllerTest {
         void mapPendingChange_nullCreatedBy_returnsResponse() throws Exception {
             SapiPendingChange sapiResponse = new SapiPendingChange(
                 CHANGE_ID, GROUP_ID, "Test Group", "ROLE_CHANGE",
-                Map.of("roleName", "voice_agent"), Map.of("roleName", "chat_agent"),
+                configWithRole("voice_agent"), configWithRole("chat_agent"),
                 false, null, "PENDING_LEVEL_ONE",
                 null, null, null,
                 null, null, null,
@@ -29127,7 +29410,7 @@ class ApprovalWorkflowControllerTest {
         void mapPendingChange_unknownUser_returnsResponse() throws Exception {
             SapiPendingChange sapiResponse = new SapiPendingChange(
                 CHANGE_ID, GROUP_ID, "Test Group", "ROLE_CHANGE",
-                Map.of("roleName", "voice_agent"), Map.of("roleName", "chat_agent"),
+                configWithRole("voice_agent"), configWithRole("chat_agent"),
                 false, null, "PENDING_LEVEL_ONE",
                 null, null, null,
                 null, null, null,
@@ -29148,7 +29431,7 @@ class ApprovalWorkflowControllerTest {
         void mapPendingChange_nullIdentifier_returnsResponse() throws Exception {
             SapiPendingChange sapiResponse = new SapiPendingChange(
                 CHANGE_ID, null, null, "ROLE_CHANGE",
-                Map.of("roleName", "voice_agent"), Map.of("roleName", "chat_agent"),
+                configWithRole("voice_agent"), configWithRole("chat_agent"),
                 false, null, "PENDING_LEVEL_ONE",
                 null, null, null,
                 null, null, null,
@@ -29169,10 +29452,14 @@ class ApprovalWorkflowControllerTest {
     // Test Helper Methods
     // ========================================================================
 
+    private ConfigChanges configWithRole(String roleName) {
+        return new ConfigChanges().businessInfoChanges(new BusinessInfoChanges().roleName(roleName));
+    }
+
     private SubmitChangeRequest buildSubmitChangeRequest() {
         SubmitChangeRequest request = new SubmitChangeRequest();
         request.setTargetGroupIdentifier(GROUP_ID);
-        request.setProposedConfig(Map.of("roleName", "chat_agent"));
+        request.setProposedConfig(configWithRole("chat_agent"));
         request.setChangeDescription("Test change description");
         request.setConfigVersionNumber(42L);
         return request;
@@ -29182,7 +29469,7 @@ class ApprovalWorkflowControllerTest {
             String id, String groupIdentifier, String status, boolean isCritical) {
         return new SapiPendingChange(
             id, groupIdentifier, "Test Group", "ROLE_CHANGE",
-            Map.of("roleName", "voice_agent"), Map.of("roleName", "chat_agent"),
+            configWithRole("voice_agent"), configWithRole("chat_agent"),
             isCritical, null, status,
             null, null, null,
             null, null, null,
@@ -29609,7 +29896,6 @@ import com.hsbc.ccaas.papi.client.SapiApprovalClient;
 import com.hsbc.ccaas.identity.service.helper.IdentityContextAccessor;
 import com.hsbc.wpb.ef.ports.RequestContext;
 
-import java.util.Map;
 import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -29664,8 +29950,8 @@ class DirectSaveControllerTest {
 
             DirectSaveRequest request = new DirectSaveRequest();
             request.setTargetGroupIdentifier(GROUP_ID);
-            request.setProposedState(Map.of("roleName", "chat_agent"));
-            request.setCurrentState(Map.of("roleName", "voice_agent"));
+            request.setProposedState(configWithRole("chat_agent"));
+            request.setCurrentState(configWithRole("voice_agent"));
             request.setConfigVersionNumber(5L);
             DirectSaveRequestEnvelope envelope = new DirectSaveRequestEnvelope();
             envelope.setData(request);
@@ -29682,8 +29968,8 @@ class DirectSaveControllerTest {
 
             verify(sapiApprovalClient).directSave(
                 eq(GROUP_ID),
-                eq(Map.of("roleName", "voice_agent")),
-                eq(Map.of("roleName", "chat_agent")),
+                eq(configWithRole("voice_agent")),
+                eq(configWithRole("chat_agent")),
                 eq(SUPER_ADMIN_ID),
                 eq(""),
                 eq(5L),
@@ -29698,7 +29984,7 @@ class DirectSaveControllerTest {
 
             DirectSaveRequest request = new DirectSaveRequest();
             request.setTargetGroupIdentifier(GROUP_ID);
-            request.setProposedState(Map.of("roleName", "chat_agent"));
+            request.setProposedState(configWithRole("chat_agent"));
             DirectSaveRequestEnvelope envelope = new DirectSaveRequestEnvelope();
             envelope.setData(request);
 
@@ -29712,7 +29998,7 @@ class DirectSaveControllerTest {
             verify(sapiApprovalClient).directSave(
                 eq(GROUP_ID),
                 any(),
-                eq(Map.of("roleName", "chat_agent")),
+                eq(configWithRole("chat_agent")),
                 eq(SUPER_ADMIN_ID),
                 eq(""),
                 isNull(),
@@ -29731,7 +30017,7 @@ class DirectSaveControllerTest {
 
             DirectSaveRequest request = new DirectSaveRequest();
             request.setTargetGroupIdentifier(GROUP_ID);
-            request.setProposedState(Map.of("roleName", "chat_agent"));
+            request.setProposedState(configWithRole("chat_agent"));
             DirectSaveRequestEnvelope envelope = new DirectSaveRequestEnvelope();
             envelope.setData(request);
 
@@ -29753,7 +30039,7 @@ class DirectSaveControllerTest {
 
             DirectSaveRequest request = new DirectSaveRequest();
             request.setTargetGroupIdentifier(GROUP_ID);
-            request.setProposedState(Map.of("roleName", "chat_agent"));
+            request.setProposedState(configWithRole("chat_agent"));
             DirectSaveRequestEnvelope envelope = new DirectSaveRequestEnvelope();
             envelope.setData(request);
 
@@ -29802,7 +30088,7 @@ class DirectSaveControllerTest {
         void directSave_missingGroupId_throws400() {
             DirectSaveRequest request = new DirectSaveRequest();
             request.setTargetGroupIdentifier(null);
-            request.setProposedState(Map.of("roleName", "chat_agent"));
+            request.setProposedState(configWithRole("chat_agent"));
             DirectSaveRequestEnvelope envelope = new DirectSaveRequestEnvelope();
             envelope.setData(request);
 
@@ -29835,7 +30121,7 @@ class DirectSaveControllerTest {
 
             DirectSaveRequest request = new DirectSaveRequest();
             request.setTargetGroupIdentifier(GROUP_ID);
-            request.setProposedState(Map.of("roleName", "chat_agent"));
+            request.setProposedState(configWithRole("chat_agent"));
             DirectSaveRequestEnvelope envelope = new DirectSaveRequestEnvelope();
             envelope.setData(request);
 
@@ -29862,7 +30148,7 @@ class DirectSaveControllerTest {
 
             DirectSaveRequest request = new DirectSaveRequest();
             request.setTargetGroupIdentifier(GROUP_ID);
-            request.setProposedState(Map.of("roleName", "chat_agent"));
+            request.setProposedState(configWithRole("chat_agent"));
             request.setConfigVersionNumber(1L);
             DirectSaveRequestEnvelope envelope = new DirectSaveRequestEnvelope();
             envelope.setData(request);
@@ -29877,6 +30163,10 @@ class DirectSaveControllerTest {
                     assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
                 });
         }
+    }
+
+    private ConfigChanges configWithRole(String roleName) {
+        return new ConfigChanges().businessInfoChanges(new BusinessInfoChanges().roleName(roleName));
     }
 }
 ===ENDFILE
@@ -31028,12 +31318,16 @@ package com.hsbc.ccaas.papi.controller.helper;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.hsbc.ccaas.papi.controller.model.ApprovalResultResponse;
-import com.hsbc.ccaas.papi.controller.model.PendingChangeResponse;
+import com.hsbc.ccaas.papi.controller.model.BusinessInfoChanges;
+import com.hsbc.ccaas.papi.controller.model.ChangeType;
+import com.hsbc.ccaas.papi.controller.model.ConfigChanges;
+import com.hsbc.ccaas.papi.controller.model.PendingChangeStatus;
+import com.hsbc.ccaas.papi.controller.model.PendingChangeVo;
+import com.hsbc.ccaas.papi.dto.sapi.ApprovalPayloads.SapiMatchedRule;
 import com.hsbc.ccaas.papi.dto.sapi.ApprovalPayloads.SapiPendingChange;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
-import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -31060,36 +31354,34 @@ class ApprovalResponseMapperTest {
             LocalDateTime updatedAt = LocalDateTime.of(2025, 6, 16, 14, 0, 0);
             LocalDateTime approvedAt = LocalDateTime.of(2025, 6, 16, 12, 0, 0);
             LocalDateTime rejectedAt = LocalDateTime.of(2025, 6, 16, 13, 0, 0);
-            Map<String, Object> currentConfig = Map.of("key", "currentValue");
-            Map<String, Object> proposedConfig = Map.of("key", "proposedValue");
+            ConfigChanges currentConfig = configWithRole("currentValue");
+            ConfigChanges proposedConfig = configWithRole("proposedValue");
 
             SapiPendingChange sapi = new SapiPendingChange(
-                    "pc-001", "CN=TestGroup", "TestGroup", "LAYOUT",
+                    "pc-001", "CN=TestGroup", "TestGroup", "CONFIG_UPDATE",
                     currentConfig, proposedConfig, true,
-                    List.of(Map.of("rule", "critical-rule")),
-                    "l1_pending", "approver1", approvedAt, "Looks good",
+                    List.of(new SapiMatchedRule(1L, "critical-rule", 2)),
+                    "PENDING_LEVEL_ONE", "approver1", approvedAt, "Looks good",
                     "rejector1", rejectedAt, "Not valid",
                     "maker1", createdAt, "checker1", updatedAt);
 
-            PendingChangeResponse result = mapper.mapToPendingChangeResponse(sapi);
+            PendingChangeVo result = mapper.mapToPendingChangeResponse(sapi);
 
             assertThat(result).satisfies(r -> {
                 assertThat(r.getChangeIdentifier()).isEqualTo("pc-001");
                 assertThat(r.getTargetGroupIdentifier()).isEqualTo("CN=TestGroup");
-                assertThat(r.getChangeType()).isEqualTo("LAYOUT");
+                assertThat(r.getChangeType()).isEqualTo(ChangeType.CONFIG_UPDATE);
                 assertThat(r.getCurrentConfig()).isEqualTo(currentConfig);
                 assertThat(r.getProposedConfig()).isEqualTo(proposedConfig);
-                assertThat(r.getStatusCode()).isEqualTo("l1_pending");
+                assertThat(r.getStatusCode()).isEqualTo(PendingChangeStatus.PENDING_LEVEL_ONE);
                 assertThat(r.getIsCriticalIndicator()).isTrue();
                 assertThat(r.getCreatedByText()).isEqualTo("maker1");
                 assertThat(r.getCreatedAtDatetime()).isEqualTo(createdAt.atOffset(ZoneOffset.UTC));
                 assertThat(r.getUpdatedByText()).isEqualTo("checker1");
                 assertThat(r.getUpdatedAtDatetime()).isEqualTo(updatedAt.atOffset(ZoneOffset.UTC));
                 assertThat(r.getApprovedByText()).isEqualTo("approver1");
-                assertThat(r.getApprovedAtDatetime()).isEqualTo(approvedAt.atOffset(ZoneOffset.UTC));
                 assertThat(r.getCommentText()).isEqualTo("Looks good");
                 assertThat(r.getRejectedByText()).isEqualTo("rejector1");
-                assertThat(r.getRejectedAtDatetime()).isEqualTo(rejectedAt.atOffset(ZoneOffset.UTC));
                 assertThat(r.getRejectionReasonText()).isEqualTo("Not valid");
             });
         }
@@ -31098,20 +31390,18 @@ class ApprovalResponseMapperTest {
         @DisplayName("should handle null datetime fields gracefully")
         void shouldHandleNullDatetimeFields() {
             SapiPendingChange sapi = new SapiPendingChange(
-                    "pc-002", "CN=Group2", null, "EMBEDDED_APP",
+                    "pc-002", "CN=Group2", null, "APP_UPDATE",
                     null, null, false, null,
-                    "l2_pending", null, null, null,
+                    "PENDING_LEVEL_TWO", null, null, null,
                     null, null, null,
                     "user1", null, null, null);
 
-            PendingChangeResponse result = mapper.mapToPendingChangeResponse(sapi);
+            PendingChangeVo result = mapper.mapToPendingChangeResponse(sapi);
 
             assertThat(result).satisfies(r -> {
                 assertThat(r.getChangeIdentifier()).isEqualTo("pc-002");
                 assertThat(r.getCreatedAtDatetime()).isNull();
                 assertThat(r.getUpdatedAtDatetime()).isNull();
-                assertThat(r.getApprovedAtDatetime()).isNull();
-                assertThat(r.getRejectedAtDatetime()).isNull();
                 assertThat(r.getIsCriticalIndicator()).isFalse();
             });
         }
@@ -31120,13 +31410,13 @@ class ApprovalResponseMapperTest {
         @DisplayName("should set isCriticalIndicator to false when isCritical is null")
         void shouldSetFalseWhenIsCriticalNull() {
             SapiPendingChange sapi = new SapiPendingChange(
-                    "pc-003", "CN=Group3", null, "LAYOUT",
+                    "pc-003", "CN=Group3", null, "FUNCTION_TOGGLE",
                     null, null, null, null,
-                    "l1_pending", null, null, null,
+                    "PENDING_LEVEL_ONE", null, null, null,
                     null, null, null,
                     null, null, null, null);
 
-            PendingChangeResponse result = mapper.mapToPendingChangeResponse(sapi);
+            PendingChangeVo result = mapper.mapToPendingChangeResponse(sapi);
 
             assertThat(result.getIsCriticalIndicator()).isFalse();
         }
@@ -31267,6 +31557,10 @@ class ApprovalResponseMapperTest {
             assertThat(ApprovalResponseMapper.APPROVED_STATUS).isEqualTo("APPROVED");
             assertThat(ApprovalResponseMapper.REJECTED_STATUS).isEqualTo("REJECTED");
         }
+    }
+
+    private ConfigChanges configWithRole(String roleName) {
+        return new ConfigChanges().businessInfoChanges(new BusinessInfoChanges().roleName(roleName));
     }
 }
 ===ENDFILE
