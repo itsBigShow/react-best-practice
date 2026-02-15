@@ -1,5 +1,5 @@
 # CCaaS Entitlement PAPI - Source Bundle
-# Generated: 2026-02-15 14:10:39
+# Generated: 2026-02-15 14:53:25
 # Total files: 291
 # Categories: 1 pom.xml, 2 CLAUDE.md, 1 resources, 132 YAML specs, 90 main Java, 58 test Java, 7 other
 # Note: target/generated-sources NOT included - run 'mvn generate-sources' after extraction
@@ -2630,51 +2630,60 @@ mvn test                           # Run tests
 ## Package Structure
 `com.hsbc.ccaas.papi` - Main package under `src/main/java/`
 
-## Key Endpoints (32 operations, all working)
+## Key Endpoints (35 operations, all working)
 ```
-# Session Layouts
-GET  /papi/v1/sessions                      # Get session layout for current user
+# Session Layouts (3)
+GET  /papi/v1/sessions                               # Get session layout for current user
 POST /papi/v1/sessions/notice-acknowledgments        # Acknowledge admin notice
 POST /papi/v1/entitlements                           # Add entitlement to role templates
 
-# AD Groups
-GET  /papi/v1/ad-groups                            # List AD groups (paginated, filterable)
-POST /papi/v1/ad-groups/lookup                     # Look up AD group config by DN (body)
-POST /papi/v1/ad-group-configuration-copies         # Copy AD group configuration
+# AD Groups (3)
+GET  /papi/v1/ad-groups                              # List AD groups (paginated, filterable)
+POST /papi/v1/ad-groups/lookup                       # Look up AD group config by DN (body)
+POST /papi/v1/ad-group-configuration-copies          # Copy AD group configuration
 
-# Approval Workflow (Maker/Checker/Super Admin)
-POST   /papi/v1/pending-changes                    # Maker submits change for approval
-GET    /papi/v1/pending-changes                    # List pending changes
-GET    /papi/v1/pending-changes/{changeIdentifier} # Get specific pending change
-DELETE /papi/v1/pending-changes/{changeIdentifier} # Maker withdraws own pending change
-POST   /papi/v1/change-approvals                   # Approve (changeIdentifier in body)
-POST   /papi/v1/change-rejections                  # Reject (changeIdentifier + reason in body)
+# Approval Workflow (6)
+POST   /papi/v1/pending-changes                      # Maker submits change for approval
+GET    /papi/v1/pending-changes                      # List pending changes
+GET    /papi/v1/pending-changes/{changeIdentifier}   # Get specific pending change
+DELETE /papi/v1/pending-changes/{changeIdentifier}   # Maker withdraws own pending change
+POST   /papi/v1/change-approvals                     # Approve (changeIdentifier in body)
+POST   /papi/v1/change-rejections                    # Reject (changeIdentifier + reason in body)
 
-# Admin Notices
-POST   /papi/v1/notices                                # Create notice
-GET    /papi/v1/notices                                # List notices
-PUT    /papi/v1/notices/{noticeIdentifier}             # Update notice
-PATCH  /papi/v1/notices/{noticeIdentifier}/status      # Update notice status
+# Direct Save (1)
+POST /papi/v1/ad-group-configs                       # Super Admin direct save (bypasses approval)
 
-# Embedded Apps
-GET  /papi/v1/embedded-apps                        # List embedded apps
-GET  /papi/v1/embedded-apps/{appKey}               # Get embedded app
+# Admin Notices (4)
+POST   /papi/v1/notices                              # Create notice
+GET    /papi/v1/notices                              # List notices
+PUT    /papi/v1/notices/{noticeIdentifier}           # Update notice
+PATCH  /papi/v1/notices/{noticeIdentifier}/status    # Update notice status
+
+# Embedded Apps (6)
+GET  /papi/v1/embedded-apps                          # List embedded apps
+GET  /papi/v1/embedded-apps/{appKey}                 # Get embedded app
 GET  /papi/v1/embedded-apps/user-apps                # Apps for current user
-POST /papi/v1/embedded-apps-ad-groups/{appKey}     # App config for AD group (body)
-PUT  /papi/v1/embedded-apps-ad-groups/{appKey}     # Update app config
-POST /papi/v1/embedded-apps-ad-groups              # Get apps for AD group
+POST /papi/v1/embedded-apps-ad-groups/{appKey}       # App config for AD group (body)
+PUT  /papi/v1/embedded-apps-ad-groups/{appKey}       # Update app config
+POST /papi/v1/embedded-apps-ad-groups                # Get apps for AD group
 
-# Reference Data
-GET  /papi/v1/regions                              # All regions
-GET  /papi/v1/business-units                       # All business units
-GET  /papi/v1/countries                            # All countries
-GET  /papi/v1/regions-countries/{regionCode}       # Countries by region
-GET  /papi/v1/markets                              # All markets
-GET  /papi/v1/regions-markets/{regionCode}         # Markets by region
+# Reference Data (8)
+GET  /papi/v1/regions                                # All regions
+GET  /papi/v1/business-units                         # All business units
+GET  /papi/v1/countries                              # All countries
+GET  /papi/v1/regions-countries/{regionCode}         # Countries by region
+GET  /papi/v1/markets                                # All markets
+GET  /papi/v1/regions-markets/{regionCode}           # Markets by region
+GET  /papi/v1/role-layout-templates                  # All templates (summary)
+GET  /papi/v1/role-layout-templates/{roleNameCode}   # Full template by name
 
-# User Roles (Supervisor)
+# User Roles (2)
 POST /papi/v1/users/{userIdentifier}/primaries/{roleName}  # Set primary role
 POST /papi/v1/users/primary-assignments              # Bulk set primary roles
+
+# Audit (2)
+GET  /papi/v1/my-activity                            # User's own activity log
+GET  /papi/v1/audit-logs                             # Admin audit log (compliance)
 ```
 
 ## Required Skills (use EVERY time you write or modify code)
@@ -2712,7 +2721,7 @@ This PAPI delegates layout computation to entitlement-sapi (:8093). PAPI owns: s
 
 **Approval workflow delegation:** PAPI's `SapiApprovalClient` calls SAPI's `/sapi/v1/pending-changes/*`, `/sapi/v1/change-approvals/*`, and `/sapi/v1/change-rejections/*` endpoints. PAPI adds identity context (userId, displayName from X-HSBC-E2E-Trust-Token), SAPI persists and evaluates criticality. PAPI passes through `configVersionNumber` (optimistic locking version) from `SubmitChangeRequest` to SAPI for concurrent edit prevention (GAP-001).
 
-**No dead endpoints.** All PAPI paths have working SAPI backing endpoints. Dead APIs (GONE stubs, broken CRUD for ad-group-layout-assignments, role-templates, user-role-assignments, approval-rules, change-audit-log) were removed in the v1.0 cleanup.
+**No dead endpoints.** All 35 PAPI paths have working SAPI backing endpoints.
 
 ## Config (application.yml)
 ```yaml
