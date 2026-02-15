@@ -1,7 +1,7 @@
 # CCaaS Admin MFE - Source Bundle
-# Generated: 2026-02-13 22:55:45
-# Total files: 395
-# Categories: 228 TypeScript, 158 React (TSX), 1 CSS, 7 Config, 1 Docs
+# Generated: 2026-02-15 22:43:32
+# Total files: 397
+# Categories: 230 TypeScript, 158 React (TSX), 1 CSS, 7 Config, 1 Docs
 # Note: node_modules and dist NOT included - run 'npm install && npm run build' after extraction
 
 ===FILE: CLAUDE.md
@@ -12406,6 +12406,12 @@ export function AdGroupConfigModal({
   })
 
   const isBusinessComplete = isBusinessInfoComplete(formData)
+  // BUG FIX: Check if group was previously configured (not a new unconfigured group).
+  // Legacy groups may not have businessUnit, so we check for core business info fields
+  // that would have been set during initial configuration (logicalName, roleName, region, market, country).
+  // This allows permission-only edits without forcing re-entry of business info.
+  const hasCoreSavedData = formData.logicalName && formData.roleName && formData.region && formData.market && formData.country
+  const wasBusinessComplete = !isLoadingAdGroup && !!hasCoreSavedData
   const hasAnyUnsavedChanges = hasUnsavedChanges(pendingChanges) || stagedAppChanges.length > 0
 
   const handleClose = () => {
@@ -12527,6 +12533,8 @@ export function AdGroupConfigModal({
               isReadOnly={isReadOnly}
               canDirectSave={canDirectSave}
               isBusinessComplete={isBusinessComplete}
+              wasBusinessComplete={wasBusinessComplete}
+              hasAnyUnsavedChanges={hasAnyUnsavedChanges}
               isLoadingAdGroup={isLoadingAdGroup}
               isLoadingRoleTemplate={isLoadingRoleTemplate}
               onClose={handleClose}
@@ -12624,17 +12632,23 @@ function SaveButton({ canDirectSave, isSaveDisabled, incompleteTitle, onDirectSa
 }
 
 /** Renders the footer action buttons for the config modal. */
-export function ConfigModalFooterActions({ isReadOnly, canDirectSave, isBusinessComplete, isLoadingAdGroup, isLoadingRoleTemplate, onClose, onDirectSave, onSubmit }: Readonly<{
+export function ConfigModalFooterActions({ isReadOnly, canDirectSave, isBusinessComplete, wasBusinessComplete, hasAnyUnsavedChanges, isLoadingAdGroup, isLoadingRoleTemplate, onClose, onDirectSave, onSubmit }: Readonly<{
   isReadOnly: boolean
   canDirectSave: boolean
   isBusinessComplete: boolean
+  wasBusinessComplete: boolean
+  hasAnyUnsavedChanges: boolean
   isLoadingAdGroup: boolean
   isLoadingRoleTemplate: boolean
   onClose: () => void
   onDirectSave: () => void
   onSubmit: () => void
 }>) {
-  const isSaveDisabled = isLoadingAdGroup || isLoadingRoleTemplate || !isBusinessComplete
+  // Save/Submit button logic:
+  // 1. NEW groups (never configured): MUST complete business info first
+  // 2. EXISTING groups (already configured): Can save permission/app changes without re-entering business info
+  const isNewGroup = !wasBusinessComplete
+  const isSaveDisabled = isLoadingAdGroup || isLoadingRoleTemplate || (isNewGroup ? !isBusinessComplete : !hasAnyUnsavedChanges)
   const incompleteTitle = isBusinessComplete ? undefined : 'Complete all required business info fields before saving'
 
   return (
@@ -13620,6 +13634,7 @@ export function hasUnsavedChanges(pendingChanges: PendingChanges): boolean {
 /**
  * Validates that all required business info fields are populated.
  * Used to enable/disable the save button on the business info tab.
+ * Note: businessUnit is optional as legacy groups may not have it.
  */
 export function isBusinessInfoComplete(formData: AdGroup): boolean {
   return !!(
@@ -13627,8 +13642,7 @@ export function isBusinessInfoComplete(formData: AdGroup): boolean {
     formData.roleName &&
     formData.region &&
     formData.market &&
-    formData.country &&
-    formData.businessUnit
+    formData.country
   )
 }
 ===ENDFILE
@@ -37837,6 +37851,117 @@ export function autoDisableParent(
 }
 ===ENDFILE
 
+===FILE: src/hooks/admin/toggle-config-merger.ts
+import { businessRelevantToggles, type CategoryConfig } from '../components/admin/business-relevant-toggles'
+import type { ToggleDefinition, ToggleCategory } from './use-toggle-config'
+
+export interface MergedToggleConfig {
+  capabilities?: ToggleCategory
+  workspacePreferences?: ToggleCategory
+  adminViews?: ToggleCategory
+  adminAdGroupTabs?: ToggleCategory
+  adminActions?: ToggleCategory
+}
+
+function convertDbToggleToUiFormat(
+  dbToggles: Record<string, { businessName: string; description: string; section: string; visible: boolean; linkedKeys: string[] }>,
+  categoryTitle: string,
+  categoryDescription: string
+): ToggleCategory {
+  const toggles: Record<string, ToggleDefinition> = {}
+
+  for (const [key, value] of Object.entries(dbToggles)) {
+    toggles[key] = {
+      businessName: value.businessName,
+      description: value.description,
+      section: value.section,
+      visible: value.visible,
+      linkedKeys: value.linkedKeys || []
+    }
+  }
+
+  return {
+    title: categoryTitle,
+    description: categoryDescription,
+    toggles
+  }
+}
+
+export function mergeToggleConfigs(
+  apiConfig: Record<string, Record<string, any>> | null,
+  defaults: typeof businessRelevantToggles = businessRelevantToggles
+): MergedToggleConfig {
+  if (!apiConfig) {
+    return defaults as unknown as MergedToggleConfig
+  }
+
+  const merged: MergedToggleConfig = {}
+
+  for (const [categoryKey, categoryDefaults] of Object.entries(defaults)) {
+    if (categoryKey === 'capabilities') {
+      const apiCategory = apiConfig.capabilities
+      if (apiCategory) {
+        merged.capabilities = convertDbToggleToUiFormat(
+          apiCategory,
+          categoryDefaults.title,
+          categoryDefaults.description
+        )
+      } else {
+        merged.capabilities = categoryDefaults as ToggleCategory
+      }
+    } else if (categoryKey === 'workspacePreferences') {
+      const apiCategory = apiConfig.workspacePreferences
+      if (apiCategory) {
+        merged.workspacePreferences = convertDbToggleToUiFormat(
+          apiCategory,
+          categoryDefaults.title,
+          categoryDefaults.description
+        )
+      } else {
+        merged.workspacePreferences = categoryDefaults as ToggleCategory
+      }
+    } else if (categoryKey === 'adminViews') {
+      const apiCategory = apiConfig.adminViews
+      if (apiCategory) {
+        merged.adminViews = convertDbToggleToUiFormat(
+          apiCategory,
+          categoryDefaults.title,
+          categoryDefaults.description
+        )
+      } else {
+        merged.adminViews = categoryDefaults as ToggleCategory
+      }
+    } else if (categoryKey === 'adminAdGroupTabs') {
+      const apiCategory = apiConfig.adminAdGroupTabs
+      if (apiCategory) {
+        merged.adminAdGroupTabs = convertDbToggleToUiFormat(
+          apiCategory,
+          categoryDefaults.title,
+          categoryDefaults.description
+        )
+      } else {
+        merged.adminAdGroupTabs = categoryDefaults as ToggleCategory
+      }
+    } else if (categoryKey === 'adminActions') {
+      const apiCategory = apiConfig.adminActions
+      if (apiCategory) {
+        merged.adminActions = convertDbToggleToUiFormat(
+          apiCategory,
+          categoryDefaults.title,
+          categoryDefaults.description
+        )
+      } else {
+        merged.adminActions = categoryDefaults as ToggleCategory
+      }
+    }
+  }
+
+  return merged
+}
+
+export { businessRelevantToggles }
+===ENDFILE
+
 ===FILE: src/hooks/admin/use-ad-group-actions.ts
 /**
  * AD Group Actions - Copy and toggle operations for AD groups
@@ -39383,6 +39508,111 @@ export function usePermissionToggle({
   return {
     loadingPermission,
     handleTogglePermission
+  }
+}
+===ENDFILE
+
+===FILE: src/hooks/admin/use-toggle-config.ts
+import { useState, useEffect, useCallback } from 'react'
+import { createLogger } from '../../utils/core/debug'
+
+const logger = createLogger('useToggleConfig')
+
+export interface ToggleDefinition {
+  businessName: string
+  description: string
+  section: string
+  visible: boolean
+  linkedKeys: string[]
+}
+
+export interface ToggleCategory {
+  title: string
+  description: string
+  toggles: Record<string, ToggleDefinition>
+}
+
+export interface ToggleConfigResponse {
+  capabilities?: ToggleCategory
+  workspacePreferences?: ToggleCategory
+  adminViews?: ToggleCategory
+  adminAdGroupTabs?: ToggleCategory
+  adminActions?: ToggleCategory
+}
+
+const TOGGLE_CONFIG_CACHE_KEY = 'ccaas_toggle_config'
+
+function getCachedToggleConfig(): ToggleConfigResponse | null {
+  try {
+    const cached = localStorage.getItem(TOGGLE_CONFIG_CACHE_KEY)
+    return cached ? JSON.parse(cached) : null
+  } catch {
+    return null
+  }
+}
+
+function setCachedToggleConfig(config: ToggleConfigResponse): void {
+  try {
+    localStorage.setItem(TOGGLE_CONFIG_CACHE_KEY, JSON.stringify(config))
+  } catch (err) {
+    logger.warn('Failed to cache toggle config', err)
+  }
+}
+
+interface UseToggleConfigReturn {
+  toggleConfig: ToggleConfigResponse | null
+  isLoading: boolean
+  error: string | null
+  refetch: () => Promise<void>
+}
+
+export function useToggleConfig(): UseToggleConfigReturn {
+  const [toggleConfig, setToggleConfig] = useState<ToggleConfigResponse | null>(getCachedToggleConfig())
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const fetchToggleConfig = useCallback(async () => {
+    setIsLoading(true)
+    setError(null)
+
+    try {
+      const response = await fetch('/papi/v1/toggle-config', {
+        headers: {
+          'Accept': 'application/json'
+        }
+      })
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch toggle config: ${response.status}`)
+      }
+
+      const data = await response.json()
+      setToggleConfig(data)
+      setCachedToggleConfig(data)
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch toggle config'
+      setError(errorMessage)
+      logger.error('Error fetching toggle config', err)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
+
+  const refetch = useCallback(async () => {
+    await fetchToggleConfig()
+  }, [fetchToggleConfig])
+
+  useEffect(() => {
+    if (!toggleConfig) {
+      fetchToggleConfig()
+    }
+  }, [toggleConfig, fetchToggleConfig])
+
+  return {
+    toggleConfig,
+    isLoading,
+    error,
+    refetch
   }
 }
 ===ENDFILE
@@ -41574,7 +41804,7 @@ describe('useDropdownOptions', () => {
     mockUseReferenceData.mockReturnValue({ roleTemplates: [] })
   })
 
-  it('returns API roles and filters admin role', () => {
+  it('returns all API roles including admin', () => {
     mockUseReferenceData.mockReturnValue({
       roleTemplates: [
         { roleNameCode: 'chat_agent', roleDisplayName: 'Chat Agent' },
@@ -41584,16 +41814,15 @@ describe('useDropdownOptions', () => {
     })
 
     const options = useDropdownOptions()
-    expect(options.roles).toHaveLength(2)
-    expect(options.roles.map(r => r.value)).toEqual(['chat_agent', 'voice_agent'])
+    expect(options.roles).toHaveLength(3)
+    expect(options.roles.map(r => r.value)).toEqual(['chat_agent', 'admin', 'voice_agent'])
   })
 
-  it('falls back to static roles when API roles are unavailable', () => {
+  it('returns empty roles when API roles are unavailable', () => {
     mockUseReferenceData.mockReturnValue({ roleTemplates: [] })
 
     const options = useDropdownOptions()
-    expect(options.roles).toHaveLength(3)
-    expect(options.roles.map(r => r.value)).toEqual(['chat_agent', 'voice_agent', 'supervisor'])
+    expect(options.roles).toHaveLength(0)
   })
 
   it('returns empty markets array', () => {
@@ -41981,21 +42210,16 @@ export function useDropdownOptions(params: UseDropdownOptionsParams = {}): Dropd
 
   const roles = useMemo(() => {
     const apiRoles = resolvedRoleTemplates
-      .filter(template => template.roleNameCode.toLowerCase() !== 'admin')
       .map(template => ({
         value: template.roleNameCode,
         label: template.roleDisplayName || template.roleNameCode
       }))
 
-    if (apiRoles.length > 0) {
-      return apiRoles
+    if (apiRoles.length === 0 && resolvedRoleTemplates.length === 0) {
+      console.warn('[useDropdownOptions] No role templates returned from API')
     }
 
-    return [
-      { value: 'chat_agent', label: 'Chat Agent' },
-      { value: 'voice_agent', label: 'Voice Agent' },
-      { value: 'supervisor', label: 'Supervisor' }
-    ]
+    return apiRoles
   }, [resolvedRoleTemplates])
 
   return useMemo(() => ({
@@ -42379,6 +42603,7 @@ import './index.css'
 import { AdminMFE } from './AdminMFE'
 import type { AdminPermissions } from './types'
 import { createLogger } from './utils/core/debug'
+import { initWebMCP } from './webmcp'
 
 const logger = createLogger('AdminMFE:Dev')
 
@@ -42416,6 +42641,9 @@ const mockProps = {
     logger.error('Error:', error)
   }
 }
+
+// Initialize WebMCP tools for AI agent integration (Chrome 146+ with flag enabled)
+initWebMCP()
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
